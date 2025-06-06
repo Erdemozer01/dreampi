@@ -70,7 +70,6 @@ DEFAULT_UI_STEPS_PER_REVOLUTION = 4096
 # Define a default servo angle for the UI, matching sensor_script's default
 DEFAULT_UI_SERVO_ANGLE = 90
 
-
 app = DjangoDash('RealtimeSensorDashboard', external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 # --- NAVBAR CREATION ---

@@ -48,6 +48,7 @@ except ImportError:
 
 from dotenv import load_dotenv
 
+
 load_dotenv() # Loads environment variables from .env file
 google_api_key = os.getenv("GOOGLE_API_KEY")
 

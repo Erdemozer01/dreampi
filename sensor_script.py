@@ -13,7 +13,7 @@ import math
 # ==============================================================================
 try:
     sys.path.append(os.getcwd())
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'sensordashboard.settings')
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'dreampi.settings')
     import django
 
     django.setup()

@@ -33,18 +33,24 @@ class Scan(models.Model): # <-- THIS CLASS MUST EXIST!
         return f"Scan {self.id} ({self.status}) - {self.start_time.strftime('%Y-%m-%d %H:%M')}"
 
 
-class ScanPoint(models.Model):
-    scan = models.ForeignKey(Scan, on_delete=models.CASCADE, related_name='points')
+# dreampi/scanner/models.py dosyasında
 
-    derece = models.FloatField() # Or models.DecimalField
-    mesafe_cm = models.FloatField() # <--- THIS MUST BE HERE
-    x_cm = models.FloatField()
-    y_cm = models.FloatField()
-    z_cm = models.FloatField()
-    timestamp = models.DateTimeField(default=timezone.now)
-    # Add other fields like hiz_cm_s, mesafe_cm_2 if they are in your database schema
-    hiz_cm_s = models.FloatField(null=True, blank=True, default=0.0) # Example: add default
-    mesafe_cm_2 = models.FloatField(null=True, blank=True, default=0.0) # Example: add default
+class ScanPoint(models.Model):
+    scan = models.ForeignKey(Scan, related_name='points', on_delete=models.CASCADE)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    derece = models.FloatField(verbose_name="Derece")
+    mesafe_cm = models.FloatField(verbose_name="Mesafe (cm)")
+    hiz_cm_s = models.FloatField(null=True, blank=True, verbose_name="Hız (cm/s)")
+    x_cm = models.FloatField(null=True, blank=True)
+    y_cm = models.FloatField(null=True, blank=True)
+    z_cm = models.FloatField(null=True, blank=True)
+    mesafe_cm_2 = models.FloatField(null=True, blank=True, verbose_name="2. Sensör Mesafe (cm)")
+
+    # YENİ SATIRI BURAYA EKLEYİN
+    dikey_aci = models.FloatField(null=True, blank=True, verbose_name="Dikey Açı (°)")
+
+    class Meta:
+        ordering = ['timestamp']
 
     def __str__(self):
-        return f"ScanPoint {self.id} (Scan {self.scan.id}) - {self.derece}° {self.mesafe_cm}cm"
+        return f"Point at {self.derece}° - {self.mesafe_cm:.2f} cm"

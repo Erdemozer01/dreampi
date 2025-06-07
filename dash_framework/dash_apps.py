@@ -1132,6 +1132,8 @@ def display_cluster_info(clickData, stored_data_json):
         return True, "Hata", f"Küme bilgisi gösterilemedi: {e}"
 
 
+# app.py dosyasındaki mevcut yorumla_model_secimi fonksiyonunu silip bunu yapıştırın.
+
 @app.callback(
     [Output('ai-yorum-sonucu', 'children'), Output('ai-image', 'children')],
     [Input('ai-model-dropdown', 'value')],
@@ -1140,6 +1142,7 @@ def display_cluster_info(clickData, stored_data_json):
 def yorumla_model_secimi(selected_model_value):
     """
     Triggers AI-powered environment interpretation and image generation based on the selected AI model.
+    NOW WITH 3D COORDS + RAW DISTANCE!
     """
     if not selected_model_value:
         return [html.Div("Yorum için bir model seçin.", className="text-center"), no_update]
@@ -1148,32 +1151,36 @@ def yorumla_model_secimi(selected_model_value):
     if not scan:
         return [dbc.Alert("Analiz edilecek bir tarama bulunamadı.", color="warning"), no_update]
 
-    # Step 1: Get detailed text analysis
-    if scan.ai_commentary and scan.ai_commentary.strip():
-        yorum_text_from_ai = scan.ai_commentary
-        commentary_component = dbc.Alert(
-            dcc.Markdown(yorum_text_from_ai, dangerously_allow_html=True, link_target="_blank"), color="info")
-    else:
-        points_qs = scan.points.all().values('derece', 'mesafe_cm')
-        if not points_qs:
-            return [dbc.Alert("Yorumlanacak tarama verisi bulunamadı.", color="warning"), no_update]
-        df_data_for_ai = pd.DataFrame(list(points_qs))
-        if len(df_data_for_ai) > 500:
-            df_data_for_ai = df_data_for_ai.sample(n=500, random_state=1)
+    # --- DEĞİŞİKLİK 1: 'mesafe_cm' SÜTUNUNU DA ÇEKİYORUZ ---
+    points_qs = scan.points.all().values('x_cm', 'y_cm', 'z_cm', 'mesafe_cm')  # 'mesafe_cm' eklendi
+    if not points_qs:
+        return [dbc.Alert("Yorumlanacak tarama verisi bulunamadı.", color="warning"), no_update]
 
-        yorum_text_from_ai = yorumla_tablo_verisi_gemini(df_data_for_ai, selected_model_value)
-        if "Hata:" in yorum_text_from_ai:
-            return [dbc.Alert(yorum_text_from_ai, color="danger"),
-                    dbc.Alert("Metin yorumu alınamadığı için resim oluşturulamadı.", color="warning")]
-        try:
-            scan.ai_commentary = yorum_text_from_ai
-            scan.save()
-        except Exception as e_db_save:
-            print(f"Veritabanına AI yorumu kaydedilemedi: {e_db_save}")
+    df_data_for_ai = pd.DataFrame(list(points_qs))
+
+    if len(df_data_for_ai) > 300:
+        df_data_for_ai = df_data_for_ai.sample(n=300, random_state=1).round(1)
+
+    # --- DEĞİŞİKLİK 2: PROMPT'U GÜNCELLİYORUZ ---
+    # Prompt artık hem 3D koordinatları hem de ham mesafeyi açıklıyor.
+    prompt_text_final = (
+        f"Aşağıdaki tablo, bir 3-boyutlu tarayıcının oluşturduğu verileri içermektedir. "
+        f"'mesafe_cm' sütunu sensörden nesneye olan ham direkt uzaklığı, x/y/z sütunları ise bu mesafenin cm cinsinden 3 boyutlu kartezyen koordinatlarını temsil eder. "
+        f"Sensör (0,0,0) noktasındadır. 'z_cm' sütunu, sensör seviyesine göre yüksekliği temsil eder. "
+        f"Bu 3D verilere ve ham mesafe bilgisine dayanarak, ortamın yapısını analiz et. Lütfen yorumunda nesnelerin yüksekliğini (örneğin: 'yerde duran alçak bir nesne', 'orta yükseklikte bir engel') ve sensöre olan direkt uzaklığını dikkate al. "
+        f"Verilerdeki desenlere göre potansiyel nesneleri (duvar, köşe, masa, sandalye vb.) tahmin etmeye çalış. Cevabını Markdown formatında düzenli bir şekilde sun."
+        f"\n\n--- VERİ TABLOSU ---\n{df_data_for_ai.to_string(index=False)}"
+    )
+
+    # Yorumu oluştur
+    yorum_text_from_ai = yorumla_tablo_verisi_gemini(df_data_for_ai, selected_model_value, prompt_text_final)
+
+    if "Hata:" in yorum_text_from_ai:
+        commentary_component = dbc.Alert(yorum_text_from_ai, color="danger")
+        image_component = dbc.Alert("Metin yorumu alınamadığı için resim oluşturulamadı.", color="warning")
+    else:
         commentary_component = dbc.Alert(
             dcc.Markdown(yorum_text_from_ai, dangerously_allow_html=True, link_target="_blank"), color="success")
-
-    # Image generation uses the obtained analysis text directly
-    image_component = generate_image_from_text(yorum_text_from_ai, selected_model_value)
+        image_component = generate_image_from_text(yorum_text_from_ai)
 
     return [commentary_component, image_component]

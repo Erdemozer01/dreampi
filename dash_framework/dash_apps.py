@@ -68,7 +68,7 @@ DEFAULT_UI_BUZZER_DISTANCE = 10
 DEFAULT_UI_INVERT_MOTOR = False
 DEFAULT_UI_STEPS_PER_REVOLUTION = 4096
 # Define a default servo angle for the UI, matching sensor_script's default
-DEFAULT_UI_SERVO_ANGLE = 90
+DEFAULT_UI_SERVO_ANGLE = 180
 
 app = DjangoDash('RealtimeSensorDashboard', external_stylesheets=[dbc.themes.BOOTSTRAP])
 
@@ -93,6 +93,8 @@ title_card = dbc.Row(
 
 
 
+# app.py dosyasındaki mevcut control_panel tanımını silip bunu yapıştırın.
+
 control_panel = dbc.Card([
     dbc.CardHeader("Kontrol ve Ayarlar", className="bg-primary text-white"),
     dbc.CardBody([
@@ -110,9 +112,9 @@ control_panel = dbc.Card([
         html.Hr(),
         dbc.Row([
             dbc.Col(html.Button('Başlat', id='start-scan-button', n_clicks=0,
-                                className="btn btn-success btn-lg w-100 mb-2"), width=6),
+                                 className="btn btn-success btn-lg w-100 mb-2"), width=6),
             dbc.Col(html.Button('Durdur', id='stop-scan-button', n_clicks=0,
-                                className="btn btn-danger btn-lg w-100 mb-2"), width=6)
+                                 className="btn btn-danger btn-lg w-100 mb-2"), width=6)
         ]),
         html.Div(id='scan-status-message', style={'marginTop': '10px', 'minHeight': '40px', 'textAlign': 'center'},
                  className="mb-3"),
@@ -138,7 +140,7 @@ control_panel = dbc.Card([
                                       min=10, max=720, step=1)], className="mb-2"),
             dbc.InputGroup([dbc.InputGroupText("Adım Açısı (°)", style={"width": "150px"}),
                             dbc.Input(id="step-angle-input", type="number", value=DEFAULT_UI_SCAN_STEP_ANGLE, min=0.1,
-                                      max=45, step=0.1)], className="mb-2"),
+                                      max=45, step=0.1)], className="mb-2"), # Adım Açısı dikey açıyı da belirleyecek
             dbc.InputGroup([dbc.InputGroupText("Uyarı Mes. (cm)", style={"width": "150px"}),
                             dbc.Input(id="buzzer-distance-input", type="number", value=DEFAULT_UI_BUZZER_DISTANCE,
                                       min=0,
@@ -146,21 +148,6 @@ control_panel = dbc.Card([
             dbc.InputGroup([dbc.InputGroupText("Motor Adım/Tur", style={"width": "150px"}),
                             dbc.Input(id="steps-per-rev-input", type="number", value=DEFAULT_UI_STEPS_PER_REVOLUTION,
                                       min=500, max=10000, step=1)], className="mb-2"),
-
-            # !!!!!!!!!!!!! İSTEDİĞİNİZ SLIDER BURADA !!!!!!!!!!!!!
-            dbc.InputGroup([dbc.InputGroupText("Dikey Açı (°)", style={"width": "150px"}),
-                            dcc.Slider(
-                                id='servo-angle-slider',
-                                min=0,
-                                max=180,
-                                step=1,
-                                value=DEFAULT_UI_SERVO_ANGLE,
-                                marks={0: '0°', 45: '45°', 90: '90°', 135: '135°', 180: '180°'},
-                                tooltip={"placement": "bottom", "always_visible": True},
-                                className="mt-2"
-                            )], className="mb-2"),
-            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
             dbc.Checkbox(id="invert-motor-checkbox", label="Motor Yönünü Ters Çevir", value=DEFAULT_UI_INVERT_MOTOR,
                          className="mt-2 mb-2"),
         ])
@@ -654,16 +641,20 @@ def toggle_parameter_visibility(selected_mode):
         return {'display': 'none'}
 
 
+# app.py dosyasındaki mevcut handle_start_scan_script fonksiyonunu silip bunu yapıştırın.
+
 @app.callback(
     Output('scan-status-message', 'children'),
     [Input('start-scan-button', 'n_clicks')],
     [State('mode-selection-radios', 'value'),
-     State('scan-duration-angle-input', 'value'), State('step-angle-input', 'value'),
-     State('buzzer-distance-input', 'value'), State('invert-motor-checkbox', 'value'),
-     State('steps-per-rev-input', 'value'), State('servo-angle-slider', 'value')],  # NEW State
+     State('scan-duration-angle-input', 'value'),
+     State('step-angle-input', 'value'),
+     State('buzzer-distance-input', 'value'),
+     State('invert-motor-checkbox', 'value'),
+     State('steps-per-rev-input', 'value')],
     prevent_initial_call=True
 )
-def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dist, invert, steps_rev, servo_angle):
+def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dist, invert, steps_rev):
     """Handles starting the sensor script based on selected mode and parameters."""
     if n_clicks == 0:
         return no_update
@@ -681,6 +672,12 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
                 os.remove(fp_lock_pid)
             except OSError as e_rm:
                 print(f"Eski dosya silinemedi ({fp_lock_pid}): {e_rm}")
+
+    # Adım açısı (step) hem servo açısı olarak kullanılacak
+    # Değerin 0-180 arasında olduğundan emin olalım, çünkü Adım Açısı en fazla 45 olabilir.
+    # Bu nedenle, servo açısı da en fazla 45 derece olacak.
+    servo_angle = step
+
     py_exec = sys.executable
     cmd = []
     if selected_mode == 'scan_and_map':
@@ -692,13 +689,15 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
             "Uyarı mesafesi 0-200 cm arasında olmalı!", color="danger", duration=4000)
         if not (isinstance(steps_rev, (int, float)) and 500 <= steps_rev <= 10000): return dbc.Alert(
             "Motor Adım/Tur 500-10000 arasında olmalı!", color="danger", duration=4000)
+
         cmd = [py_exec, SENSOR_SCRIPT_PATH,
                "--scan_duration_angle", str(duration),
                "--step_angle", str(step),
                "--buzzer_distance", str(buzzer_dist),
                "--invert_motor_direction", str(invert),
                "--steps_per_rev", str(steps_rev),
-               "--servo_angle", str(servo_angle)]  # NEW: Pass servo_angle
+               "--servo_angle", str(servo_angle)]  # Servo açısı olarak adım açısı (step) kullanılıyor
+
     elif selected_mode == 'free_movement':
         cmd = [py_exec, FREE_MOVEMENT_SCRIPT_PATH]
     else:

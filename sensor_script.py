@@ -1,4 +1,4 @@
-# BU KODUN TAMAMINI KOPYALAYIP MEVCUT SENSOR_SCRIPT.PY DOSYASINA YAPIŞTIRIN
+# YENİ DOSYA: servo_scan_script.py
 
 import os
 import sys
@@ -21,54 +21,40 @@ try:
     from django.utils import timezone
     from scanner.models import Scan, ScanPoint
 
-    print("SensorScript: Django entegrasyonu başarılı.")
+    print("ServoScanScript: Django entegrasyonu başarılı.")
 except Exception as e:
-    print(f"SensorScript: Django entegrasyonu BAŞARISIZ: {e}")
+    print(f"ServoScanScript: Django entegrasyonu BAŞARISIZ: {e}")
     sys.exit(1)
 
 # ==============================================================================
 # --- DONANIM KÜTÜPHANELERİ ---
 # ==============================================================================
-from gpiozero import DistanceSensor, LED, Buzzer, OutputDevice, Servo
+from gpiozero import DistanceSensor, LED, Buzzer, Servo
 from RPLCD.i2c import CharLCD
 
 # ==============================================================================
-# --- KONTROL DEĞİŞKENLERİ VE PINLER ---
+# --- PIN TANIMLAMALARI ---
 # ==============================================================================
-MOTOR_BAGLI = True
-# Pinler
 TRIG_PIN, ECHO_PIN = 23, 24
 TRIG2_PIN, ECHO2_PIN = 20, 21
 SERVO_PIN = 12
-IN1_GPIO_PIN, IN2_GPIO_PIN, IN3_GPIO_PIN, IN4_GPIO_PIN = 6, 13, 19, 26
 YELLOW_LED_PIN, BUZZER_PIN = 27, 17
 LCD_I2C_ADDRESS, LCD_PORT_EXPANDER, LCD_COLS, LCD_ROWS, I2C_PORT = 0x27, 'PCF8574', 16, 2, 1
 
 # ==============================================================================
 # --- VARSAYILAN DEĞERLER ---
 # ==============================================================================
-DEFAULT_HORIZONTAL_SCAN_ANGLE = 270.0
-DEFAULT_HORIZONTAL_STEP_ANGLE = 10.0
-DEFAULT_SERVO_SCAN_ANGLE = 180.0
-DEFAULT_BUZZER_DISTANCE = 10
-DEFAULT_INVERT_MOTOR_DIRECTION = False
-DEFAULT_STEPS_PER_REVOLUTION = 4096
-STEP_MOTOR_INTER_STEP_DELAY, STEP_MOTOR_SETTLE_TIME, LOOP_TARGET_INTERVAL_S = 0.0015, 0.05, 0.2
+DEFAULT_BUZZER_DISTANCE = 15
+LOOP_INTERVAL_S = 0.4  # Her adım arası bekleme süresi
 
 # ==============================================================================
 # --- GLOBAL DEĞİŞKENLER ---
 # ==============================================================================
-LOCK_FILE_PATH, PID_FILE_PATH = '/tmp/sensor_scan_script.lock', '/tmp/sensor_scan_script.pid'
+LOCK_FILE_PATH, PID_FILE_PATH = '/tmp/servo_scan_script.lock', '/tmp/servo_scan_script.pid'
 sensor, sensor2, servo, yellow_led, buzzer, lcd = None, None, None, None, None, None
-in1_dev, in2_dev, in3_dev, in4_dev = None, None, None, None
 lock_file_handle = None
 current_scan_object_global = None
 script_exit_status_global = Scan.Status.ERROR
-DEG_PER_STEP = 0.0
-current_motor_angle_global = 0.0
-current_step_sequence_index = 0
-step_sequence = [[1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 0], [0, 0, 1, 1], [0, 0, 0, 1],
-                 [1, 0, 0, 1]]
 
 
 # ==============================================================================
@@ -80,11 +66,9 @@ def degree_to_servo_value(angle_deg):
 
 
 def init_hardware():
-    global sensor, sensor2, servo, yellow_led, buzzer, lcd, current_motor_angle_global, in1_dev, in2_dev, in3_dev, in4_dev
+    global sensor, sensor2, servo, yellow_led, buzzer, lcd
     try:
-        if MOTOR_BAGLI:
-            in1_dev, in2_dev, in3_dev, in4_dev = OutputDevice(IN1_GPIO_PIN), OutputDevice(IN2_GPIO_PIN), OutputDevice(
-                IN3_GPIO_PIN), OutputDevice(IN4_GPIO_PIN)
+        # Sadece gerekli donanımları başlatıyoruz (step motor yok)
         sensor = DistanceSensor(echo=ECHO_PIN, trigger=TRIG_PIN, max_distance=2.5)
         sensor2 = DistanceSensor(echo=ECHO2_PIN, trigger=TRIG2_PIN, max_distance=2.5)
         servo = Servo(SERVO_PIN)
@@ -92,75 +76,26 @@ def init_hardware():
         lcd = CharLCD(i2c_expander=LCD_PORT_EXPANDER, address=LCD_I2C_ADDRESS, port=I2C_PORT, cols=LCD_COLS,
                       rows=LCD_ROWS, dotsize=8, charmap='A02', auto_linebreaks=True)
         lcd.clear()
-        lcd.write_string("Dream Pi Hazir".ljust(LCD_COLS))
-        print("Tüm donanımlar başarıyla başlatıldı.")
+        lcd.write_string("Dikey Tarama...".ljust(LCD_COLS))
+        print("Dikey tarama için donanımlar başarıyla başlatıldı.")
         return True
     except Exception as e:
         print(f"KRİTİK HATA: Donanım başlatılamadı: {e}")
         return False
 
 
-def _set_step_pins(s1, s2, s3, s4):
-    if in1_dev: in1_dev.value = bool(s1)
-    if in2_dev: in2_dev.value = bool(s2)
-    if in3_dev: in3_dev.value = bool(s3)
-    if in4_dev: in4_dev.value = bool(s4)
-
-
-def _step_motor_4in(num_steps, direction_positive):
-    global current_step_sequence_index
-    for _ in range(int(num_steps)):
-        current_step_sequence_index = (current_step_sequence_index + (1 if direction_positive else -1) + len(
-            step_sequence)) % len(step_sequence)
-        _set_step_pins(*step_sequence[current_step_sequence_index])
-        time.sleep(STEP_MOTOR_INTER_STEP_DELAY)
-    time.sleep(STEP_MOTOR_SETTLE_TIME)
-
-
-def move_motor_to_angle(target_angle_deg, invert_direction):
-    global current_motor_angle_global
-    if not MOTOR_BAGLI or DEG_PER_STEP <= 0: return
-    angle_diff = target_angle_deg - current_motor_angle_global
-    if abs(angle_diff) < (DEG_PER_STEP / 2.0): return
-    num_steps = round(abs(angle_diff) / DEG_PER_STEP)
-    if num_steps == 0: return
-    logical_dir_positive = (angle_diff > 0)
-    physical_dir_positive = not logical_dir_positive if invert_direction else logical_dir_positive
-    _step_motor_4in(num_steps, physical_dir_positive)
-    current_motor_angle_global = target_angle_deg
-
-
-# ----- YENİ EKLENEN HESAPLAMA FONKSİYONLARI -----
-def shoelace_formula(points):
-    return 0.5 * abs(sum(
-        points[i][0] * points[(i + 1) % len(points)][1] - points[(i + 1) % len(points)][0] * points[i][1] for i in
-        range(len(points))))
-
-
-def calculate_perimeter(points):
-    if not points: return 0
-    perimeter = math.hypot(points[0][0], points[0][1])
-    for i in range(len(points) - 1):
-        perimeter += math.hypot(points[i + 1][0] - points[i][0], points[i + 1][1] - points[i][1])
-    perimeter += math.hypot(points[-1][0], points[-1][1])
-    return perimeter
-
-
-# ---------------------------------------------------
-
-def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist, invert_dir):
+def create_scan_entry(buzzer_dist):
     global current_scan_object_global
     try:
         Scan.objects.filter(status=Scan.Status.RUNNING).update(status=Scan.Status.ERROR)
         current_scan_object_global = Scan.objects.create(
-            start_angle_setting=h_angle,
-            step_angle_setting=h_step,
-            end_angle_setting=v_angle,
+            start_angle_setting=0,  # Dikey başlangıç
+            step_angle_setting=10,  # Dikey adım
+            end_angle_setting=180,  # Dikey bitiş
             buzzer_distance_setting=buzzer_dist,
-            invert_motor_direction_setting=invert_dir,
             status=Scan.Status.RUNNING
         )
-        print(f"Yeni tarama kaydı veritabanında oluşturuldu: ID #{current_scan_object_global.id}")
+        print(f"Yeni dikey tarama kaydı veritabanında oluşturuldu: ID #{current_scan_object_global.id}")
         return True
     except Exception as e:
         print(f"DB Hatası (create_scan_entry): {e}");
@@ -187,15 +122,14 @@ def release_resources_on_exit():
             scan_to_update = Scan.objects.get(id=current_scan_object_global.id)
             scan_to_update.status = script_exit_status_global
             scan_to_update.save()
-        except Exception as e:
-            print(f"DB çıkış HATA: {e}")
-    if MOTOR_BAGLI: _set_step_pins(0, 0, 0, 0)
+        except:
+            pass
     if lcd:
         try:
             lcd.clear()
         except:
             pass
-    for dev in [sensor, sensor2, servo, yellow_led, buzzer, in1_dev, in2_dev, in3_dev, in4_dev, lcd]:
+    for dev in [sensor, sensor2, servo, yellow_led, buzzer, lcd]:
         if dev and hasattr(dev, 'close'):
             try:
                 dev.close()
@@ -220,14 +154,8 @@ def release_resources_on_exit():
 # --- ANA ÇALIŞMA BLOĞU ---
 # ==============================================================================
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Senkronize Yatay ve Dikey Tarama Scripti")
-    parser.add_argument("--scan_duration_angle", type=float, default=DEFAULT_HORIZONTAL_SCAN_ANGLE)
-    parser.add_argument("--step_angle", type=float, default=DEFAULT_HORIZONTAL_STEP_ANGLE)
-    parser.add_argument("--servo_scan_angle", type=float, default=DEFAULT_SERVO_SCAN_ANGLE)
+    parser = argparse.ArgumentParser(description="Sadece Dikey Eksenli Tarama Scripti")
     parser.add_argument("--buzzer_distance", type=int, default=DEFAULT_BUZZER_DISTANCE)
-    parser.add_argument("--invert_motor_direction", type=lambda x: str(x).lower() == 'true',
-                        default=DEFAULT_INVERT_MOTOR_DIRECTION)
-    parser.add_argument("--steps_per_rev", type=int, default=DEFAULT_STEPS_PER_REVOLUTION)
     args = parser.parse_args()
 
     pid = os.getpid()
@@ -241,105 +169,46 @@ if __name__ == "__main__":
         print(f"[{pid}] Donanım başlatılamadı. Çıkılıyor.");
         sys.exit(1)
 
-    # Parametreleri al
-    HORIZONTAL_TOTAL_ANGLE = args.scan_duration_angle
-    HORIZONTAL_STEP_ANGLE = args.step_angle
-    SERVO_TOTAL_ANGLE = args.servo_scan_angle
-    INVERT_MOTOR = args.invert_motor_direction
-    STEPS_PER_REVOLUTION = args.steps_per_rev
-    BUZZER_DISTANCE = args.buzzer_distance
-
-    DEG_PER_STEP = 360.0 / STEPS_PER_REVOLUTION
-
-    if not create_scan_entry(HORIZONTAL_TOTAL_ANGLE, HORIZONTAL_STEP_ANGLE, SERVO_TOTAL_ANGLE, BUZZER_DISTANCE,
-                             INVERT_MOTOR):
+    if not create_scan_entry(args.buzzer_distance):
         print(f"[{pid}] Veritabanı oturumu oluşturulamadı. Çıkılıyor.");
         sys.exit(1)
 
-    print(f"[{pid}] Yeni Senkronize Tarama Başlatılıyor (ID: #{current_scan_object_global.id})...")
+    print(f"[{pid}] Yeni Dikey Tarama Başlatılıyor (0° -> 180°)...")
 
     try:
-        print("[ADIM 0] Başlangıç pozisyonuna gidiliyor (0 yatay, 0 dikey)...")
-        move_motor_to_angle(0, INVERT_MOTOR)
-        servo.value = degree_to_servo_value(0)
-        time.sleep(1.5)
+        # Tarama döngüsü: 0'dan 180'e 10'ar derecelik adımlarla
+        for angle in range(0, 181, 10):
+            # 1. Servoyu hareket ettir
+            servo.value = degree_to_servo_value(angle)
+            time.sleep(LOOP_INTERVAL_S)  # Motorun pozisyon almasını bekle
 
-        if HORIZONTAL_STEP_ANGLE == 0: raise ValueError("Yatay adım açısı 0 olamaz!")
-
-        num_horizontal_steps = int(HORIZONTAL_TOTAL_ANGLE / HORIZONTAL_STEP_ANGLE)
-        master_step_count = num_horizontal_steps
-
-        print(f"Tarama {master_step_count} adımda tamamlanacak.")
-
-        h_increment_per_step = HORIZONTAL_TOTAL_ANGLE / master_step_count
-        v_increment_per_step = SERVO_TOTAL_ANGLE / master_step_count
-
-        # ----- ANALİZ İÇİN NOKTA LİSTESİ -----
-        collected_points_for_analysis = []
-
-        for i in range(master_step_count + 1):
-            current_h_angle = i * h_increment_per_step
-            current_v_angle = i * v_increment_per_step
-
-            move_motor_to_angle(current_h_angle, INVERT_MOTOR)
-            servo.value = degree_to_servo_value(current_v_angle)
-
-            time.sleep(LOOP_TARGET_INTERVAL_S)
-
+            # 2. Sensörleri oku
             dist_cm = sensor.distance * 100
-            dist_cm_2 = sensor2.distance * 100
 
-            print(
-                f"  Adım {i}/{master_step_count} -> Y:{current_h_angle:.1f}° V:{current_v_angle:.1f}° -> S1:{dist_cm:.1f}cm S2:{dist_cm_2:.1f}cm")
+            print(f"  Açı: {angle}° -> Mesafe: {dist_cm:.1f} cm")
+            lcd.cursor_pos = (1, 0)
+            lcd.write_string(f"A:{angle:<3} D:{dist_cm:<5.1f}".ljust(LCD_COLS))
 
-            if buzzer.is_active != (dist_cm < BUZZER_DISTANCE or dist_cm_2 < BUZZER_DISTANCE):
-                buzzer.toggle()
+            # 3. 3D Koordinatları hesapla (Yatay açı 0 varsayılarak)
+            # Bu, dikey bir düzlemde (Y-Z düzlemi) bir kesit oluşturur
+            angle_tilt_rad = math.radians(angle)
+            z_cm_val = dist_cm * math.sin(angle_tilt_rad)  # Yükseklik
+            y_cm_val = dist_cm * math.cos(angle_tilt_rad)  # Derinlik
+            x_cm_val = 0  # Yatay sapma yok
 
-            angle_pan_rad = math.radians(current_h_angle)
-            angle_tilt_rad = math.radians(current_v_angle)
-            horizontal_radius = dist_cm * math.cos(angle_tilt_rad)
-            z_cm_val = dist_cm * math.sin(angle_tilt_rad)
-            x_cm_val = horizontal_radius * math.cos(angle_pan_rad)
-            y_cm_val = horizontal_radius * math.sin(angle_pan_rad)
-
-            # ----- NOKTALARI LİSTEYE EKLE -----
-            if 0 < dist_cm < (sensor.max_distance * 100 - 1):
-                collected_points_for_analysis.append((x_cm_val, y_cm_val))
-
+            # 4. Veritabanına kaydet
             ScanPoint.objects.create(
                 scan=current_scan_object_global,
-                derece=current_h_angle,
-                dikey_aci=current_v_angle,
+                derece=0,  # Yatay açı sabit
+                dikey_aci=angle,
                 mesafe_cm=dist_cm,
                 x_cm=x_cm_val,
                 y_cm=y_cm_val,
                 z_cm=z_cm_val,
-                mesafe_cm_2=dist_cm_2,
                 timestamp=timezone.now()
             )
 
-        print(f"[{pid}] Tarama bitti.")
-
-        # ----- TARAMA BİTİNCE ANALİZİ HESAPLA VE KAYDET -----
-        if len(collected_points_for_analysis) >= 3:
-            print("Analiz metrikleri hesaplanıyor...")
-            # Alan hesabı için 2D projeksiyonu (x,y) ve orijini (0,0) kullan
-            polygon_for_area = [(0, 0)] + collected_points_for_analysis
-            area = shoelace_formula(polygon_for_area)
-            perimeter = calculate_perimeter(collected_points_for_analysis)
-
-            x_coords = [p[0] for p in collected_points_for_analysis]
-            y_coords = [p[1] for p in collected_points_for_analysis]
-            width = (max(y_coords) - min(y_coords)) if y_coords else 0.0
-            depth = max(x_coords) if x_coords else 0.0
-
-            # Veritabanı nesnesini güncelle
-            current_scan_object_global.calculated_area_cm2 = area
-            current_scan_object_global.perimeter_cm = perimeter
-            current_scan_object_global.max_width_cm = width
-            current_scan_object_global.max_depth_cm = depth
-            print("Metrikler veritabanına kaydedildi.")
-
+        print(f"[{pid}] Dikey tarama tamamlandı.")
         script_exit_status_global = Scan.Status.COMPLETED
 
     except KeyboardInterrupt:
@@ -350,10 +219,11 @@ if __name__ == "__main__":
         print(f"[{pid}] KRİTİK HATA: Ana döngüde: {e}")
         traceback.print_exc()
     finally:
-        print(f"[{pid}] ADIM SON: Başlangıç konumuna (0,0) dönülüyor...")
-        move_motor_to_angle(0, INVERT_MOTOR)
-        servo.value = degree_to_servo_value(0)
-        print(f"[{pid}] Başlangıç konumuna dönüldü.")
+        # Tarama bitince servoyu ortaya al ve serbest bırak
+        print(f"[{pid}] Servo ortaya alınıp serbest bırakılıyor...")
+        servo.value = degree_to_servo_value(90)
+        time.sleep(1)
+        servo.detach()
 
         if current_scan_object_global:
             current_scan_object_global.status = script_exit_status_global

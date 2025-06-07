@@ -1,4 +1,4 @@
-# sensor_script.py
+# KODUN TAMAMINI KOPYALAYIP BOŞ SENSOR_SCRIPT.PY DOSYASINA YAPIŞTIRIN
 
 import os
 import sys
@@ -41,11 +41,10 @@ MOTOR_BAGLI = True
 # ==============================================================================
 # Ana Sensör
 TRIG_PIN, ECHO_PIN = 23, 24
-# İkinci Sensör (Örnek pinler, kendi bağlantınıza göre değiştirin)
+# İkinci Sensör
 TRIG2_PIN, ECHO2_PIN = 20, 21
-# Servo Motor (Örnek pin, kendi bağlantınıza göre değiştirin)
+# Servo Motor
 SERVO_PIN = 12
-
 # Step Motor
 IN1_GPIO_PIN, IN2_GPIO_PIN, IN3_GPIO_PIN, IN4_GPIO_PIN = 6, 13, 19, 26
 # Diğer Donanımlar
@@ -85,17 +84,7 @@ SERVO_ANGLE_PARAM = DEFAULT_SERVO_ANGLE
 # --- Donanım ve Yardımcı Fonksiyonlar ---
 # ==============================================================================
 def degree_to_servo_value(angle_deg):
-    """
-    0-180 derece aralığındaki bir açıyı, gpiozero kütüphanesinin kullandığı
-    -1.0 (0 derece) ile 1.0 (180 derece) aralığına çevirir.
-    """
-    # Gelen değeri 0-180 arasında sınırla
     clamped_angle = max(0, min(180, angle_deg))
-
-    # Lineer haritalama yap:
-    # 0 derece -> -1.0
-    # 90 derece -> 0.0
-    # 180 derece -> 1.0
     return (clamped_angle / 90.0) - 1.0
 
 
@@ -109,8 +98,12 @@ def init_hardware():
         else:
             print("[UYARI] Motor bağlı değil. Motor pinleri atlanıyor.")
 
+        # !!!!!!!!!!!!!!!!!!  İŞTE DÜZELTME BURADA !!!!!!!!!!!!!!!!!!
+        # queue_len=2 parametreleri buradan kaldırıldı.
         sensor = DistanceSensor(echo=ECHO_PIN, trigger=TRIG_PIN, max_distance=2.5)
         sensor2 = DistanceSensor(echo=ECHO2_PIN, trigger=TRIG2_PIN, max_distance=2.5)
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
         servo = Servo(SERVO_PIN)
         servo.value = degree_to_servo_value(0)
 
@@ -308,27 +301,17 @@ if __name__ == "__main__":
 
         collected_points, current_logical_angle = [], LOGICAL_SCAN_START_ANGLE
 
-        # ESKİ while True: döngüsünü silip BUNU YAPIŞTIRIN
+        # Bu while döngüsü artık temiz ve hata ayıklama print'leri içermiyor.
         while True:
-            print(f"  DÖNGÜ BAŞLANGICI: Mantıksal Açı = {current_logical_angle:.1f}°")
-
             target_physical_angle_for_step = physical_scan_reference_angle + current_logical_angle
-
-            print(f"    -> Motoru {target_physical_angle_for_step:.1f}° hedefine taşı...")
             move_motor_to_angle(target_physical_angle_for_step)
-            print("    -> Motor taşıma tamamlandı.")
 
             if yellow_led: yellow_led.on(); time.sleep(0.05)
-
-            print("    -> Sensör 1'den (S1) mesafe okunuyor...")
             dist_cm = sensor.distance * 100
-            print(f"    -> S1 okundu: {dist_cm:.1f} cm")
-
-            print("    -> Sensör 2'den (S2) mesafe okunuyor...")
             dist_cm_2 = sensor2.distance * 100
-            print(f"    -> S2 okundu: {dist_cm_2:.1f} cm")
-
             if yellow_led: yellow_led.off()
+
+            print(f"  Okuma: Yatay {current_logical_angle:.1f}° -> S1:{dist_cm:.1f} cm, S2:{dist_cm_2:.1f} cm")
 
             min_dist = min(dist_cm, dist_cm_2)
             if buzzer: buzzer.on() if min_dist < BUZZER_DISTANCE_CM else buzzer.off()
@@ -359,7 +342,6 @@ if __name__ == "__main__":
             if 0 < dist_cm < (sensor.max_distance * 100 - 1):
                 collected_points.append((x_cm_val, y_cm_val))
 
-            print("    -> Veritabanına kaydediliyor...")
             ScanPoint.objects.create(
                 scan=current_scan_object_global,
                 derece=current_logical_angle,
@@ -371,7 +353,6 @@ if __name__ == "__main__":
                 mesafe_cm_2=dist_cm_2,
                 timestamp=timezone.now()
             )
-            print("    -> Kayıt tamamlandı.")
 
             if abs(current_logical_angle - LOGICAL_SCAN_END_ANGLE) < (
                     SCAN_STEP_ANGLE / 20.0) or current_logical_angle >= LOGICAL_SCAN_END_ANGLE:

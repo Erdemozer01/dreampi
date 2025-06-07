@@ -55,6 +55,8 @@ google_api_key = os.getenv("GOOGLE_API_KEY")
 # --- CONSTANTS AND APPLICATION INITIALIZATION ---
 SENSOR_SCRIPT_FILENAME = 'sensor_script.py'
 FREE_MOVEMENT_SCRIPT_FILENAME = 'free_movement_script.py'
+AUTONOMOUS_DRIVE_SCRIPT_FILENAME = 'autonomous_drive.py' # YENİ SATIR
+
 
 SENSOR_SCRIPT_PATH = os.path.join(os.getcwd(), SENSOR_SCRIPT_FILENAME)
 FREE_MOVEMENT_SCRIPT_PATH = os.path.join(os.getcwd(), FREE_MOVEMENT_SCRIPT_FILENAME)
@@ -103,6 +105,7 @@ control_panel = dbc.Card([
             id='mode-selection-radios',
             options=[
                 {'label': 'Mesafe Ölçümü ve Haritalama', 'value': 'scan_and_map'},
+                {'label': 'Otonom Sürüş Modu', 'value': 'autonomous_drive'},
                 {'label': 'Serbest Hareket (Gözcü)', 'value': 'free_movement'},
             ],
             value='scan_and_map',
@@ -630,8 +633,6 @@ def toggle_parameter_visibility(selected_mode):
         return {'display': 'none'}
 
 
-# app.py dosyasındaki hatalı handle_start_scan_script fonksiyonunu silip bunu yapıştırın.
-
 @app.callback(
     Output('scan-status-message', 'children'),
     [Input('start-scan-button', 'n_clicks')],
@@ -685,6 +686,10 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
 
     elif selected_mode == 'free_movement':
         cmd = [py_exec, FREE_MOVEMENT_SCRIPT_PATH]
+
+    elif selected_mode == 'autonomous_drive':
+        AUTONOMOUS_DRIVE_SCRIPT_PATH = os.path.join(os.getcwd(), AUTONOMOUS_DRIVE_SCRIPT_FILENAME)
+        cmd = [py_exec, AUTONOMOUS_DRIVE_SCRIPT_PATH]
     else:
         return dbc.Alert("Geçersiz mod seçildi!", color="danger")
 

@@ -349,7 +349,6 @@ if __name__ == "__main__":
                 x_cm=x_cm_val,
                 y_cm=y_cm_val,
                 z_cm=z_cm_val,
-                dikey_aci=SERVO_ANGLE_PARAM,
                 mesafe_cm_2=dist_cm_2,
                 timestamp=timezone.now()
             )

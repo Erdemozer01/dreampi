@@ -109,8 +109,8 @@ def init_hardware():
         else:
             print("[UYARI] Motor bağlı değil. Motor pinleri atlanıyor.")
 
-        sensor = DistanceSensor(echo=ECHO_PIN, trigger=TRIG_PIN, max_distance=2.5, queue_len=2)
-        sensor2 = DistanceSensor(echo=ECHO2_PIN, trigger=TRIG2_PIN, max_distance=2.5, queue_len=2)
+        sensor = DistanceSensor(echo=ECHO_PIN, trigger=TRIG_PIN, max_distance=2.5)
+        sensor2 = DistanceSensor(echo=ECHO2_PIN, trigger=TRIG2_PIN, max_distance=2.5)
         servo = Servo(SERVO_PIN)
         servo.value = degree_to_servo_value(0)
 

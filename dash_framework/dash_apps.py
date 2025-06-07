@@ -91,7 +91,8 @@ title_card = dbc.Row(
     [dbc.Col(html.H1("Kullanıcı Paneli", className="text-center my-3 mb-5"), width=12), html.Hr()]
 )
 
-# This is the updated control_panel code
+
+
 control_panel = dbc.Card([
     dbc.CardHeader("Kontrol ve Ayarlar", className="bg-primary text-white"),
     dbc.CardBody([
@@ -109,9 +110,9 @@ control_panel = dbc.Card([
         html.Hr(),
         dbc.Row([
             dbc.Col(html.Button('Başlat', id='start-scan-button', n_clicks=0,
-                                 className="btn btn-success btn-lg w-100 mb-2"), width=6),
+                                className="btn btn-success btn-lg w-100 mb-2"), width=6),
             dbc.Col(html.Button('Durdur', id='stop-scan-button', n_clicks=0,
-                                 className="btn btn-danger btn-lg w-100 mb-2"), width=6)
+                                className="btn btn-danger btn-lg w-100 mb-2"), width=6)
         ]),
         html.Div(id='scan-status-message', style={'marginTop': '10px', 'minHeight': '40px', 'textAlign': 'center'},
                  className="mb-3"),
@@ -145,15 +146,21 @@ control_panel = dbc.Card([
             dbc.InputGroup([dbc.InputGroupText("Motor Adım/Tur", style={"width": "150px"}),
                             dbc.Input(id="steps-per-rev-input", type="number", value=DEFAULT_UI_STEPS_PER_REVOLUTION,
                                       min=500, max=10000, step=1)], className="mb-2"),
-            # NEW: Servo Angle Slider
+
+            # !!!!!!!!!!!!! İSTEDİĞİNİZ SLIDER BURADA !!!!!!!!!!!!!
             dbc.InputGroup([dbc.InputGroupText("Dikey Açı (°)", style={"width": "150px"}),
                             dcc.Slider(
                                 id='servo-angle-slider',
-                                min=0, max=180, step=1, value=DEFAULT_UI_SERVO_ANGLE,
+                                min=0,
+                                max=180,
+                                step=1,
+                                value=DEFAULT_UI_SERVO_ANGLE,
                                 marks={0: '0°', 45: '45°', 90: '90°', 135: '135°', 180: '180°'},
                                 tooltip={"placement": "bottom", "always_visible": True},
-                                className="mt-2" # Add some margin
+                                className="mt-2"
                             )], className="mb-2"),
+            # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
             dbc.Checkbox(id="invert-motor-checkbox", label="Motor Yönünü Ters Çevir", value=DEFAULT_UI_INVERT_MOTOR,
                          className="mt-2 mb-2"),
         ])

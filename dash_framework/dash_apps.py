@@ -553,7 +553,7 @@ def summarize_analysis_for_image_prompt(analysis_text, model_name):
     try:
         generativeai.configure(api_key=google_api_key)
         # Bu işlem için hızlı bir model kullanmak yeterlidir.
-        model = generativeai.GenerativeModel(model_name='gemini-1.5-flash-latest')
+        model = generativeai.GenerativeModel(model_name='gemini-2.5-flash-preview-05-20')
 
         summarization_prompt = (
             "Aşağıdaki teknik sensör verisi analizini temel alarak, taranan ortamı betimleyen "
@@ -593,7 +593,7 @@ def generate_image_from_text(prompt_for_image):
     try:
         genai.configure(api_key=google_api_key)
         # Resim üretimi için özelleşmiş bir model kullanmak daha iyi sonuç verebilir.
-        model = genai.GenerativeModel(model_name='gemini-pro-vision')  # Veya 'imagen' destekli bir model
+        model = genai.GenerativeModel(model_name='gemini-2.5-flash-preview-05-20')  # Veya 'imagen' destekli bir model
 
         print(f">> Resim modeli için son komut: '{prompt_for_image}'")
 

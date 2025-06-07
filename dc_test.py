@@ -11,7 +11,7 @@ DC_MOTOR_SOL_HIZ = 25  # L298N ENA pini (Hız kontrolü)
 
 # Sağ Motor Pinleri
 DC_MOTOR_SAG_ILERI = 22  # L298N IN3 pini
-DC_MOTOR_SAG_GERI = 24  # L298N IN4 pini
+DC_MOTOR_SAG_GERI = 15  # L298N IN4 pini
 DC_MOTOR_SAG_HIZ = 16  # L298N ENB pini (Hız kontrolü)
 
 # ==============================================================================

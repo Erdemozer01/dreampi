@@ -521,19 +521,21 @@ def estimate_geometric_shape(df_input):
         print(f"Geometrik analiz hatası: {e}");
         return "Geometrik analiz hatası."
 
-def yorumla_tablo_verisi_gemini(df, model_name):
-    if not GOOGLE_GENAI_AVAILABLE: return "Hata: Google GenerativeAI kütüphanesi yüklenemedi."
-    if not google_api_key: return "Hata: `GOOGLE_API_KEY` ayarlanmamış."
-    if df is None or df.empty: return "Yorumlanacak tablo verisi bulunamadı."
+
+# app.py içindeki eski fonksiyonu silip bunu yapıştırın.
+
+def yorumla_tablo_verisi_gemini(df, model_name, prompt_text):  # Artık 3. parametre olarak prompt_text'i de alıyor
+    if not GOOGLE_GENAI_AVAILABLE:
+        return "Hata: Google GenerativeAI kütüphanesi yüklenemedi."
+    if not google_api_key:
+        return "Hata: `GOOGLE_API_KEY` ayarlanmamış."
+    if df is None or df.empty:
+        return "Yorumlanacak tablo verisi bulunamadı."
     try:
         generativeai.configure(api_key=google_api_key)
         model = generativeai.GenerativeModel(model_name=model_name)
-        prompt_text = (
-            f"Aşağıdaki tablo, bir ultrasonik sensörün yaptığı taramadan elde edilen verileri içermektedir: "
-            f"\n\n{df.to_string(index=False)}\n\n"
-            "Bu verilere dayanarak, ortamın olası yapısını (örneğin: 'geniş bir oda', 'dar bir koridor', 'köşeye yerleştirilmiş nesne') analiz et ve alanını , çevresini ortamın geometrik şeklini tahmin etmeye çalış "
-            "Verilerdeki desenlere göre potansiyel nesneleri (duvar, köşe, sandalye bacağı, kutu, insan vb.) tahmin etmeye çalış. Cevabını Markdown formatında, başlıklar ve listeler kullanarak düzenli bir şekilde sun."
-        )
+
+        # Fonksiyon artık, dışarıdan gelen hazır prompt'u kullanarak yorumlama yapıyor.
         response = model.generate_content(contents=prompt_text)
         return response.text
     except Exception as e:

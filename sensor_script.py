@@ -308,16 +308,27 @@ if __name__ == "__main__":
 
         collected_points, current_logical_angle = [], LOGICAL_SCAN_START_ANGLE
 
+        # ESKİ while True: döngüsünü silip BUNU YAPIŞTIRIN
         while True:
+            print(f"  DÖNGÜ BAŞLANGICI: Mantıksal Açı = {current_logical_angle:.1f}°")
+
             target_physical_angle_for_step = physical_scan_reference_angle + current_logical_angle
+
+            print(f"    -> Motoru {target_physical_angle_for_step:.1f}° hedefine taşı...")
             move_motor_to_angle(target_physical_angle_for_step)
+            print("    -> Motor taşıma tamamlandı.")
 
             if yellow_led: yellow_led.on(); time.sleep(0.05)
-            dist_cm = sensor.distance * 100
-            dist_cm_2 = sensor2.distance * 100
-            if yellow_led: yellow_led.off()
 
-            print(f"  Okuma: Yatay {current_logical_angle:.1f}° -> S1:{dist_cm:.1f} cm, S2:{dist_cm_2:.1f} cm")
+            print("    -> Sensör 1'den (S1) mesafe okunuyor...")
+            dist_cm = sensor.distance * 100
+            print(f"    -> S1 okundu: {dist_cm:.1f} cm")
+
+            print("    -> Sensör 2'den (S2) mesafe okunuyor...")
+            dist_cm_2 = sensor2.distance * 100
+            print(f"    -> S2 okundu: {dist_cm_2:.1f} cm")
+
+            if yellow_led: yellow_led.off()
 
             min_dist = min(dist_cm, dist_cm_2)
             if buzzer: buzzer.on() if min_dist < BUZZER_DISTANCE_CM else buzzer.off()
@@ -340,16 +351,15 @@ if __name__ == "__main__":
             angle_pan_rad = math.radians(current_logical_angle)
             angle_tilt_rad = math.radians(SERVO_ANGLE_PARAM)
 
-            # Gerçek 3D Koordinatların Hesaplanması
             horizontal_radius = dist_cm * math.cos(angle_tilt_rad)
             z_cm_val = dist_cm * math.sin(angle_tilt_rad)
             x_cm_val = horizontal_radius * math.cos(angle_pan_rad)
             y_cm_val = horizontal_radius * math.sin(angle_pan_rad)
 
             if 0 < dist_cm < (sensor.max_distance * 100 - 1):
-                # Alan/çevre hesabı için 2D projeksiyonu kullanıyoruz
                 collected_points.append((x_cm_val, y_cm_val))
 
+            print("    -> Veritabanına kaydediliyor...")
             ScanPoint.objects.create(
                 scan=current_scan_object_global,
                 derece=current_logical_angle,
@@ -361,6 +371,7 @@ if __name__ == "__main__":
                 mesafe_cm_2=dist_cm_2,
                 timestamp=timezone.now()
             )
+            print("    -> Kayıt tamamlandı.")
 
             if abs(current_logical_angle - LOGICAL_SCAN_END_ANGLE) < (
                     SCAN_STEP_ANGLE / 20.0) or current_logical_angle >= LOGICAL_SCAN_END_ANGLE:

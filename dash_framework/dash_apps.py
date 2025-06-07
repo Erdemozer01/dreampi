@@ -641,7 +641,7 @@ def toggle_parameter_visibility(selected_mode):
         return {'display': 'none'}
 
 
-# app.py dosyasındaki mevcut handle_start_scan_script fonksiyonunu silip bunu yapıştırın.
+# app.py dosyasındaki hatalı handle_start_scan_script fonksiyonunu silip bunu yapıştırın.
 
 @app.callback(
     Output('scan-status-message', 'children'),
@@ -650,7 +650,7 @@ def toggle_parameter_visibility(selected_mode):
      State('scan-duration-angle-input', 'value'),
      State('step-angle-input', 'value'),
      State('buzzer-distance-input', 'value'),
-     State.get('invert-motor-checkbox', 'value'),  # .get() kullanımı daha güvenli olabilir
+     State('invert-motor-checkbox', 'value'),  # HATA BURADAYDI, .get() KALDIRILDI
      State('steps-per-rev-input', 'value')],
     prevent_initial_call=True
 )
@@ -659,7 +659,6 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
     if n_clicks == 0:
         return no_update
 
-    # çalışan betik var mı kontrol et
     if os.path.exists(SENSOR_SCRIPT_PID_FILE):
         try:
             with open(SENSOR_SCRIPT_PID_FILE, 'r') as pf:
@@ -667,9 +666,8 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
             if is_process_running(pid):
                 return dbc.Alert(f"Bir betik zaten çalışıyor (PID:{pid}). Önce durdurun.", color="warning")
         except:
-            pass  # PID dosyası boş veya bozuksa devam et
+            pass
 
-    # Eski lock/pid dosyalarını temizle
     for fp_lock_pid in [SENSOR_SCRIPT_LOCK_FILE, SENSOR_SCRIPT_PID_FILE]:
         if os.path.exists(fp_lock_pid):
             try:
@@ -680,7 +678,6 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
     py_exec = sys.executable
     cmd = []
     if selected_mode == 'scan_and_map':
-        # UI'dan gelen değerleri kontrol et
         if not (isinstance(duration, (int, float)) and 10 <= duration <= 720):
             return dbc.Alert("Tarama Açısı 10-720 derece arasında olmalı!", color="danger", duration=4000)
         if not (isinstance(step, (int, float)) and 0.1 <= abs(step) <= 45):
@@ -690,14 +687,12 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
         if not (isinstance(steps_rev, (int, float)) and 500 <= steps_rev <= 10000):
             return dbc.Alert("Motor Adım/Tur 500-10000 arasında olmalı!", color="danger", duration=4000)
 
-        # Yeni sensor_script.py'ye uygun komutu oluştur
         cmd = [py_exec, SENSOR_SCRIPT_PATH,
                "--scan_duration_angle", str(duration),
                "--step_angle", str(step),
                "--buzzer_distance", str(buzzer_dist),
-               "--invert_motor_direction", str(bool(invert)),  # Checkbox değerini bool'a çevir
+               "--invert_motor_direction", str(bool(invert)),
                "--steps_per_rev", str(steps_rev)]
-        # Not: servo_scan_angle parametresini şimdilik göndermiyoruz, betik içindeki varsayılan (180) kullanılacak.
 
     elif selected_mode == 'free_movement':
         cmd = [py_exec, FREE_MOVEMENT_SCRIPT_PATH]
@@ -708,10 +703,9 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
         if not os.path.exists(cmd[1]):
             return dbc.Alert(f"HATA: Betik dosyası bulunamadı: {cmd[1]}", color="danger")
 
-        print(f"Çalıştırılacak komut: {' '.join(cmd)}")  # Hata ayıklama için komutu yazdır
+        print(f"Çalıştırılacak komut: {' '.join(cmd)}")
         subprocess.Popen(cmd, start_new_session=True)
 
-        # PID dosyasının oluşmasını bekle
         max_wait_time, check_interval, start_time_wait = 7, 0.25, time.time()
         pid_file_found = False
         while time.time() - start_time_wait < max_wait_time:

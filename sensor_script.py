@@ -7,11 +7,6 @@ import atexit
 import math
 import traceback
 
-from gpiozero.pins.pigpio import PiGPIOFactory
-from gpiozero import Device
-
-Device.pin_factory = PiGPIOFactory()
-
 # --- DJANGO ENTEGRASYONU ---
 try:
     sys.path.append(os.getcwd())
@@ -31,15 +26,27 @@ except Exception as e:
 try:
     from gpiozero import DistanceSensor, LED, Buzzer, OutputDevice, Servo
     from RPLCD.i2c import CharLCD
+    from gpiozero.pins.pigpio import PiGPIOFactory
+    from gpiozero import Device
 
     print("SensorScript: Donanım kütüphaneleri başarıyla import edildi.")
 except ImportError as e:
     print(f"SensorScript: Gerekli donanım kütüphanesi bulunamadı: {e}")
     sys.exit(1)
 
+# --- PIGPIO KURULUMU (DAHA İYİ PERFORMANS İÇİN) ---
+# DÜZELTME: pigpio daemon'a bağlanmaya çalış, başarısız olursa çökme, uyarı ver ve devam et.
+try:
+    Device.pin_factory = PiGPIOFactory()
+    print("SensorScript: pigpio pin factory başarıyla ayarlandı.")
+except (IOError, OSError):
+    print("UYARI: pigpio daemon'a bağlanılamadı. Servo ve PWM daha az kararlı çalışabilir.")
+    print("Çözüm için terminale 'sudo systemctl start pigpiod' yazmayı deneyin.")
+    # Scriptin çökmesini engellemek için varsayılan factory'e geri dönmesine izin ver.
+    pass
+
 # --- SABİTLER VE PINLER ---
 MOTOR_BAGLI = True
-# Pinler (Kullanıcının orijinal pinleri)
 TRIG_PIN, ECHO_PIN = 23, 24
 SERVO_PIN = 12
 IN1_GPIO_PIN, IN2_GPIO_PIN, IN3_GPIO_PIN, IN4_GPIO_PIN = 6, 13, 19, 26
@@ -78,7 +85,6 @@ def acquire_lock_and_pid():
         fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         with open(PID_FILE_PATH, 'w') as pf:
             pf.write(str(os.getpid()))
-        print(f"Haritalama Modu: PID ({os.getpid()}) ve Kilit dosyaları oluşturuldu.")
         return True
     except IOError:
         print("Kilit dosyası oluşturulamadı. Başka bir script çalışıyor olabilir.")
@@ -94,22 +100,24 @@ def release_resources_on_exit():
             scan_to_update.status = script_exit_status_global
             scan_to_update.end_time = timezone.now()
             scan_to_update.save()
-            print(f"Scan #{scan_to_update.id} durumu güncellendi: {scan_to_update.status}")
         except Exception as e:
             print(f"DB çıkış hatası: {e}")
-    if MOTOR_BAGLI: _set_step_pins(0, 0, 0, 0)
-    if buzzer: buzzer.off()
+
+    _set_step_pins(0, 0, 0, 0)
+    if buzzer and buzzer.is_active: buzzer.off()
     if lcd:
         try:
             lcd.clear()
         except Exception as e:
             print(f"LCD temizlenemedi: {e}")
-    for dev in [sensor, servo, buzzer, in1_dev, in2_dev, in3_dev, in4_dev, lcd]:
+
+    for dev in [sensor, servo, buzzer, lcd, in1_dev, in2_dev, in3_dev, in4_dev]:
         if dev and hasattr(dev, 'close'):
             try:
                 dev.close()
             except:
                 pass
+
     if lock_file_handle:
         try:
             fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN); lock_file_handle.close()

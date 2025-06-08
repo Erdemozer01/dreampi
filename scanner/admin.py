@@ -1,7 +1,8 @@
 # scanner/admin.py
 
 from django.contrib import admin
-from scanner.models import Scan, ScanPoint
+from scanner.models import Scan, ScanPoint, AIModelConfiguration
+from django import forms
 
 class ScanPointInline(admin.TabularInline):
     """Scan detay sayfasında ilişkili noktaları göstermek için kullanılır."""
@@ -53,3 +54,22 @@ class ScanPointAdmin(admin.ModelAdmin):
     list_display = ('scan', 'timestamp', 'derece', 'mesafe_cm')
     list_filter = ('scan',)
     search_fields = ('scan__id',)
+
+
+# API anahtarını admin panelinde maskelemek için özel bir form
+class AIModelConfigurationForm(forms.ModelForm):
+    api_key = forms.CharField(widget=forms.PasswordInput(render_value=True),
+                              help_text="API anahtarınızı buraya girin. Kaydedildikten sonra güvenlik için gizlenir.")
+
+    class Meta:
+        model = AIModelConfiguration
+        fields = '__all__'
+
+
+@admin.register(AIModelConfiguration)
+class AIModelConfigurationAdmin(admin.ModelAdmin):
+    form = AIModelConfigurationForm
+    list_display = ('name', 'model_provider', 'model_name', 'is_active', 'updated_at')
+    list_filter = ('is_active', 'model_provider')
+    search_fields = ('name', 'model_name')
+    list_editable = ('is_active',)

@@ -54,3 +54,50 @@ class ScanPoint(models.Model):
 
     def __str__(self):
         return f"Point at {self.derece}° - {self.mesafe_cm:.2f} cm"
+
+
+
+# YENİ MODEL: AI Yapılandırmalarını saklamak için
+class AIModelConfiguration(models.Model):
+    """
+    Farklı yapay zeka modellerinin yapılandırmalarını ve API anahtarlarını
+    veritabanında saklamak için kullanılan model.
+    """
+    PROVIDER_CHOICES = [
+        ('Google', 'Google'),
+        ('OpenAI', 'OpenAI'), # Gelecekte eklenebilecek diğer sağlayıcılar için
+        ('Other', 'Diğer'),
+    ]
+
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        help_text="Bu yapılandırma için akılda kalıcı bir isim (örn: Gemini Flash - Hızlı Analiz)."
+    )
+    model_provider = models.CharField(
+        max_length=50,
+        choices=PROVIDER_CHOICES,
+        default='Google'
+    )
+    model_name = models.CharField(
+        max_length=100,
+        help_text="API tarafından beklenen tam model adı (örn: gemini-1.5-flash-latest)."
+    )
+    api_key = models.CharField(
+        max_length=255,
+        help_text="Bu modele ait API anahtarı."
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Bu yapılandırma aktif olarak kullanılsın mı?"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = "AI Model Yapılandırması"
+        verbose_name_plural = "AI Model Yapılandırmaları"
+        ordering = ['-is_active', 'name']

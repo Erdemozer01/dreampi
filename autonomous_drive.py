@@ -1,29 +1,53 @@
-import os, sys, time, fcntl, atexit, math, traceback, random
+import os
+import sys
+import time
+import fcntl
+import atexit
+import math
+import traceback
+import random
 
+# --- DONANIM KÜTÜPHANELERİ ---
 try:
     from gpiozero import Motor, Servo, DistanceSensor, OutputDevice
+
+    print("AutonomousDrive: Donanım kütüphaneleri başarıyla import edildi.")
 except ImportError as e:
-    print(f"Hata: Gerekli kütüphane bulunamadı: {e}"); sys.exit(1)
+    print(f"AutonomousDrive: Gerekli kütüphane bulunamadı: {e}")
+    sys.exit(1)
 
-# --- Sabitler ve Pinler ---
-LOCK_FILE_PATH, PID_FILE_PATH = '/tmp/autonomous_drive.lock', '/tmp/autonomous_drive.pid'
+# --- SABİTLER VE PINLER ---
+# Proses Yönetimi
+LOCK_FILE_PATH = '/tmp/autonomous_drive.lock'
+PID_FILE_PATH = '/tmp/autonomous_drive.pid'
 
-# DC Motor Pinleri (Kullanıcının Orijinal Pinleri)
-DC_MOTOR_SOL_ILERI, DC_MOTOR_SOL_GERI, DC_MOTOR_SOL_HIZ = 4, 17, 27
-DC_MOTOR_SAG_ILERI, DC_MOTOR_SAG_GERI, DC_MOTOR_SAG_HIZ = 22, 10, 9
+# DC Motor Pinleri (L298N) - KULLANICININ ORİJİNAL PİNLERİNE DÖNDÜRÜLDÜ
+DC_MOTOR_SOL_ILERI = 4
+DC_MOTOR_SOL_GERI = 5
+DC_MOTOR_SOL_HIZ = 25
+DC_MOTOR_SAG_ILERI = 22
+DC_MOTOR_SAG_GERI = 10
+DC_MOTOR_SAG_HIZ = 16
 
+# Step Motor Pinleri
 IN1_GPIO_PIN, IN2_GPIO_PIN, IN3_GPIO_PIN, IN4_GPIO_PIN = 6, 13, 19, 26
+
+# Sensör Pinleri
 TRIG_PIN, ECHO_PIN, SERVO_PIN = 23, 24, 12
 
 # Çalışma Parametreleri
-HIZ_ILERI, HIZ_DONUS = 0.7, 0.6
-SURE_ILERI_GIT, SURE_MANEVRA_DONUS = 1.2, 0.6
+HIZ_ILERI = 0.7
+HIZ_DONUS = 0.6
+SURE_ILERI_GIT = 1.2
+SURE_MANEVRA_DONUS = 0.6
 ENGEL_ESIK_MESAFESI = 35
-TARAMA_ACISI_YATAY, TARAMA_ADIMI_YATAY = 240, 40
+TARAMA_ACISI_YATAY = 240
+TARAMA_ADIMI_YATAY = 40
 STEPS_PER_REVOLUTION = 4096
-STEP_MOTOR_INTER_STEP_DELAY, STEP_MOTOR_SETTLE_TIME = 0.0015, 0.05
+STEP_MOTOR_INTER_STEP_DELAY = 0.0015
+STEP_MOTOR_SETTLE_TIME = 0.05
 
-# --- Global Değişkenler ve Donanım ---
+# --- GLOBAL DEĞİŞKENLER ---
 lock_file_handle, sol_motor, sag_motor, sensor, servo = None, None, None, None, None
 in1_dev, in2_dev, in3_dev, in4_dev = None, None, None, None
 DEG_PER_STEP = 0.0
@@ -32,7 +56,7 @@ step_sequence = [[1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0], [0, 1, 1, 0], [0, 0, 
                  [1, 0, 0, 1]]
 
 
-# --- FONKSİYONLAR ---
+# --- SÜREÇ YÖNETİMİ VE KAYNAK KONTROLÜ ---
 def acquire_lock_and_pid():
     global lock_file_handle
     try:
@@ -43,6 +67,7 @@ def acquire_lock_and_pid():
         print(f"Otonom Sürüş: PID ({os.getpid()}) ve Kilit dosyaları oluşturuldu.")
         return True
     except IOError:
+        print("Kilit dosyası oluşturulamadı. Başka bir script çalışıyor olabilir.")
         return False
 
 
@@ -62,8 +87,10 @@ def release_resources_on_exit():
                 os.remove(fp)
             except:
                 pass
+    print("Temizleme tamamlandı.")
 
 
+# --- DONANIM VE HAREKET FONKSİYONLARI ---
 def init_hardware():
     global sol_motor, sag_motor, sensor, servo, DEG_PER_STEP, in1_dev, in2_dev, in3_dev, in4_dev
     try:
@@ -76,7 +103,8 @@ def init_hardware():
         DEG_PER_STEP = 360.0 / STEPS_PER_REVOLUTION
         return True
     except Exception as e:
-        print(f"Donanım Hatası: {e}"); return False
+        print(f"KRİTİK HATA: Donanım başlatılamadı: {e}");
+        return False
 
 
 def _set_step_pins(s1, s2, s3, s4):
@@ -117,23 +145,39 @@ def sola_don(hiz=HIZ_DONUS): sol_motor.backward(hiz); sag_motor.forward(hiz)
 def saga_don(hiz=HIZ_DONUS): sol_motor.forward(hiz); sag_motor.backward(hiz)
 
 
+# --- OTONOM SÜRÜŞ MANTIĞI ---
 def cevreyi_hizli_tara():
+    """Step motor ile çevreyi hızlıca tarar ve mesafeleri kaydeder."""
+    print("Çevre taranıyor...")
     mesafeler = {}
     baslangic_acisi = - (TARAMA_ACISI_YATAY / 2.0)
-    for i in range(int(TARAMA_ACISI_YATAY / TARAMA_ADIMI_YATAY) + 1):
+    adim_sayisi = int(TARAMA_ACISI_YATAY / TARAMA_ADIMI_YATAY)
+
+    for i in range(adim_sayisi + 1):
         hedef_aci = baslangic_acisi + (i * TARAMA_ADIMI_YATAY)
         move_motor_to_angle(hedef_aci)
-        time.sleep(0.1)
-        mesafeler[hedef_aci] = sensor.distance * 100
-    move_motor_to_angle(0)
+        time.sleep(0.1)  # Sensörün okuma yapması için kısa bekleme
+        mesafe = sensor.distance * 100
+        mesafeler[hedef_aci] = mesafe
+        print(f"  -> Açı: {hedef_aci:.0f}°, Mesafe: {mesafe:.1f} cm")
+
+    move_motor_to_angle(0)  # Tarama bitince ortaya dön
     return mesafeler
 
 
 def en_iyi_yolu_bul(mesafeler):
+    """En uzun mesafeyi en iyi yol olarak belirler."""
     if not mesafeler: return None
+
     gecerli_yollar = {aci: mesafe for aci, mesafe in mesafeler.items() if mesafe > ENGEL_ESIK_MESAFESI}
-    if not gecerli_yollar: return 'geri_don'
-    return max(gecerli_yollar, key=gecerli_yollar.get)
+
+    if not gecerli_yollar:
+        print("!!! Tüm yönler kapalı !!!")
+        return 'geri_don'
+
+    en_iyi_yon_aci = max(gecerli_yollar, key=gecerli_yollar.get)
+    print(f">>> En iyi yol bulundu: {en_iyi_yon_aci:.0f}° yönü.")
+    return en_iyi_yon_aci
 
 
 # --- ANA ÇALIŞMA BLOĞU ---
@@ -141,31 +185,51 @@ if __name__ == "__main__":
     atexit.register(release_resources_on_exit)
     if not acquire_lock_and_pid() or not init_hardware(): sys.exit(1)
 
+    servo.min()
+    time.sleep(1)
+    servo.max()
+    time.sleep(1)
+    servo.mid()
+    time.sleep(1)
+
     try:
         while True:
             dur()
             olcumler = cevreyi_hizli_tara()
             secilen_yon = en_iyi_yolu_bul(olcumler)
 
-            if secilen_yon is None: time.sleep(1); continue
+            if secilen_yon is None:
+                print("Geçerli yol bulunamadı, bekleniyor...")
+                time.sleep(1)
+                continue
 
             if secilen_yon == 'geri_don':
                 print("SIKIŞTI! Geri manevra yapılıyor...")
-                (saga_don if random.choice([True, False]) else sola_don)()
+                if random.choice([True, False]):
+                    saga_don()
+                else:
+                    sola_don()
                 time.sleep(SURE_MANEVRA_DONUS)
             elif abs(secilen_yon) < (TARAMA_ADIMI_YATAY / 2):
                 print("YOL AÇIK: İleri gidiliyor...")
-                ileri();
+                ileri()
                 time.sleep(SURE_ILERI_GIT)
             else:
                 print(f"HEDEF: {secilen_yon:.0f}° yönüne dönülüyor...")
-                (saga_don if secilen_yon > 0 else sola_don)()
+                if secilen_yon > 0:
+                    saga_don()
+                else:
+                    sola_don()
                 time.sleep(SURE_MANEVRA_DONUS * 0.5)
 
-            dur();
+            dur()
             time.sleep(0.5)
+
     except KeyboardInterrupt:
         print("\nKullanıcı tarafından durduruldu.")
     except Exception as e:
-        print(f"KRİTİK HATA: {e}"); traceback.print_exc()
+        print(f"KRİTİK HATA: Ana döngüde bir hata oluştu: {e}")
+        traceback.print_exc()
+    finally:
+        print("Program sonlandırılıyor.")
 

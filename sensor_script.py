@@ -153,7 +153,7 @@ def init_hardware():
         # 500 µs = 0.0005 s
         # 2500 µs = 0.0025 s
         MIN_PULSE = 0.0005  # Genellikle 0 dereceye karşılık gelen minimum darbe genişliği (saniye cinsinden)
-        MAX_PULSE = 0.0026  # Genellikle 180 dereceye karşılık gelen maksimum darbe genişliği (saniye cinsinden)
+        MAX_PULSE = 0.00262  # Genellikle 180 dereceye karşılık gelen maksimum darbe genişliği (saniye cinsinden)
 
         # Eğer bu değerlerle tam 180 derece dönmüyorsa, küçük adımlarla ayarlama yapın.
         # Örneğin: MIN_PULSE = 0.00048, MAX_PULSE = 0.00252

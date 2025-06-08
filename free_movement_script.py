@@ -44,7 +44,7 @@ except ImportError:
 # ==============================================================================
 TRIG_PIN, ECHO_PIN = 23, 24
 IN1_GPIO_PIN, IN2_GPIO_PIN, IN3_GPIO_PIN, IN4_GPIO_PIN = 6, 13, 19, 26
-BUZZER_PIN = 17
+BUZZER_PIN = 18
 STATUS_LED_PIN = 27
 LCD_I2C_ADDRESS = 0x27
 LCD_PORT_EXPANDER = 'PCF8574'

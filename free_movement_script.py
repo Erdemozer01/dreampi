@@ -30,8 +30,9 @@ SWEEP_ANGLE = 60.0
 DETECTION_THRESHOLD_CM = 30.0
 PAUSE_ON_DETECTION_S = 3.0
 STEPS_PER_REVOLUTION = 4096
-# DÜZELTME: Motoru hızlandırmak için adımlar arası bekleme süresi düşürüldü.
-STEP_MOTOR_INTER_STEP_DELAY = 0.0015
+# DÜZELTME: Motoru belirgin şekilde hızlandırmak için adımlar arası bekleme süresi düşürüldü.
+# Bu değeri daha da düşürmek hızı artırır ancak motorun adım atlamasına neden olabilir.
+STEP_MOTOR_INTER_STEP_DELAY = 0.001
 
 # --- GLOBAL DEĞİŞKENLER ---
 lock_file_handle, sensor, buzzer, lcd = None, None, None, None

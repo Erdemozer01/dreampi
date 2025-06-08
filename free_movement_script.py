@@ -26,7 +26,7 @@ LOCK_FILE_PATH = '/tmp/free_movement_script.lock'
 PID_FILE_PATH = '/tmp/free_movement_script.pid'
 
 # Çalışma Parametreleri
-SWEEP_ANGLE = 90.0
+SWEEP_ANGLE = 60.0
 DETECTION_THRESHOLD_CM = 30.0
 PAUSE_ON_DETECTION_S = 3.0
 STEPS_PER_REVOLUTION = 4096

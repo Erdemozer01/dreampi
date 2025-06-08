@@ -9,9 +9,7 @@ import traceback
 
 # --- DJANGO ENTEGRASYONU ---
 try:
-    # Projenin ana dizinini Python yoluna ekle
     sys.path.append(os.getcwd())
-    # Django ayarlarını yükle
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'dreampi.settings')
     import django
 
@@ -32,19 +30,16 @@ try:
     print("SensorScript: Donanım kütüphaneleri başarıyla import edildi.")
 except ImportError as e:
     print(f"SensorScript: Gerekli donanım kütüphanesi bulunamadı: {e}")
-    print("Lütfen 'sudo pip3 install gpiozero RPLCD-i2c' komutlarıyla yükleyin.")
     sys.exit(1)
 
 # --- SABİTLER VE PINLER ---
 MOTOR_BAGLI = True
-# Pinler (Kullanıcının orijinal pinleri)
 TRIG_PIN, ECHO_PIN = 23, 24
 SERVO_PIN = 12
 IN1_GPIO_PIN, IN2_GPIO_PIN, IN3_GPIO_PIN, IN4_GPIO_PIN = 6, 13, 19, 26
 BUZZER_PIN = 17
 LCD_I2C_ADDRESS, LCD_PORT_EXPANDER, LCD_COLS, LCD_ROWS, I2C_PORT = 0x27, 'PCF8574', 16, 2, 1
 
-# Proses Yönetimi
 LOCK_FILE_PATH, PID_FILE_PATH = '/tmp/sensor_scan_script.lock', '/tmp/sensor_scan_script.pid'
 
 # Varsayılan Değerler
@@ -58,11 +53,10 @@ DEFAULT_STEPS_PER_REVOLUTION = 4096
 STEP_MOTOR_INTER_STEP_DELAY, STEP_MOTOR_SETTLE_TIME, LOOP_TARGET_INTERVAL_S = 0.0015, 0.05, 0.2
 
 # --- GLOBAL DEĞİŞKENLER ---
-lock_file_handle = None
-current_scan_object_global = None
-script_exit_status_global = Scan.Status.ERROR
+lock_file_handle, current_scan_object_global = None, None
 sensor, servo, buzzer, lcd = None, None, None, None
 in1_dev, in2_dev, in3_dev, in4_dev = None, None, None, None
+script_exit_status_global = Scan.Status.ERROR
 DEG_PER_STEP = 0.0
 current_motor_angle_global = 0.0
 current_step_sequence_index = 0
@@ -70,16 +64,14 @@ step_sequence = [[1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0], [0, 1, 1, 0], [0, 0, 
                  [1, 0, 0, 1]]
 
 
-# --- SÜREÇ YÖNETİMİ FONKSİYONLARI ---
+# --- SÜREÇ YÖNETİMİ VE KAYNAK KONTROLÜ ---
 def acquire_lock_and_pid():
-    """Script'in başka bir kopyasının çalışmasını engellemek için kilit dosyası oluşturur."""
     global lock_file_handle
     try:
         lock_file_handle = open(LOCK_FILE_PATH, 'w')
         fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         with open(PID_FILE_PATH, 'w') as pf:
             pf.write(str(os.getpid()))
-        print("PID ve Kilit dosyaları başarıyla oluşturuldu.")
         return True
     except IOError:
         print("Kilit dosyası oluşturulamadı. Başka bir script çalışıyor olabilir.")
@@ -87,7 +79,6 @@ def acquire_lock_and_pid():
 
 
 def release_resources_on_exit():
-    """Script sonlandığında tüm kaynakları güvenli bir şekilde serbest bırakır."""
     pid = os.getpid()
     print(f"[{pid}] Kaynaklar serbest bırakılıyor... Son durum: {script_exit_status_global}")
     if current_scan_object_global and current_scan_object_global.status == Scan.Status.RUNNING:
@@ -96,10 +87,8 @@ def release_resources_on_exit():
             scan_to_update.status = script_exit_status_global
             scan_to_update.end_time = timezone.now()
             scan_to_update.save()
-            print(f"Scan #{scan_to_update.id} durumu güncellendi: {scan_to_update.status}")
         except Exception as e:
             print(f"DB çıkış hatası: {e}")
-
     if MOTOR_BAGLI: _set_step_pins(0, 0, 0, 0)
     if buzzer: buzzer.off()
     if lcd:
@@ -107,62 +96,45 @@ def release_resources_on_exit():
             lcd.clear()
         except:
             pass
-
     for dev in [sensor, servo, buzzer, in1_dev, in2_dev, in3_dev, in4_dev, lcd]:
         if dev and hasattr(dev, 'close'):
             try:
                 dev.close()
             except:
                 pass
-
     if lock_file_handle:
         try:
-            fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN)
-            lock_file_handle.close()
+            fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN); lock_file_handle.close()
         except:
             pass
-
     for fp in [PID_FILE_PATH, LOCK_FILE_PATH]:
         if os.path.exists(fp):
             try:
                 os.remove(fp)
-            except OSError as e:
-                print(f"Hata: {fp} dosyası silinemedi: {e}")
-
-    print(f"[{pid}] Temizleme tamamlandı.")
-
-
-# --- YARDIMCI FONKSİYONLAR ---
-def degree_to_servo_value(angle_deg):
-    """Verilen dereceyi -1.0 ile 1.0 aralığındaki servo değerine çevirir."""
-    clamped_angle = max(0, min(180, angle_deg))
-    return (clamped_angle / 90.0) - 1.0
+            except:
+                pass
 
 
 def init_hardware():
-    """Tüm donanım bileşenlerini başlatır ve kullanıma hazırlar."""
     global sensor, servo, buzzer, lcd, in1_dev, in2_dev, in3_dev, in4_dev
     try:
-        if MOTOR_BAGLI:
-            in1_dev, in2_dev, in3_dev, in4_dev = OutputDevice(IN1_GPIO_PIN), OutputDevice(IN2_GPIO_PIN), OutputDevice(
-                IN3_GPIO_PIN), OutputDevice(IN4_GPIO_PIN)
+        if MOTOR_BAGLI: in1_dev, in2_dev, in3_dev, in4_dev = OutputDevice(IN1_GPIO_PIN), OutputDevice(
+            IN2_GPIO_PIN), OutputDevice(IN3_GPIO_PIN), OutputDevice(IN4_GPIO_PIN)
         sensor = DistanceSensor(echo=ECHO_PIN, trigger=TRIG_PIN, max_distance=3.0)
         servo = Servo(SERVO_PIN)
         buzzer = Buzzer(BUZZER_PIN)
         lcd = CharLCD(i2c_expander=LCD_PORT_EXPANDER, address=LCD_I2C_ADDRESS, port=I2C_PORT, cols=LCD_COLS,
                       rows=LCD_ROWS, auto_linebreaks=True)
-        lcd.clear()
-        lcd.write_string("Dream Pi Hazir".ljust(LCD_COLS))
-        print("Tüm donanımlar başarıyla başlatıldı.")
+        lcd.clear();
+        lcd.write_string("Haritalama Modu")
         return True
     except Exception as e:
-        print(f"KRİTİK HATA: Donanım başlatılamadı: {e}")
-        traceback.print_exc()
+        print(f"KRİTİK HATA: Donanım başlatılamadı: {e}");
+        traceback.print_exc();
         return False
 
 
 def _set_step_pins(s1, s2, s3, s4):
-    """Step motor pinlerinin durumunu ayarlar."""
     if in1_dev: in1_dev.value = bool(s1)
     if in2_dev: in2_dev.value = bool(s2)
     if in3_dev: in3_dev.value = bool(s3)
@@ -170,56 +142,42 @@ def _set_step_pins(s1, s2, s3, s4):
 
 
 def _step_motor_4in(num_steps, direction_positive):
-    """Step motoru belirtilen adım sayısı kadar döndürür."""
     global current_step_sequence_index
     for _ in range(int(num_steps)):
         step_increment = 1 if direction_positive else -1
         current_step_sequence_index = (current_step_sequence_index + step_increment) % len(step_sequence)
         _set_step_pins(*step_sequence[current_step_sequence_index])
         time.sleep(STEP_MOTOR_INTER_STEP_DELAY)
-    time.sleep(STEP_MOTOR_SETTLE_TIME)
 
 
 def move_motor_to_angle(target_angle_deg, invert_direction):
-    """Step motoru mutlak bir hedef açıya hareket ettirir."""
     global current_motor_angle_global
     if not MOTOR_BAGLI or DEG_PER_STEP <= 0: return
     angle_diff = target_angle_deg - current_motor_angle_global
-    if abs(angle_diff) < (DEG_PER_STEP / 2.0): return
+    if abs(angle_diff) < DEG_PER_STEP: return
     num_steps = round(abs(angle_diff) / DEG_PER_STEP)
-    if num_steps == 0: return
-
-    logical_dir_positive = (angle_diff > 0)
-    physical_dir_positive = not logical_dir_positive if invert_direction else logical_dir_positive
-    _step_motor_4in(num_steps, physical_dir_positive)
-    current_motor_angle_global = target_angle_deg  # Açıyı güncelle
+    logical_dir = (angle_diff > 0)
+    physical_dir = not logical_dir if invert_direction else logical_dir
+    _step_motor_4in(num_steps, physical_dir)
+    current_motor_angle_global = target_angle_deg
 
 
 def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist, invert_dir, steps_rev):
-    """Veritabanında yeni bir tarama kaydı oluşturur (DÜZELTİLMİŞ)."""
     global current_scan_object_global
     try:
         Scan.objects.filter(status=Scan.Status.RUNNING).update(status=Scan.Status.ERROR, end_time=timezone.now())
         current_scan_object_global = Scan.objects.create(
-            start_angle_setting=h_angle,
-            step_angle_setting=h_step,
-            end_angle_setting=v_angle,
-            buzzer_distance_setting=buzzer_dist,
-            invert_motor_direction_setting=invert_dir,
-            # steps_per_revolution_setting=steps_rev, # BU ALAN MODELDE YOKSA TypeError VERİR
-            status=Scan.Status.RUNNING
-        )
-        print(f"Yeni tarama kaydı veritabanında oluşturuldu: ID #{current_scan_object_global.id}")
+            start_angle_setting=h_angle, step_angle_setting=h_step, end_angle_setting=v_angle,
+            buzzer_distance_setting=buzzer_dist, invert_motor_direction_setting=invert_dir,
+            status=Scan.Status.RUNNING)
         return True
-    except TypeError as te:
-        print(f"DB Hatası (create_scan_entry): {te}")
-        print("Modelinizde olmayan bir alanı (örn: steps_per_revolution_setting) kaydetmeye çalışıyor olabilirsiniz.")
-        print("Lütfen scanner/models.py dosyasındaki Scan modelini kontrol edin.")
-        return False
     except Exception as e:
-        print(f"DB Hatası (create_scan_entry): {e}")
-        traceback.print_exc()
+        print(f"DB Hatası (create_scan_entry): {e}");
+        traceback.print_exc();
         return False
+
+
+def degree_to_servo_value(angle): return max(-1.0, min(1.0, (angle / 90.0) - 1.0))
 
 
 # --- ANA ÇALIŞMA BLOĞU ---
@@ -233,95 +191,62 @@ if __name__ == "__main__":
     parser.add_argument("--steps-per-rev", type=int, default=DEFAULT_STEPS_PER_REVOLUTION)
     args = parser.parse_args()
 
-    pid = os.getpid()
     atexit.register(release_resources_on_exit)
+    if not acquire_lock_and_pid() or not init_hardware(): sys.exit(1)
 
-    if not acquire_lock_and_pid(): sys.exit(1)
-    if not init_hardware(): sys.exit(1)
-
-    # Parametreleri al
-    TOTAL_H_ANGLE = args.h_angle
-    H_STEP = args.h_step
-    INVERT_MOTOR = args.invert_motor_direction
-    STEPS_PER_REVOLUTION = args.steps_per_rev
-    BUZZER_DISTANCE = args.buzzer_distance
+    TOTAL_H_ANGLE, H_STEP, INVERT_MOTOR, STEPS_PER_REVOLUTION, BUZZER_DISTANCE = args.h_angle, args.h_step, args.invert_motor_direction, args.steps_per_rev, args.buzzer_distance
     DEG_PER_STEP = 360.0 / STEPS_PER_REVOLUTION
 
     if not create_scan_entry(TOTAL_H_ANGLE, H_STEP, DEFAULT_VERTICAL_SCAN_ANGLE, BUZZER_DISTANCE, INVERT_MOTOR,
-                             STEPS_PER_REVOLUTION):
-        sys.exit(1)
-
-    print(f"[{pid}] Yeni Tarama Başlatılıyor (ID: #{current_scan_object_global.id})...")
+                             STEPS_PER_REVOLUTION): sys.exit(1)
 
     try:
-        # 1. BAŞLANGIÇ POZİSYONUNU AYARLA
         initial_turn_angle = - (TOTAL_H_ANGLE / 2.0)
         print(f"Başlangıç pozisyonuna gidiliyor: {initial_turn_angle:.1f}°...")
         move_motor_to_angle(initial_turn_angle, INVERT_MOTOR)
         servo.value = degree_to_servo_value(0)
         time.sleep(1.5)
-        print("Başlangıç pozisyonu ayarlandı. Tarama başlıyor.")
 
-        # 2. TARAMA DÖNGÜSÜ
         num_horizontal_steps = int(TOTAL_H_ANGLE / H_STEP)
         for i in range(num_horizontal_steps + 1):
-            target_h_angle_absolute = initial_turn_angle + (i * H_STEP)
-            target_h_angle_relative = i * H_STEP  # Arayüzde gösterilecek açı
+            target_h_angle_abs = initial_turn_angle + (i * H_STEP)
+            target_h_angle_rel = i * H_STEP
+            move_motor_to_angle(target_h_angle_abs, INVERT_MOTOR)
+            print(f"\nYatay Açı: {target_h_angle_rel:.1f}°")
 
-            move_motor_to_angle(target_h_angle_absolute, INVERT_MOTOR)
-            print(f"\nYatay Açı: {target_h_angle_relative:.1f}° (Mutlak: {target_h_angle_absolute:.1f}°)")
-
-            # Dikey Tarama (Servo)
             num_vertical_steps = int(DEFAULT_VERTICAL_SCAN_ANGLE / DEFAULT_VERTICAL_STEP_ANGLE)
             for j in range(num_vertical_steps + 1):
                 target_v_angle = j * DEFAULT_VERTICAL_STEP_ANGLE
                 servo.value = degree_to_servo_value(target_v_angle)
                 time.sleep(LOOP_TARGET_INTERVAL_S)
-
                 dist_cm = sensor.distance * 100
                 print(f"  -> Dikey: {target_v_angle:.1f}°, Mesafe: {dist_cm:.1f} cm")
 
                 try:
-                    lcd.cursor_pos = (0, 0)
-                    lcd.write_string(f"Y:{target_h_angle_relative:<4.0f} V:{target_v_angle:<4.0f}  ")
-                    lcd.cursor_pos = (1, 0)
+                    lcd.cursor_pos = (0, 0);
+                    lcd.write_string(f"Y:{target_h_angle_rel:<4.0f} V:{target_v_angle:<4.0f}  ")
+                    lcd.cursor_pos = (1, 0);
                     lcd.write_string(f"Mesafe: {dist_cm:<5.1f}cm ")
-                except Exception as lcd_e:
-                    print(f"LCD Yazma Hatası: {lcd_e}")
+                except Exception as e:
+                    print(f"LCD Hatası: {e}")
 
-                if buzzer.is_active != (0 < dist_cm < BUZZER_DISTANCE):
-                    buzzer.toggle()
+                if buzzer.is_active != (0 < dist_cm < BUZZER_DISTANCE): buzzer.toggle()
 
-                # Koordinatları hesapla ve veritabanına kaydet
-                angle_pan_rad = math.radians(target_h_angle_absolute)  # Mutlak açı kullanılır
-                angle_tilt_rad = math.radians(target_v_angle)
-
-                horizontal_radius = dist_cm * math.cos(angle_tilt_rad)
-                z_cm_val = dist_cm * math.sin(angle_tilt_rad)
-                x_cm_val = horizontal_radius * math.cos(angle_pan_rad)
-                y_cm_val = horizontal_radius * math.sin(angle_pan_rad)
-
-                ScanPoint.objects.create(
-                    scan=current_scan_object_global,
-                    derece=target_h_angle_relative,  # DB'ye göreceli açı kaydedilir
-                    dikey_aci=target_v_angle,
-                    mesafe_cm=dist_cm,
-                    x_cm=x_cm_val, y_cm=y_cm_val, z_cm=z_cm_val,
-                    timestamp=timezone.now()
-                )
+                angle_pan_rad, angle_tilt_rad = math.radians(target_h_angle_abs), math.radians(target_v_angle)
+                h_radius = dist_cm * math.cos(angle_tilt_rad)
+                z, x, y = dist_cm * math.sin(angle_tilt_rad), h_radius * math.cos(angle_pan_rad), h_radius * math.sin(
+                    angle_pan_rad)
+                ScanPoint.objects.create(scan=current_scan_object_global, derece=target_h_angle_rel,
+                                         dikey_aci=target_v_angle, mesafe_cm=dist_cm, x_cm=x, y_cm=y, z_cm=z,
+                                         timestamp=timezone.now())
 
         script_exit_status_global = Scan.Status.COMPLETED
-        print("Tarama başarıyla tamamlandı.")
-
     except KeyboardInterrupt:
         script_exit_status_global = Scan.Status.INTERRUPTED
-        print(f"\n[{pid}] Ctrl+C ile kesildi.")
     except Exception as e:
         script_exit_status_global = Scan.Status.ERROR
-        print(f"[{pid}] KRİTİK HATA: Ana döngüde bir hata oluştu: {e}")
+        print(f"KRİTİK HATA: {e}");
         traceback.print_exc()
     finally:
-        print(f"[{pid}] İşlem sonlanıyor. Motor merkez konuma getiriliyor...")
-        move_motor_to_angle(0, INVERT_MOTOR)  # Mutlak 0'a geri dön
-        if servo: servo.value = degree_to_servo_value(90)  # Servo'yu ortaya al
-        print(f"[{pid}] Donanımlar başlangıç konumuna getirildi.")
+        move_motor_to_angle(0, INVERT_MOTOR)
+        if servo: servo.value = degree_to_servo_value(90)

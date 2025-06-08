@@ -97,8 +97,8 @@ def release_resources_on_exit():
     if lcd:
         try:
             lcd.clear()
-        except:
-            pass
+        except Exception as e:
+            print(f"LCD temizlenemedi: {e}")
     for dev in [sensor, servo, buzzer, in1_dev, in2_dev, in3_dev, in4_dev, lcd]:
         if dev and hasattr(dev, 'close'):
             try:
@@ -127,10 +127,14 @@ def init_hardware():
         sensor = DistanceSensor(echo=ECHO_PIN, trigger=TRIG_PIN, max_distance=3.0)
         servo = Servo(SERVO_PIN)
         buzzer = Buzzer(BUZZER_PIN)
-        lcd = CharLCD(i2c_expander=LCD_PORT_EXPANDER, address=LCD_I2C_ADDRESS, port=I2C_PORT, cols=LCD_COLS,
-                      rows=LCD_ROWS, auto_linebreaks=True)
-        lcd.clear();
-        lcd.write_string("Haritalama Modu")
+        try:
+            lcd = CharLCD(i2c_expander=LCD_PORT_EXPANDER, address=LCD_I2C_ADDRESS, port=I2C_PORT, cols=LCD_COLS,
+                          rows=LCD_ROWS, auto_linebreaks=True)
+            lcd.clear();
+            lcd.write_string("Haritalama Modu")
+        except Exception as e:
+            print(f"UYARI: LCD başlatılamadı, LCD olmadan devam edilecek. Hata: {e}")
+            lcd = None
         return True
     except Exception as e:
         print(f"KRİTİK HATA: Donanım başlatılamadı: {e}");
@@ -227,13 +231,14 @@ if __name__ == "__main__":
                 dist_cm = sensor.distance * 100
                 print(f"  -> Dikey: {target_v_angle:.1f}°, Mesafe: {dist_cm:.1f} cm")
 
-                try:
-                    lcd.cursor_pos = (0, 0);
-                    lcd.write_string(f"Y:{target_h_angle_rel:<4.0f} V:{target_v_angle:<4.0f}  ")
-                    lcd.cursor_pos = (1, 0);
-                    lcd.write_string(f"Mesafe: {dist_cm:<5.1f}cm ")
-                except Exception as e:
-                    print(f"LCD Hatası: {e}")
+                if lcd:
+                    try:
+                        lcd.cursor_pos = (0, 0);
+                        lcd.write_string(f"Y:{target_h_angle_rel:<4.0f} V:{target_v_angle:<4.0f}  ")
+                        lcd.cursor_pos = (1, 0);
+                        lcd.write_string(f"Mesafe: {dist_cm:<5.1f}cm ")
+                    except OSError as e:
+                        print(f"LCD YAZMA HATASI: {e}")
 
                 if buzzer.is_active != (0 < dist_cm < BUZZER_DISTANCE): buzzer.toggle()
 
@@ -248,6 +253,7 @@ if __name__ == "__main__":
         script_exit_status_global = Scan.Status.COMPLETED
     except KeyboardInterrupt:
         script_exit_status_global = Scan.Status.INTERRUPTED
+        print("\nKullanıcı tarafından durduruldu.")
     except Exception as e:
         script_exit_status_global = Scan.Status.ERROR
         print(f"KRİTİK HATA: {e}");

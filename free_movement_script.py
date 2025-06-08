@@ -44,7 +44,7 @@ except ImportError:
 # ==============================================================================
 TRIG_PIN, ECHO_PIN = 23, 24
 IN1_GPIO_PIN, IN2_GPIO_PIN, IN3_GPIO_PIN, IN4_GPIO_PIN = 6, 13, 19, 26
-BUZZER_PIN = 18
+BUZZER_PIN = 17
 STATUS_LED_PIN = 27
 LCD_I2C_ADDRESS = 0x27
 LCD_PORT_EXPANDER = 'PCF8574'
@@ -229,7 +229,6 @@ def update_lcd_display(message_type):
         else:  # Durum değişti veya ilk yazım
             lcd.clear()
             if message_type == "alert_greeting":
-                # DÜZELTME: Listeden rastgele bir selamlama seçilir.
                 line1, line2 = random.choice(GREETING_MESSAGES)
                 lcd.write_string(line1.ljust(LCD_COLS))
                 lcd.cursor_pos = (1, 0);
@@ -258,6 +257,8 @@ def perform_measurement_and_react():
             print(f"   >>> UYARI: Nesne {mesafe:.1f} cm! <<<")
             kisa_uyari_bip(BUZZER_BIP_SURESI)
             update_lcd_display("alert_greeting")
+            # DÜZELTME: Mesajın ekranda okunabilmesi için 2 saniye bekle.
+            time.sleep(2.0)
             if status_led:
                 if led_is_blinking:
                     status_led.off(); time.sleep(0.01); status_led.on()

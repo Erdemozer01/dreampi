@@ -58,12 +58,16 @@ LOCK_FILE_PATH, PID_FILE_PATH = '/tmp/sensor_scan_script.lock', '/tmp/sensor_sca
 # Varsayılan Değerler
 DEFAULT_HORIZONTAL_SCAN_ANGLE = 270.0
 DEFAULT_HORIZONTAL_STEP_ANGLE = 10.0
-DEFAULT_VERTICAL_SCAN_ANGLE = 180.0
+DEFAULT_VERTICAL_SCAN_ANGLE = 180.0 # Servo'nun fiziksel tarama açısı (örn: 0-180 derece)
 DEFAULT_VERTICAL_STEP_ANGLE = 15.0
 DEFAULT_BUZZER_DISTANCE = 10
 DEFAULT_INVERT_MOTOR_DIRECTION = False
 DEFAULT_STEPS_PER_REVOLUTION = 4096
 STEP_MOTOR_INTER_STEP_DELAY, STEP_MOTOR_SETTLE_TIME, LOOP_TARGET_INTERVAL_S = 0.0015, 0.05, 0.2
+
+# Servo'nun başlangıç açısını kaydırmak için yeni sabit
+# Bu değer, servo'nun fiziksel 0 derecesine karşılık gelen mantıksal açıyı belirtir.
+SERVO_VERTICAL_OFFSET_DEG = -30.0
 
 # --- GLOBAL DEĞİŞKENLER ---
 lock_file_handle, current_scan_object_global = None, None
@@ -199,7 +203,11 @@ def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist, invert_dir, steps_r
         return False
 
 
-def degree_to_servo_value(angle): return max(-1.0, min(1.0, (angle / 90.0) - 1.0))
+def degree_to_servo_value(angle):
+    # Bu fonksiyon, gpiozero Servo nesnesinin beklediği -1.0 ile 1.0 aralığına dönüştürür.
+    # Standart servolar genellikle 0-180 derece aralığına sahiptir.
+    # Negatif veya 180'den büyük açılar fiziksel olarak desteklenmez, bu yüzden sıkıştırılır.
+    return max(-1.0, min(1.0, (angle / 90.0) - 1.0))
 
 
 # --- ANA ÇALIŞMA BLOĞU ---
@@ -223,55 +231,76 @@ if __name__ == "__main__":
                              STEPS_PER_REVOLUTION): sys.exit(1)
 
     try:
-        initial_turn_angle = - (TOTAL_H_ANGLE / 2.0)
+        # Adım motoru: Tarama açısının yarısı kadar sağa dön (-X yönü, yani artı açı değeri)
+        # Bu, motoru taramanın en sağ başlangıç noktasına getirir.
+        initial_turn_angle = (TOTAL_H_ANGLE / 2.0)
         print(f"Başlangıç pozisyonuna gidiliyor: {initial_turn_angle:.1f}°...")
         move_motor_to_angle(initial_turn_angle, INVERT_MOTOR)
+
+        # Servo başlangıç pozisyonu (fiziksel olarak 0 derece, ancak mantıksal olarak offset'li)
+        # Servo'yu fiziksel 0 derecesine konumlandır.
         servo.value = degree_to_servo_value(0)
-        time.sleep(1.5)
+        time.sleep(1.5) # Servo'nun yerine oturması için bekleme süresi
 
         num_horizontal_steps = int(TOTAL_H_ANGLE / H_STEP)
+        # Yatay tarama döngüsü: En sağdan başlayıp sola doğru ilerle
         for i in range(num_horizontal_steps + 1):
-            target_h_angle_abs = initial_turn_angle + (i * H_STEP)
+            # Adım motoru: Sağa dönüldükten sonra sola doğru taramak için açıyı azaltırız.
+            # target_h_angle_abs: mutlak motor açısı
+            # target_h_angle_rel: tarama başlangıcından itibaren geçen relatif açı (0'dan TOTAL_H_ANGLE'a)
+            target_h_angle_abs = (TOTAL_H_ANGLE / 2.0) - (i * H_STEP)
             target_h_angle_rel = i * H_STEP
             move_motor_to_angle(target_h_angle_abs, INVERT_MOTOR)
             print(f"\nYatay Açı: {target_h_angle_rel:.1f}°")
 
             num_vertical_steps = int(DEFAULT_VERTICAL_SCAN_ANGLE / DEFAULT_VERTICAL_STEP_ANGLE)
+            # Dikey tarama döngüsü: Servo'nun fiziksel aralığını kullan, ancak mantıksal açıyı kaydet
             for j in range(num_vertical_steps + 1):
-                target_v_angle = j * DEFAULT_VERTICAL_STEP_ANGLE
-                servo.value = degree_to_servo_value(target_v_angle)
-                time.sleep(LOOP_TARGET_INTERVAL_S)
-                dist_cm = sensor.distance * 100
-                print(f"  -> Dikey: {target_v_angle:.1f}°, Mesafe: {dist_cm:.1f} cm")
+                # Servo'ya gönderilecek fiziksel açı (0-180 arasında kalmalı)
+                physical_v_angle = j * DEFAULT_VERTICAL_STEP_ANGLE
+
+                # Raporlama ve koordinat hesaplama için kullanılacak mantıksal açı
+                # Bu, fiziksel açıya bir ofset ekleyerek sanal bir aralık oluşturur.
+                logical_v_angle = physical_v_angle + SERVO_VERTICAL_OFFSET_DEG
+
+                servo.value = degree_to_servo_value(physical_v_angle) # Servo'ya fiziksel açıyı gönder
+                time.sleep(LOOP_TARGET_INTERVAL_S) # Ölçüm için bekle
+                dist_cm = sensor.distance * 100 # Mesafe ölçümü
+                print(f"  -> Dikey: {logical_v_angle:.1f}°, Mesafe: {dist_cm:.1f} cm")
 
                 if lcd:
                     try:
+                        # LCD'de mantıksal açıyı göster
                         lcd.cursor_pos = (0, 0);
-                        lcd.write_string(f"Y:{target_h_angle_rel:<4.0f} V:{target_v_angle:<4.0f}  ")
+                        lcd.write_string(f"Y:{target_h_angle_rel:<4.0f} V:{logical_v_angle:<4.0f}  ")
                         lcd.cursor_pos = (1, 0);
                         lcd.write_string(f"Mesafe: {dist_cm:<5.1f}cm ")
                     except OSError as e:
                         print(f"LCD YAZMA HATASI: {e}")
 
+                # Mesafe kritikse buzzer'ı aç/kapat
                 if buzzer.is_active != (0 < dist_cm < BUZZER_DISTANCE): buzzer.toggle()
 
-                angle_pan_rad, angle_tilt_rad = math.radians(target_h_angle_abs), math.radians(target_v_angle)
+                # Koordinat hesaplamaları ve veritabanına kaydetme için mantıksal açıyı kullan
+                # Not: target_h_angle_abs (motorun mutlak pozisyonu) yatay koordinat için kullanılır.
+                # logical_v_angle (offsetlenmiş dikey açı) dikey koordinat için kullanılır.
+                angle_pan_rad, angle_tilt_rad = math.radians(target_h_angle_abs), math.radians(logical_v_angle)
                 h_radius = dist_cm * math.cos(angle_tilt_rad)
                 z, x, y = dist_cm * math.sin(angle_tilt_rad), h_radius * math.cos(angle_pan_rad), h_radius * math.sin(
                     angle_pan_rad)
                 ScanPoint.objects.create(scan=current_scan_object_global, derece=target_h_angle_rel,
-                                         dikey_aci=target_v_angle, mesafe_cm=dist_cm, x_cm=x, y_cm=y, z_cm=z,
+                                         dikey_aci=logical_v_angle, mesafe_cm=dist_cm, x_cm=x, y_cm=y, z_cm=z,
                                          timestamp=timezone.now())
 
-        script_exit_status_global = Scan.Status.COMPLETED
+        script_exit_status_global = Scan.Status.COMPLETED # Tarama başarılı tamamlandı
     except KeyboardInterrupt:
-        script_exit_status_global = Scan.Status.INTERRUPTED
+        script_exit_status_global = Scan.Status.INTERRUPTED # Kullanıcı durdurdu
         print("\nKullanıcı tarafından durduruldu.")
     except Exception as e:
-        script_exit_status_global = Scan.Status.ERROR
+        script_exit_status_global = Scan.Status.ERROR # Hata oluştu
         print(f"KRİTİK HATA: {e}");
         traceback.print_exc()
     finally:
         print("İşlem sonlanıyor. Motor merkez konuma getiriliyor...")
-        move_motor_to_angle(0, INVERT_MOTOR)
-        if servo: servo.value = degree_to_servo_value(90)
+        move_motor_to_angle(0, INVERT_MOTOR) # Adım motorunu merkeze getir (0 derece)
+        if servo: servo.value = degree_to_servo_value(90) # Servo motoru merkeze getir (fiziksel 90 derece)

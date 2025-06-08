@@ -32,7 +32,7 @@ PAUSE_ON_DETECTION_S = 3.0
 STEPS_PER_REVOLUTION = 4096
 # DÜZELTME: Motoru belirgin şekilde hızlandırmak için adımlar arası bekleme süresi düşürüldü.
 # Bu değeri daha da düşürmek hızı artırır ancak motorun adım atlamasına neden olabilir.
-STEP_MOTOR_INTER_STEP_DELAY = 0.001
+STEP_MOTOR_INTER_STEP_DELAY = 0.01
 
 # --- GLOBAL DEĞİŞKENLER ---
 lock_file_handle, sensor, buzzer, lcd = None, None, None, None

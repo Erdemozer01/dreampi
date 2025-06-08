@@ -235,19 +235,74 @@ def add_scan_rays(fig, df):
                              showlegend=False, name='Işınlar'))
 
 
+# --- YARDIMCI FONKSİYONLAR --- bölümündeki bu fonksiyonu güncelleyin
+
 def analyze_environment_shape(df_valid):
-    if not DJANGO_MODELS_AVAILABLE or len(df_valid) < 5: return "Analiz için yetersiz veri.", df_valid.to_json(
-        orient='split')
+
+    # Analiz için minimum nokta sayısı kontrolü
+    if not DJANGO_MODELS_AVAILABLE or len(df_valid) < 10:
+        return "Analiz için yetersiz veri.", df_valid.to_json(orient='split')
+
     points = df_valid[['y_cm', 'x_cm']].to_numpy()
+    final_desc = "Analiz yapılamadı."
+
     try:
-        db = DBSCAN(eps=15, min_samples=3).fit(points)
+        # 1. ADIM: DBSCAN ile nesneleri kümelere ayırma
+        # eps: İki noktanın komşu sayılması için maksimum mesafe.
+        # min_samples: Bir noktanın çekirdek nokta sayılması için gereken komşu sayısı.
+        db = DBSCAN(eps=20, min_samples=5).fit(points)
         df_valid['cluster'] = db.labels_
+
+        # Küme sayısını hesapla (gürültü kümesi -1 hariç)
         num_clusters = len(set(db.labels_)) - (1 if -1 in db.labels_ else 0)
-        desc = f"{num_clusters} olası nesne kümesi bulundu."
+
+        analysis_desc_parts = []
+        if num_clusters > 0:
+            analysis_desc_parts.append(f"{num_clusters} olası nesne kümesi bulundu.")
+        else:
+            analysis_desc_parts.append("Belirgin bir nesne kümesi bulunamadı.")
+
+        # 2. ADIM: En büyük küme üzerinde duvar analizi
+        if num_clusters > 0:
+            # En çok noktaya sahip olan kümeyi bul (gürültü hariç)
+            valid_clusters = df_valid[df_valid['cluster'] != -1]
+            if not valid_clusters.empty:
+                largest_cluster_id = valid_clusters['cluster'].value_counts().idxmax()
+                largest_cluster_points = df_valid[df_valid['cluster'] == largest_cluster_id]
+
+                # 3. ADIM: RANSAC Regresyonu ile çizgi tespiti
+                # Eğer en büyük kümede yeterli nokta varsa analiz et
+                if len(largest_cluster_points) >= 10:
+                    X = largest_cluster_points[['y_cm']]  # Giriş değişkeni (bir eksen)
+                    y = largest_cluster_points['x_cm']  # Çıkış değişkeni (diğer eksen)
+
+                    try:
+                        # RANSAC modelini oluştur ve eğit
+                        ransac = RANSACRegressor(random_state=42)
+                        ransac.fit(X, y)
+
+                        # Modelin ne kadar iyi uyduğunu kontrol et
+                        inlier_mask = ransac.inlier_mask_
+                        inlier_ratio = np.sum(inlier_mask) / len(X)
+
+                        # 4. ADIM: Sonucu Yorumla
+                        # Eğer kümedeki noktaların %70'inden fazlası bir çizgi oluşturuyorsa
+                        # bunun bir duvar olduğunu varsayabiliriz.
+                        if inlier_ratio > 0.70:
+                            analysis_desc_parts.append("En büyük nesnenin düz bir duvar olma ihtimali yüksek.")
+
+                    except Exception as e:
+                        print(f"RANSAC Regresyonu sırasında hata: {e}")
+
+        final_desc = " ".join(analysis_desc_parts)
+
     except Exception as e:
-        df_valid['cluster'] = -2
-        desc = "Kümeleme analizi sırasında hata oluştu."
-    return desc, df_valid.to_json(orient='split')
+        df_valid['cluster'] = -2  # Hata durumunda cluster'ı -2 yap
+        final_desc = "Kümeleme analizi sırasında hata oluştu."
+        print(f"DBSCAN analizi sırasında hata: {e}")
+
+    # Analiz sonucunu ve kümelenmiş veri setini JSON formatında döndür
+    return final_desc, df_valid.to_json(orient='split')
 
 
 # --- CALLBACKS (YENİDEN DÜZENLENMİŞ VE OPTİMİZE EDİLMİŞ) ---

@@ -8,11 +8,6 @@ import traceback
 import random
 
 
-from gpiozero.pins.pigpio import PiGPIOFactory
-from gpiozero import Device
-
-Device.pin_factory = PiGPIOFactory()
-
 
 # --- DONANIM KÜTÜPHANELERİ ---
 try:

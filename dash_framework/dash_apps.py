@@ -145,14 +145,13 @@ control_panel = dbc.Card([
             dbc.InputGroup([dbc.InputGroupText("Motor Adım/Tur", style={"width": "150px"}),
                             dbc.Input(id="steps-per-rev-input", type="number", value=DEFAULT_UI_STEPS_PER_REVOLUTION,
                                       min=500, max=10000, step=1)], className="mb-2"),
-            # NEW: Servo Angle Slider
             dbc.InputGroup([dbc.InputGroupText("Dikey Açı (°)", style={"width": "150px"}),
                             dcc.Slider(
                                 id='servo-angle-slider',
                                 min=0, max=180, step=1, value=DEFAULT_UI_SERVO_ANGLE,
                                 marks={0: '0°', 45: '45°', 90: '90°', 135: '135°', 180: '180°'},
                                 tooltip={"placement": "bottom", "always_visible": True},
-                                className="mt-2" # Add some margin
+                                className="mt-2"  # Add some margin
                             )], className="mb-2"),
             dbc.Checkbox(id="invert-motor-checkbox", label="Motor Yönünü Ters Çevir", value=DEFAULT_UI_INVERT_MOTOR,
                          className="mt-2 mb-2"),

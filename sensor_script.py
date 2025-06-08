@@ -7,6 +7,11 @@ import atexit
 import math
 import traceback
 
+from gpiozero.pins.pigpio import PiGPIOFactory
+from gpiozero import Device
+
+Device.pin_factory = PiGPIOFactory()
+
 # --- DJANGO ENTEGRASYONU ---
 try:
     sys.path.append(os.getcwd())

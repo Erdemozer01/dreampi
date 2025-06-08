@@ -240,6 +240,7 @@ def update_system_card(n):
     return status, cpu, ram, f"{cpu:.1f}%", f"{ram:.1f}%"
 
 # --- YENİ BİRLEŞİK ANA CALLBACK ---
+# --- YENİ BİRLEŞİK ANA CALLBACK ---
 @app.callback(
     [Output('scan-data-store', 'data'),
      Output('current-angle', 'children'), Output('current-vertical-angle', 'children'),

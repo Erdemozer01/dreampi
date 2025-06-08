@@ -21,7 +21,7 @@ except ImportError as e:
 LOCK_FILE_PATH = '/tmp/autonomous_drive.lock'
 PID_FILE_PATH = '/tmp/autonomous_drive.pid'
 
-# DC Motor Pinleri (L298N) - KULLANICININ ORİJİNAL PİNLERİNE DÖNDÜRÜLDÜ
+# DC Motor Pinleri (L298N)
 DC_MOTOR_SOL_ILERI = 4
 DC_MOTOR_SOL_GERI = 5
 DC_MOTOR_SOL_HIZ = 8

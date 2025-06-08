@@ -30,7 +30,6 @@ SWEEP_ANGLE = 90.0
 DETECTION_THRESHOLD_CM = 30.0
 PAUSE_ON_DETECTION_S = 3.0
 STEPS_PER_REVOLUTION = 4096
-# DÜZELTME: Daha kararlı bir dönüş için gecikme hafifçe artırıldı
 STEP_MOTOR_INTER_STEP_DELAY = 0.0022
 
 # --- GLOBAL DEĞİŞKENLER ---
@@ -44,7 +43,6 @@ motor_paused, pause_end_time = False, 0
 
 
 # --- SÜREÇ YÖNETİMİ VE KAYNAK KONTROLÜ ---
-# (Bu fonksiyonlar doğru olduğu için değiştirilmedi)
 def acquire_lock_and_pid():
     global lock_file_handle
     try:
@@ -84,7 +82,6 @@ def release_resources_on_exit():
 
 
 # --- DONANIM FONKSİYONLARI ---
-# (Bu fonksiyonlar doğru olduğu için değiştirilmedi)
 def init_hardware():
     global sensor, buzzer, lcd, in1_dev, in2_dev, in3_dev, in4_dev
     try:
@@ -113,6 +110,7 @@ def _set_step_pins(s1, s2, s3, s4):
 
 
 def _single_step_motor(direction_positive):
+    # HATA DÜZELTMESİ: Bu fonksiyon global değişkeni değiştirdiği için 'global' anahtar kelimesi eklendi.
     global current_step_sequence_index, current_motor_angle_global
     step_increment = 1 if direction_positive else -1
     current_step_sequence_index = (current_step_sequence_index + step_increment) % len(step_sequence)
@@ -122,7 +120,6 @@ def _single_step_motor(direction_positive):
 
 
 # --- ANA GÖZCÜ MANTIĞI ---
-# (Bu fonksiyon doğru olduğu için değiştirilmedi)
 def check_environment_and_react():
     global motor_paused, pause_end_time
     mesafe = sensor.distance * 100
@@ -154,43 +151,37 @@ def check_environment_and_react():
                 print(f"LCD YAZMA HATASI: {e}")
 
 
-# DÜZELTME: Motoru hedefe götüren daha sağlam bir fonksiyon
 def move_to_target_with_scan(target_angle):
     """Motoru hedefe götürürken her adımda ortamı kontrol eder."""
+    # HATA DÜZELTMESİ: Bu fonksiyon global değişkeni hem okuyup hem de yazdığı için 'global' anahtar kelimesi eklendi.
+    global current_motor_angle_global
     print(f"\n>> Yeni Hedef: {target_angle:.1f} derece. Harekete başlanıyor...")
 
-    # Hedef yöne doğru dön
     direction_is_positive = target_angle > current_motor_angle_global
 
-    # Hedefe ulaşana kadar veya yönü geçene kadar devam et
     while True:
-        # Her adımdan önce ortamı kontrol et
         check_environment_and_react()
 
-        # Motor duraklatılmışsa bekle
         if motor_paused:
             time.sleep(0.1)
             continue
 
-        # Hedefe ulaşıp ulaşmadığını kontrol et
         if direction_is_positive:
             if current_motor_angle_global >= target_angle:
                 break
-        else:  # direction_is_negative
+        else:
             if current_motor_angle_global <= target_angle:
                 break
 
-        # Hedefe ulaşmadıysa bir adım at
         _single_step_motor(direction_is_positive)
 
-    # Hedefe ulaşıldığında açıyı tam olarak ayarla ve son bir kontrol yap
     print(f"   Hedefe ulaşıldı. Son Açı: {current_motor_angle_global:.1f}°")
-    current_motor_angle_global = target_angle  # Küçük hataları düzelt
+    current_motor_angle_global = target_angle
     check_environment_and_react()
-    time.sleep(1)  # Kenarda veya merkezde kısa bir bekleme
+    time.sleep(1)
 
 
-# --- ANA ÇALIŞMA BLOĞU (DÜZELTİLMİŞ) ---
+# --- ANA ÇALIŞMA BLOĞU ---
 if __name__ == "__main__":
     atexit.register(release_resources_on_exit)
     if not acquire_lock_and_pid() or not init_hardware(): sys.exit(1)
@@ -199,21 +190,14 @@ if __name__ == "__main__":
 
     try:
         while True:
-            # Sağ kenara git
             move_to_target_with_scan(SWEEP_ANGLE)
-
-            # Sol kenara git
             move_to_target_with_scan(-SWEEP_ANGLE)
-
-            # Merkeze geri dön
             move_to_target_with_scan(0)
-
             print("\n>>> Bir tam tur tamamlandı. Yeni tura başlanıyor...")
-            time.sleep(2)  # Yeni tura başlamadan önce 2 saniye bekle
+            time.sleep(2)
 
     except KeyboardInterrupt:
         print("\nKullanıcı tarafından durduruldu.")
     except Exception as e:
         print(f"KRİTİK HATA: {e}");
         traceback.print_exc()
-

@@ -1,43 +1,36 @@
 import time, os
 import atexit
 import sys
-import random
+import random # DÜZELTME: Rastgele seçim için import edildi
 
 # PID dosyası yönetimi için sabitler (dashboard ile aynı olmalı)
 SENSOR_SCRIPT_PID_FILE = '/tmp/sensor_scan_script.pid'
 SENSOR_SCRIPT_LOCK_FILE = '/tmp/sensor_scan_script.lock'
 
-
 # --- PID ve Lock Dosyası Yönetimi ---
 def create_pid_file():
-    # Bu moda özel, bağımsız dosya isimleri kullanılıyor.
-    global LOCK_FILE_PATH, PID_FILE_PATH
-    LOCK_FILE_PATH = '/tmp/free_movement_script.lock'
-    PID_FILE_PATH = '/tmp/free_movement_script.pid'
-    if os.path.exists(LOCK_FILE_PATH):
+    if os.path.exists(SENSOR_SCRIPT_LOCK_FILE):
         print("HATA: Kilit dosyası zaten var. Başka bir işlem çalışıyor olabilir.")
         sys.exit(1)
     try:
         pid = os.getpid()
-        with open(PID_FILE_PATH, 'w') as f:
+        with open(SENSOR_SCRIPT_PID_FILE, 'w') as f:
             f.write(str(pid))
-        open(LOCK_FILE_PATH, 'w').close()
-        print(f"PID dosyası ({PID_FILE_PATH}) ve kilit dosyası oluşturuldu. PID: {pid}")
+        # Lock dosyasını PID dosyası başarıyla oluşturulduktan sonra yarat
+        open(SENSOR_SCRIPT_LOCK_FILE, 'w').close()
+        print(f"PID dosyası ({SENSOR_SCRIPT_PID_FILE}) ve kilit dosyası oluşturuldu. PID: {pid}")
     except IOError as e:
         print(f"HATA: PID dosyası oluşturulamadı: {e}")
         sys.exit(1)
 
-
 def remove_pid_and_lock_files():
     print("PID ve kilit dosyaları temizleniyor...")
-    for f in ['/tmp/free_movement_script.pid', '/tmp/free_movement_script.lock']:
+    for f in [SENSOR_SCRIPT_PID_FILE, SENSOR_SCRIPT_LOCK_FILE]:
         if os.path.exists(f):
             try:
                 os.remove(f)
             except OSError:
                 pass
-
-
 # Gerekli GPIO kütüphanelerini import et
 try:
     from gpiozero import DistanceSensor, Buzzer, OutputDevice, LED
@@ -67,7 +60,7 @@ STEPS_PER_REVOLUTION = 4096
 STEP_MOTOR_INTER_STEP_DELAY = 0.0015
 STEP_MOTOR_SETTLE_TIME = 0.05
 
-SWEEP_TARGET_ANGLE = 45
+SWEEP_TARGET_ANGLE = 60
 ALGILAMA_ESIGI_CM = 20
 MOTOR_PAUSE_ON_DETECTION_S = 3.0
 CYCLE_END_PAUSE_S = 5.0
@@ -98,22 +91,18 @@ object_alert_active = False
 motor_movement_paused = False
 motor_pause_end_time = 0
 
-# DÜZELTME: "Dokunma bana!!" selamlama listesine eklendi.
+# DÜZELTME: Rastgele selamlama mesajları için bir liste oluşturuldu.
+# Her bir eleman, LCD'nin iki satırını temsil eden bir demettir (tuple).
 GREETING_MESSAGES = [
     ("Selam!", "Birini gordum :)"),
     ("Hey!", "Orada biri var!"),
     ("Dikkat!", "Engel algilandi."),
-    ("Dokunma bana!!", "Yakinlasma..."),
+    ("Merhaba", "Dream Pi devriyede"),
+    ("Merhaba", "Ben Dream Pi"),
+    ("Hey", "Dokunma Bana :)"),
+    ("Demek", "Buradasin. Yakaladim !!!"),
     ("Ooo, bir misafir", "Hos geldiniz!")
 ]
-
-# Kaçan adam figürü için özel karakter verileri
-running_man_frames = [
-    (0b00100, 0b01110, 0b00100, 0b01110, 0b10101, 0b00100, 0b01010, 0b01010),
-    (0b00100, 0b01110, 0b00100, 0b01110, 0b10101, 0b00100, 0b00110, 0b00101),
-    (0b00100, 0b01110, 0b00100, 0b01110, 0b10101, 0b00100, 0b01100, 0b10010)
-]
-
 
 # ==============================================================================
 # --- Donanım ve Yardımcı Fonksiyonlar ---
@@ -136,9 +125,7 @@ def init_hardware():
             lcd = CharLCD(i2c_expander=LCD_PORT_EXPANDER, address=LCD_I2C_ADDRESS, port=I2C_PORT, cols=LCD_COLS,
                           rows=LCD_ROWS, auto_linebreaks=False)
             lcd.clear()
-            for i, frame in enumerate(running_man_frames):
-                lcd.create_char(i, frame)
-            print("✓ LCD başarıyla başlatıldı ve özel karakterler yüklendi.")
+            print("✓ LCD başarıyla başlatıldı.")
         except Exception as e_lcd:
             print(f"UYARI: LCD başlatılamadı! Hata: {e_lcd}")
             lcd = None
@@ -164,12 +151,11 @@ def release_resources_on_exit():
             status_led.off()
         except:
             pass
-    if buzzer: buzzer.off()
     for dev in [sensor, buzzer, lcd, status_led, in1_dev, in2_dev, in3_dev, in4_dev]:
         if dev and hasattr(dev, 'close'):
             try:
                 dev.close()
-            except:
+            except Exception:
                 pass
     print("✓ Temizleme tamamlandı.")
 
@@ -190,46 +176,68 @@ def _single_step_motor(direction_positive):
     time.sleep(STEP_MOTOR_INTER_STEP_DELAY)
 
 
+def _move_motor_steps(num_steps_to_take, direction_positive):
+    global current_step_sequence_index, current_motor_angle_global
+    for _ in range(int(num_steps_to_take)):
+        _single_step_motor(direction_positive)  # Her adımda _single_step_motor çağırarak açıyı güncel tutar
+
+
 def move_motor_to_absolute_angle(target_angle_deg, speed_factor=1.0):
     global current_motor_angle_global
+
     angle_diff_raw = target_angle_deg - current_motor_angle_global
     angle_diff = angle_diff_raw
+
     if abs(angle_diff_raw) > 180:
         angle_diff = angle_diff_raw - (360 if angle_diff_raw > 0 else -360)
+
     num_steps = round(abs(angle_diff) / DEG_PER_STEP)
     if num_steps == 0:
         time.sleep(STEP_MOTOR_SETTLE_TIME / speed_factor)
         return
+
     direction_positive = (angle_diff > 0)
+
     for _ in range(num_steps):
         _single_step_motor(direction_positive)
         if speed_factor != 1.0:
             time.sleep(STEP_MOTOR_INTER_STEP_DELAY * (1 / speed_factor - 1))
+
     current_motor_angle_global = target_angle_deg
     time.sleep(STEP_MOTOR_SETTLE_TIME / speed_factor)
 
 
 def kisa_uyari_bip(bip_suresi):
     if buzzer:
-        buzzer.beep(on_time=bip_suresi, off_time=0.01, n=1, background=True)
+        buzzer.on();
+        time.sleep(bip_suresi);
+        buzzer.off()
 
 
 def update_lcd_display(message_type):
     global current_lcd_message_type, lcd, last_lcd_time_update
     now = time.time()
-    if message_type == current_lcd_message_type and not (
-            message_type == "normal_time" and (now - last_lcd_time_update >= LCD_TIME_UPDATE_INTERVAL)):
+    # Sadece mesaj tipi değiştiyse VEYA normal_time ise ve interval dolduysa yaz
+    if message_type == current_lcd_message_type and \
+            not (message_type == "normal_time" and (now - last_lcd_time_update >= LCD_TIME_UPDATE_INTERVAL)):
         return
+
     if not lcd: return
     try:
+        # normal_time durumunda ve sadece zaman güncelleniyorsa clear() yapma, sadece alt satırı güncelle (titremeyi azaltır)
         if message_type == "normal_time" and current_lcd_message_type == "normal_time":
             lcd.cursor_pos = (1, 0);
             lcd.write_string(time.strftime("%H:%M:%S").ljust(LCD_COLS))
             last_lcd_time_update = now
-        else:
+        else:  # Durum değişti veya ilk yazım
             lcd.clear()
-            if message_type == "normal_time":
-                lcd.write_string("Dream Pi Gozcu")
+            if message_type == "alert_greeting":
+                line1, line2 = random.choice(GREETING_MESSAGES)
+                lcd.write_string(line1.ljust(LCD_COLS))
+                lcd.cursor_pos = (1, 0);
+                lcd.write_string(line2.ljust(LCD_COLS))
+            elif message_type == "normal_time":
+                lcd.write_string("Dream Pi")
                 lcd.cursor_pos = (1, 0);
                 lcd.write_string(time.strftime("%H:%M:%S").ljust(LCD_COLS))
                 last_lcd_time_update = now
@@ -241,49 +249,42 @@ def update_lcd_display(message_type):
 
 def perform_measurement_and_react():
     global object_alert_active, led_is_blinking, motor_movement_paused, motor_pause_end_time
+
     mesafe = sensor.distance * 100
     is_object_currently_close = (mesafe < ALGILAMA_ESIGI_CM)
+
     newly_detected_for_pause = False
+
     if is_object_currently_close:
         if not object_alert_active:
             print(f"   >>> UYARI: Nesne {mesafe:.1f} cm! <<<")
             kisa_uyari_bip(BUZZER_BIP_SURESI)
-            if lcd:
-                try:
-                    # DÜZELTME: Her zaman "Dokunma bana!!" yazısı ile başla
-                    lcd.clear()
-                    lcd.write_string("Dokunma bana!!")
-                    lcd.cursor_pos = (1, 0)
-                    lcd.write_string(f"Mesafe: {mesafe:.1f} cm")
-                    time.sleep(2.0)  # 2 saniye bekle
-
-                    # Ardından animasyonu oynat
-                    animation_start_time = time.time()
-                    frame_index = 0
-                    while time.time() - animation_start_time < 2.0:
-                        lcd.clear();
-                        lcd.write_string("Uzaklasiyorum...");
-                        lcd.cursor_pos = (1, 7);
-                        lcd.write_string(chr(frame_index))
-                        frame_index = (frame_index + 1) % len(running_man_frames)
-                        time.sleep(0.2)
-                    lcd.clear()
-                except Exception as e:
-                    print(f"LCD animasyon hatası: {e}")
+            update_lcd_display("alert_greeting")
+            # DÜZELTME: Mesajın ekranda okunabilmesi için 2 saniye bekle.
+            time.sleep(2.0)
             if status_led:
                 if led_is_blinking:
                     status_led.off(); time.sleep(0.01); status_led.on()
                 elif not status_led.is_lit:
                     status_led.on()
-            led_is_blinking, object_alert_active, newly_detected_for_pause = False, True, True
+            led_is_blinking = False
+            object_alert_active = True
+            newly_detected_for_pause = True  # Motor duraklatmasını tetiklemek için işaretle
     else:
         if object_alert_active:
             print("   <<< UYARI SONA ERDİ. >>>")
-            if status_led and not led_is_blinking: status_led.blink(on_time=LED_BLINK_ON_SURESI,
-                                                                    off_time=LED_BLINK_OFF_SURESI, background=True)
-            led_is_blinking, object_alert_active = True, False
-        # Normal durumda sürekli saati göster
-        update_lcd_display("normal_time")
+            update_lcd_display("normal_time")
+            if status_led:
+                if not led_is_blinking: status_led.blink(on_time=LED_BLINK_ON_SURESI, off_time=LED_BLINK_OFF_SURESI,
+                                                         background=True)
+            led_is_blinking = True
+            object_alert_active = False
+        else:
+            update_lcd_display("normal_time")
+            if status_led and not led_is_blinking:
+                status_led.blink(on_time=LED_BLINK_ON_SURESI, off_time=LED_BLINK_OFF_SURESI, background=True)
+                led_is_blinking = True
+
     return is_object_currently_close, newly_detected_for_pause
 
 
@@ -291,50 +292,103 @@ def perform_measurement_and_react():
 # --- ANA ÇALIŞMA BLOĞU ---
 # ==============================================================================
 if __name__ == "__main__":
+    # PID ve kilit dosyalarını program sonunda temizle
     atexit.register(remove_pid_and_lock_files)
+
+    # Programın başında PID ve kilit dosyalarını oluştur
     create_pid_file()
+
     atexit.register(release_resources_on_exit)
     if not init_hardware():
         sys.exit(1)
 
-    print("\n>>> Serbest Tarama Modu Başlatıldı <<<")
+    print("\n>>> Serbest Tarama Modu V6 Başlatıldı (Sürekli Ölçümlü Duraklatma) <<<")
+    print(f"Tarama Açıları: -{SWEEP_TARGET_ANGLE}° ile +{SWEEP_TARGET_ANGLE}° arası")
+
     move_motor_to_absolute_angle(0)
+    update_lcd_display("normal_time")
+
     try:
         while True:
-            tur_etaplari = [(SWEEP_TARGET_ANGLE, f"+{SWEEP_TARGET_ANGLE}°"),
-                            (-SWEEP_TARGET_ANGLE, f"-{SWEEP_TARGET_ANGLE}°"), (0, "Merkeze")]
+            tur_etaplari = [
+                (SWEEP_TARGET_ANGLE, f"Merkezden +{SWEEP_TARGET_ANGLE}° yönüne"),
+                (-SWEEP_TARGET_ANGLE, f"+{SWEEP_TARGET_ANGLE}°'den -{SWEEP_TARGET_ANGLE}° yönüne"),
+                (0, f"-{SWEEP_TARGET_ANGLE}°'den Merkeze (0°)")
+            ]
+
             for hedef_aci_etap, etap_adi in tur_etaplari:
                 if motor_movement_paused and time.time() < motor_pause_end_time:
                     while time.time() < motor_pause_end_time:
-                        perform_measurement_and_react();
+                        perform_measurement_and_react()
                         time.sleep(0.05)
                     motor_movement_paused = False
                     print("   Duraklatma bitti, harekete devam ediliyor...")
+
                 print(f"\n>> Etap: {etap_adi} taranıyor...")
-                angle_diff = hedef_aci_etap - current_motor_angle_global
-                if abs(angle_diff) > 180: angle_diff -= (360 if angle_diff > 0 else -360)
-                direction = angle_diff > 0
+
+                angle_diff_for_direction = hedef_aci_etap - current_motor_angle_global
+                if abs(angle_diff_for_direction) > 180:
+                    angle_diff_for_direction -= (360 if angle_diff_for_direction > 0 else -360)
+
+                direction_is_positive_etap = angle_diff_for_direction > 0
+
                 while True:
-                    if abs(current_motor_angle_global - hedef_aci_etap) < DEG_PER_STEP: break
-                    if (direction and current_motor_angle_global > hedef_aci_etap) or (
-                            not direction and current_motor_angle_global < hedef_aci_etap): break
-                    if not motor_movement_paused: _single_step_motor(direction)
+                    if abs(current_motor_angle_global - hedef_aci_etap) < DEG_PER_STEP:
+                        current_motor_angle_global = hedef_aci_etap
+                        break
+
+                    if (direction_is_positive_etap and current_motor_angle_global > hedef_aci_etap + DEG_PER_STEP) or \
+                            (not direction_is_positive_etap and current_motor_angle_global < hedef_aci_etap - DEG_PER_STEP):
+                        current_motor_angle_global = hedef_aci_etap
+                        break
+
+                    if not motor_movement_paused:
+                        _single_step_motor(direction_is_positive_etap)
+
                     is_close, new_alert = perform_measurement_and_react()
+
                     if new_alert and not motor_movement_paused:
-                        print(f"   Motor {MOTOR_PAUSE_ON_DETECTION_S} saniye duraklatılıyor...")
+                        print(f"   Motor {MOTOR_PAUSE_ON_DETECTION_S} saniye duraklatılıyor (tarama sırasında)...")
                         motor_movement_paused = True
                         motor_pause_end_time = time.time() + MOTOR_PAUSE_ON_DETECTION_S
+
                     if motor_movement_paused and time.time() >= motor_pause_end_time:
                         print("   Motor duraklatma süresi bitti, devam edilecek...")
                         motor_movement_paused = False
-                    if motor_movement_paused: time.sleep(0.05)
-                current_motor_angle_global = hedef_aci_etap
-                print(f"   Etap tamamlandı. Mevcut Açı: {current_motor_angle_global:.1f}°")
-            print(f"\n>>> Tur tamamlandı. {CYCLE_END_PAUSE_S} saniye bekleniyor...")
+
+                    if motor_movement_paused:
+                        time.sleep(0.05)
+
+                print(f"   Etap '{etap_adi}' tamamlandı. Mevcut Açı: {current_motor_angle_global:.1f}°")
+
+            print(f"\n>>> Bir tur tamamlandı. Merkeze dönüldü ({current_motor_angle_global:.1f}°). {CYCLE_END_PAUSE_S} saniye bekleniyor...")
+
+            object_alert_active = False
+            perform_measurement_and_react()
+
             pause_start_time_cycle_end = time.time()
             while time.time() - pause_start_time_cycle_end < CYCLE_END_PAUSE_S:
-                perform_measurement_and_react();
+                is_close_cycle_pause, new_alert_cycle_pause = perform_measurement_and_react()
+
+                if new_alert_cycle_pause and not motor_movement_paused:
+                    print(f"   Motor {MOTOR_PAUSE_ON_DETECTION_S} saniye duraklatılıyor (tur sonu beklemede)...")
+                    motor_movement_paused = True
+                    motor_pause_end_time = time.time() + MOTOR_PAUSE_ON_DETECTION_S
+
+                if motor_movement_paused and time.time() >= motor_pause_end_time:
+                    print("   Motor duraklatma süresi bitti (tur sonu beklemede)...")
+                    motor_movement_paused = False
+
+                if motor_movement_paused:
+                    temp_pause_start = time.time()
+                    while time.time() < motor_pause_end_time:
+                        perform_measurement_and_react()
+                        time.sleep(0.05)
+                    motor_movement_paused = False
+                    print("   Nesne uyarısı sonrası tur sonu beklemesine devam...")
+
                 time.sleep(0.1)
+
     except KeyboardInterrupt:
         print("\nKullanıcı tarafından durduruluyor...")
     finally:
@@ -343,7 +397,6 @@ if __name__ == "__main__":
             print("Motor başlangıç pozisyonuna (0°) getiriliyor...")
             move_motor_to_absolute_angle(0, speed_factor=0.5)
         else:
-            print("Donanım başlatılamadığı için motor homing atlanıyor.")
+            print("Donanım başlatılamadığı için motor homing atlanıyor, pinler sıfırlanacak.")
             _set_step_pins(0, 0, 0, 0)
         print("Çıkış işlemleri tamamlandı.")
-

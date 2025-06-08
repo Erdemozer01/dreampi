@@ -99,6 +99,8 @@ GREETING_MESSAGES = [
     ("Dikkat!", "Engel algilandi."),
     ("Merhaba", "Dream Pi devriyede"),
     ("Merhaba", "Ben Dream Pi"),
+    ("Dokunma", "Bana :)"),
+    ("Cesaretine ", "Hayranım :)"),
     ("Ooo, bir misafir", "Hos geldiniz!")
 ]
 

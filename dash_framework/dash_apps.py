@@ -735,12 +735,16 @@ def display_cluster_info(clickData, stored_data_json):
         return True, "Hata", f"Küme bilgisi gösterilemedi: {e}"
 
 
+
 @app.callback(
     Output('ai-yorum-sonucu', 'children'),
     Input('ai-model-dropdown', 'value'),
     prevent_initial_call=True
 )
 def yorumla_model_secimi(selected_config_id):
+    """
+    Seçilen AI yapılandırmasına göre ortam yorumlamasını tetikler.
+    """
     if not selected_config_id:
         return html.P("Yorum için bir AI yapılandırması seçin.")
     if not DJANGO_MODELS_AVAILABLE:
@@ -752,12 +756,26 @@ def yorumla_model_secimi(selected_config_id):
 
     # Basit önbellekleme: Yorum varsa, tekrar isteme.
     if scan.ai_commentary and scan.ai_commentary.strip():
-        return dbc.Alert(dcc.Markdown(scan.ai_commentary), color="info", header="Önbellekten Yüklendi")
+        # --- DÜZELTİLMİŞ KISIM ---
+        # 'header' argümanı yerine, başlığı children içine ekliyoruz.
+        return dbc.Alert(
+            [
+                html.H4("Önbellekten Yüklendi", className="alert-heading"),  # Başlık
+                html.Hr(),  # Ayırıcı çizgi
+                dcc.Markdown(scan.ai_commentary, dangerously_allow_html=True)  # İçerik
+            ],
+            color="info"
+        )
+        # -------------------------
 
     try:
         config = AIModelConfiguration.objects.get(id=selected_config_id)
         analyzer = AIAnalyzerService(config=config)
-        prompt = "Bu 3D tarama verilerini analiz et. Ortamın genel şekli nedir (oda, koridor vb.)? Belirgin nesneler var mı? Varsa, konumları ve olası şekilleri hakkında bilgi ver. Özellikle z_cm (yükseklik) verisini dikkate alarak yorum yap."
+        prompt = (
+            "Bu 3D tarama verilerini analiz et. Ortamın genel şekli nedir (oda, koridor vb.)? "
+            "Belirgin nesneler var mı? Varsa, konumları ve olası şekilleri hakkında bilgi ver. "
+            "Özellikle z_cm (yükseklik) verisini dikkate alarak yorum yap."
+        )
 
         analysis_result = analyzer.analyze_model_data(
             django_model=ScanPoint,
@@ -771,6 +789,7 @@ def yorumla_model_secimi(selected_config_id):
             scan.save(update_fields=['ai_commentary'])
 
         return dcc.Markdown(analysis_result, dangerously_allow_html=True)
+
     except AIModelConfiguration.DoesNotExist:
         return dbc.Alert(f"ID'si {selected_config_id} olan bir AI yapılandırması bulunamadı.", color="danger")
     except Exception as e:

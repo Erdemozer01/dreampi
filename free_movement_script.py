@@ -30,7 +30,8 @@ SWEEP_ANGLE = 90.0
 DETECTION_THRESHOLD_CM = 30.0
 PAUSE_ON_DETECTION_S = 3.0
 STEPS_PER_REVOLUTION = 4096
-STEP_MOTOR_INTER_STEP_DELAY = 0.0022
+# DÜZELTME: Motoru hızlandırmak için adımlar arası bekleme süresi düşürüldü.
+STEP_MOTOR_INTER_STEP_DELAY = 0.0015
 
 # --- GLOBAL DEĞİŞKENLER ---
 lock_file_handle, sensor, buzzer, lcd = None, None, None, None
@@ -110,7 +111,6 @@ def _set_step_pins(s1, s2, s3, s4):
 
 
 def _single_step_motor(direction_positive):
-    # HATA DÜZELTMESİ: Bu fonksiyon global değişkeni değiştirdiği için 'global' anahtar kelimesi eklendi.
     global current_step_sequence_index, current_motor_angle_global
     step_increment = 1 if direction_positive else -1
     current_step_sequence_index = (current_step_sequence_index + step_increment) % len(step_sequence)
@@ -153,7 +153,6 @@ def check_environment_and_react():
 
 def move_to_target_with_scan(target_angle):
     """Motoru hedefe götürürken her adımda ortamı kontrol eder."""
-    # HATA DÜZELTMESİ: Bu fonksiyon global değişkeni hem okuyup hem de yazdığı için 'global' anahtar kelimesi eklendi.
     global current_motor_angle_global
     print(f"\n>> Yeni Hedef: {target_angle:.1f} derece. Harekete başlanıyor...")
 

@@ -17,7 +17,6 @@ try:
     from scipy.spatial import ConvexHull
     from sklearn.cluster import DBSCAN
     from sklearn.linear_model import RANSACRegressor
-
     DJANGO_MODELS_AVAILABLE = True
     print("Dashboard: Django ve bilimsel kütüphaneler başarıyla import edildi.")
 except Exception as e:
@@ -66,10 +65,10 @@ control_panel = dbc.Card([
     dbc.CardBody([
         html.H6("Çalışma Modu:"),
         dbc.RadioItems(id='mode-selection-radios', options=[
-            {'label': '3D Haritalama Modu', 'value': 'scan_and_map'},
-            {'label': 'Otonom Sürüş Modu', 'value': 'autonomous_drive'},
-            {'label': 'Serbest Hareket (Gözcü)', 'value': 'free_movement'},
-        ], value='scan_and_map', className="mb-3"),
+                {'label': '3D Haritalama Modu', 'value': 'scan_and_map'},
+                {'label': 'Otonom Sürüş Modu', 'value': 'autonomous_drive'},
+                {'label': 'Serbest Hareket (Gözcü)', 'value': 'free_movement'},
+            ], value='scan_and_map', className="mb-3"),
         html.Hr(),
         dbc.Row([
             dbc.Col(html.Button('Başlat', id='start-scan-button', className="btn btn-success w-100"), width=6),
@@ -79,20 +78,11 @@ control_panel = dbc.Card([
         html.Hr(),
         html.Div(id='scan-parameters-wrapper', children=[
             html.H6("Haritalama Parametreleri:"),
-            dbc.InputGroup([dbc.InputGroupText("Tarama Açısı (°)"),
-                            dbc.Input(id="scan-duration-angle-input", type="number",
-                                      value=DEFAULT_UI_SCAN_DURATION_ANGLE)]),
-            dbc.InputGroup([dbc.InputGroupText("Adım Açısı (°)"),
-                            dbc.Input(id="step-angle-input", type="number", value=DEFAULT_UI_SCAN_STEP_ANGLE)],
-                           className="mt-2"),
-            dbc.InputGroup([dbc.InputGroupText("Uyarı Mes. (cm)"),
-                            dbc.Input(id="buzzer-distance-input", type="number", value=DEFAULT_UI_BUZZER_DISTANCE)],
-                           className="mt-2"),
-            dbc.InputGroup([dbc.InputGroupText("Motor Adım/Tur"),
-                            dbc.Input(id="steps-per-rev-input", type="number", value=DEFAULT_UI_STEPS_PER_REVOLUTION)],
-                           className="mt-2"),
-            dbc.Checkbox(id="invert-motor-checkbox", label="Motor Yönünü Ters Çevir", value=DEFAULT_UI_INVERT_MOTOR,
-                         className="mt-2"),
+            dbc.InputGroup([dbc.InputGroupText("Tarama Açısı (°)"), dbc.Input(id="scan-duration-angle-input", type="number", value=DEFAULT_UI_SCAN_DURATION_ANGLE)]),
+            dbc.InputGroup([dbc.InputGroupText("Adım Açısı (°)"), dbc.Input(id="step-angle-input", type="number", value=DEFAULT_UI_SCAN_STEP_ANGLE)], className="mt-2"),
+            dbc.InputGroup([dbc.InputGroupText("Uyarı Mes. (cm)"), dbc.Input(id="buzzer-distance-input", type="number", value=DEFAULT_UI_BUZZER_DISTANCE)], className="mt-2"),
+            dbc.InputGroup([dbc.InputGroupText("Motor Adım/Tur"), dbc.Input(id="steps-per-rev-input", type="number", value=DEFAULT_UI_STEPS_PER_REVOLUTION)], className="mt-2"),
+            dbc.Checkbox(id="invert-motor-checkbox", label="Motor Yönünü Ters Çevir", value=DEFAULT_UI_INVERT_MOTOR, className="mt-2"),
         ])
     ])
 ])
@@ -100,14 +90,10 @@ control_panel = dbc.Card([
 stats_panel = dbc.Card([
     dbc.CardHeader("Anlık Sensör Değerleri"),
     dbc.CardBody(dbc.Row([
-        dbc.Col(html.Div([html.H6("Mevcut Açı:"), html.H4(id='current-angle', children="--°")]),
-                className="text-center"),
-        dbc.Col(html.Div([html.H6("Mevcut Mesafe:"), html.H4(id='current-distance', children="-- cm")]),
-                id='current-distance-col', className="text-center"),
-        dbc.Col(html.Div([html.H6("Anlık Hız:"), html.H4(id='current-speed', children="-- cm/s")]),
-                className="text-center"),
-        dbc.Col(html.Div([html.H6("Max Mesafe:"), html.H4(id='max-detected-distance', children="-- cm")]),
-                className="text-center")
+        dbc.Col(html.Div([html.H6("Mevcut Açı:"), html.H4(id='current-angle', children="--°")]), className="text-center"),
+        dbc.Col(html.Div([html.H6("Mevcut Mesafe:"), html.H4(id='current-distance', children="-- cm")]), id='current-distance-col', className="text-center"),
+        dbc.Col(html.Div([html.H6("Anlık Hız:"), html.H4(id='current-speed', children="-- cm/s")]), className="text-center"),
+        dbc.Col(html.Div([html.H6("Max Mesafe:"), html.H4(id='max-detected-distance', children="-- cm")]), className="text-center")
     ]))
 ])
 
@@ -151,8 +137,8 @@ estimation_card = dbc.Card([
     dbc.CardBody(html.Div("Tahmin: Bekleniyor...", id='environment-estimation-text', className="text-center"))
 ])
 
-visualization_tabs = dbc.Tabs(id="visualization-tabs", active_tab='tab-graphs', children=[
-    dbc.Tab(label="Grafikler", tab_id="tab-graphs", children=[
+visualization_tabs = dbc.Tabs([
+    dbc.Tab([
         dcc.Dropdown(
             id='graph-selector-dropdown',
             options=[
@@ -166,21 +152,17 @@ visualization_tabs = dbc.Tabs(id="visualization-tabs", active_tab='tab-graphs', 
             clearable=False,
             className="m-3"
         ),
-        dcc.Loading(id="loading-graphs", children=[
-            html.Div(id='graph-container', children=[
-                # Grafikler artık tek bir callback tarafından yönetilecek
-                html.Div(dcc.Graph(id='scan-map-graph-3d', style={'height': '75vh'})),
-                html.Div(dcc.Graph(id='scan-map-graph', style={'height': '75vh'})),
-                html.Div(dcc.Graph(id='polar-regression-graph', style={'height': '75vh'})),
-                html.Div(dcc.Graph(id='polar-graph', style={'height': '75vh'})),
-                html.Div(dcc.Graph(id='time-series-graph', style={'height': '75vh'})),
-            ])
+        html.Div([
+            html.Div(dcc.Graph(id='scan-map-graph-3d', style={'height': '75vh'}), id='container-map-graph-3d'),
+            html.Div(dcc.Graph(id='scan-map-graph', style={'height': '75vh'}), id='container-map-graph'),
+            html.Div(dcc.Graph(id='polar-regression-graph', style={'height': '75vh'}), id='container-regression-graph'),
+            html.Div(dcc.Graph(id='polar-graph', style={'height': '75vh'}), id='container-polar-graph'),
+            html.Div(dcc.Graph(id='time-series-graph', style={'height': '75vh'}), id='container-time-series-graph'),
         ])
-    ]),
+    ], label="Grafikler"),
     dbc.Tab(
-        label="Veri Tablosu",
-        tab_id="tab-datatable",  # Düzgün çalışma için ID eklendi
-        children=[dcc.Loading(id="loading-datatable", children=[html.Div(id='tab-content-datatable')])]
+        dcc.Loading(id="loading-datatable", children=[html.Div(id='tab-content-datatable')]),
+        label="Veri Tablosu"
     )
 ])
 
@@ -200,19 +182,14 @@ app.layout = html.Div(style={'padding': '20px'}, children=[
     ]),
     dcc.Interval(id='interval-component-main', interval=2500, n_intervals=0),
     dcc.Interval(id='interval-component-system', interval=3000, n_intervals=0),
-    # Merkezi veri deposu: Tüm tarama verileri burada saklanacak
-    dcc.Store(id='scan-data-store')
+    dcc.Store(id='clustered-data-store')
 ])
-
 
 # --- YARDIMCI FONKSİYONLAR ---
 def is_process_running(pid):
     if pid is None: return False
-    try:
-        return psutil.pid_exists(pid)
-    except:
-        return False
-
+    try: return psutil.pid_exists(pid)
+    except: return False
 
 def get_latest_scan():
     if not DJANGO_MODELS_AVAILABLE: return None
@@ -224,430 +201,182 @@ def get_latest_scan():
         print(f"DB Hatası (get_latest_scan): {e}")
         return None
 
-
 def add_scan_rays(fig, df):
     if df.empty or not all(col in df.columns for col in ['x_cm', 'y_cm']): return
     x_lines, y_lines = [], []
     for _, row in df.iterrows():
         x_lines.extend([0, row['y_cm'], None])
         y_lines.extend([0, row['x_cm'], None])
-    fig.add_trace(go.Scatter(x=x_lines, y=y_lines, mode='lines', line=dict(color='rgba(255,100,100,0.4)', dash='dash'),
-                             showlegend=False, name='Işınlar'))
-
-
-# --- YARDIMCI FONKSİYONLAR --- bölümündeki bu fonksiyonu güncelleyin
+    fig.add_trace(go.Scatter(x=x_lines, y=y_lines, mode='lines', line=dict(color='rgba(255,100,100,0.4)', dash='dash'), showlegend=False, name='Işınlar'))
 
 def analyze_environment_shape(df_valid):
-
-    # Analiz için minimum nokta sayısı kontrolü
-    if not DJANGO_MODELS_AVAILABLE or len(df_valid) < 10:
-        return "Analiz için yetersiz veri.", df_valid.to_json(orient='split')
-
+    if not DJANGO_MODELS_AVAILABLE or len(df_valid) < 5: return "Analiz için yetersiz veri.", df_valid
     points = df_valid[['y_cm', 'x_cm']].to_numpy()
-    final_desc = "Analiz yapılamadı."
-
     try:
-        # 1. ADIM: DBSCAN ile nesneleri kümelere ayırma
-        # eps: İki noktanın komşu sayılması için maksimum mesafe.
-        # min_samples: Bir noktanın çekirdek nokta sayılması için gereken komşu sayısı.
-        db = DBSCAN(eps=20, min_samples=5).fit(points)
+        db = DBSCAN(eps=15, min_samples=3).fit(points)
         df_valid['cluster'] = db.labels_
-
-        # Küme sayısını hesapla (gürültü kümesi -1 hariç)
         num_clusters = len(set(db.labels_)) - (1 if -1 in db.labels_ else 0)
-
-        analysis_desc_parts = []
-        if num_clusters > 0:
-            analysis_desc_parts.append(f"{num_clusters} olası nesne kümesi bulundu.")
-        else:
-            analysis_desc_parts.append("Belirgin bir nesne kümesi bulunamadı.")
-
-        # 2. ADIM: En büyük küme üzerinde duvar analizi
-        if num_clusters > 0:
-            # En çok noktaya sahip olan kümeyi bul (gürültü hariç)
-            valid_clusters = df_valid[df_valid['cluster'] != -1]
-            if not valid_clusters.empty:
-                largest_cluster_id = valid_clusters['cluster'].value_counts().idxmax()
-                largest_cluster_points = df_valid[df_valid['cluster'] == largest_cluster_id]
-
-                # 3. ADIM: RANSAC Regresyonu ile çizgi tespiti
-                # Eğer en büyük kümede yeterli nokta varsa analiz et
-                if len(largest_cluster_points) >= 10:
-                    X = largest_cluster_points[['y_cm']]  # Giriş değişkeni (bir eksen)
-                    y = largest_cluster_points['x_cm']  # Çıkış değişkeni (diğer eksen)
-
-                    try:
-                        # RANSAC modelini oluştur ve eğit
-                        ransac = RANSACRegressor(random_state=42)
-                        ransac.fit(X, y)
-
-                        # Modelin ne kadar iyi uyduğunu kontrol et
-                        inlier_mask = ransac.inlier_mask_
-                        inlier_ratio = np.sum(inlier_mask) / len(X)
-
-                        # 4. ADIM: Sonucu Yorumla
-                        # Eğer kümedeki noktaların %70'inden fazlası bir çizgi oluşturuyorsa
-                        # bunun bir duvar olduğunu varsayabiliriz.
-                        if inlier_ratio > 0.70:
-                            analysis_desc_parts.append("En büyük nesnenin düz bir duvar olma ihtimali yüksek.")
-
-                    except Exception as e:
-                        print(f"RANSAC Regresyonu sırasında hata: {e}")
-
-        final_desc = " ".join(analysis_desc_parts)
-
+        return f"{num_clusters} olası nesne kümesi bulundu.", df_valid
     except Exception as e:
-        df_valid['cluster'] = -2  # Hata durumunda cluster'ı -2 yap
-        final_desc = "Kümeleme analizi sırasında hata oluştu."
-        print(f"DBSCAN analizi sırasında hata: {e}")
+        df_valid.loc[:, 'cluster'] = -2
+        return "Kümeleme hatası.", df_valid
 
-    # Analiz sonucunu ve kümelenmiş veri setini JSON formatında döndür
-    return final_desc, df_valid.to_json(orient='split')
-
-
-# --- CALLBACKS (YENİDEN DÜZENLENMİŞ VE OPTİMİZE EDİLMİŞ) ---
-
-# MOD SEÇİMİNE GÖRE PARAMETRE GÖRÜNÜRLÜĞÜ
-@app.callback(
-    Output('scan-parameters-wrapper', 'style'),
-    Input('mode-selection-radios', 'value')
-)
+# --- CALLBACKS (TAM VE DÜZELTİLMİŞ) ---
+@app.callback(Output('scan-parameters-wrapper', 'style'), Input('mode-selection-radios', 'value'))
 def toggle_parameter_visibility(selected_mode):
     return {'display': 'block'} if selected_mode == 'scan_and_map' else {'display': 'none'}
 
-
-# BETİK BAŞLATMA
 @app.callback(
     Output('scan-status-message', 'children'),
-    Input('start-scan-button', 'n_clicks'),
-    State('mode-selection-radios', 'value'),
-    State('scan-duration-angle-input', 'value'),
-    State('step-angle-input', 'value'),
-    State('buzzer-distance-input', 'value'),
-    State('invert-motor-checkbox', 'value'),
-    State('steps-per-rev-input', 'value'),
-    prevent_initial_call=True
-)
+    [Input('start-scan-button', 'n_clicks')],
+    [State('mode-selection-radios', 'value'), State('scan-duration-angle-input', 'value'), State('step-angle-input', 'value'), State('buzzer-distance-input', 'value'), State('invert-motor-checkbox', 'value'), State('steps-per-rev-input', 'value')],
+    prevent_initial_call=True)
 def handle_start_script(n_clicks, mode, duration, step, buzzer, invert, steps_rev):
-    if n_clicks is None: return no_update
+    if n_clicks == 0: return no_update
     pid_file, script_path, cmd = None, None, []
     py_exec = sys.executable
     if mode == 'scan_and_map':
         pid_file, script_path = SENSOR_PID_FILE, SENSOR_SCRIPT_PATH
-        cmd = [py_exec, script_path, "--h-angle", str(duration), "--h-step", str(step), "--buzzer-distance",
-               str(buzzer), "--invert-motor-direction", str(bool(invert)), "--steps-per-rev", str(steps_rev)]
+        cmd = [py_exec, script_path, "--h-angle", str(duration), "--h-step", str(step), "--buzzer-distance", str(buzzer), "--invert-motor-direction", str(bool(invert)), "--steps-per-rev", str(steps_rev)]
     elif mode == 'autonomous_drive':
         pid_file, script_path = AUTONOMOUS_PID_FILE, AUTONOMOUS_DRIVE_SCRIPT_PATH
         cmd = [py_exec, script_path]
     elif mode == 'free_movement':
         pid_file, script_path = FREE_MOVEMENT_PID_FILE, FREE_MOVEMENT_SCRIPT_PATH
         cmd = [py_exec, script_path]
-    else:
-        return dbc.Alert("Geçersiz mod.", color="danger")
-
+    else: return dbc.Alert("Geçersiz mod.", color="danger")
     if os.path.exists(pid_file):
         try:
-            with open(pid_file, 'r') as pf:
-                pid = int(pf.read().strip())
+            with open(pid_file, 'r') as pf: pid = int(pf.read().strip())
             if is_process_running(pid): return dbc.Alert(f"Mod zaten çalışıyor (PID:{pid}).", color="warning")
-        except:
-            pass
+        except: pass
     try:
         print(f"Çalıştırılacak komut: {' '.join(cmd)}")
         subprocess.Popen(cmd, start_new_session=True)
         time.sleep(2)
         if os.path.exists(pid_file):
             with open(pid_file, 'r') as pf: pid = pf.read().strip()
-            return dbc.Alert(f"{mode.replace('_', ' ').title()} başlatıldı (PID:{pid}).", color="success")
+            return dbc.Alert(f"{mode.replace('_',' ').title()} başlatıldı (PID:{pid}).", color="success")
         return dbc.Alert("Başlatılamadı.", color="danger")
-    except Exception as e:
-        return dbc.Alert(f"Başlatma hatası: {e}", color="danger")
+    except Exception as e: return dbc.Alert(f"Başlatma hatası: {e}", color="danger")
 
-
-# BETİK DURDURMA
-@app.callback(
-    Output('scan-status-message', 'children', allow_duplicate=True),
-    Input('stop-scan-button', 'n_clicks'),
-    State('mode-selection-radios', 'value'),
-    prevent_initial_call=True
-)
+@app.callback(Output('scan-status-message', 'children', allow_duplicate=True), Input('stop-scan-button', 'n_clicks'), State('mode-selection-radios', 'value'), prevent_initial_call=True)
 def handle_stop_script(n_clicks, mode):
-    if n_clicks is None: return no_update
-    if mode == 'scan_and_map':
-        pid_file, lock_file = SENSOR_PID_FILE, SENSOR_LOCK_FILE
-    elif mode == 'autonomous_drive':
-        pid_file, lock_file = AUTONOMOUS_PID_FILE, AUTONOMOUS_LOCK_FILE
-    elif mode == 'free_movement':
-        pid_file, lock_file = FREE_MOVEMENT_PID_FILE, FREE_MOVEMENT_LOCK_FILE
-    else:
-        return no_update
-
+    if n_clicks == 0: return no_update
+    if mode == 'scan_and_map': pid_file, lock_file = SENSOR_PID_FILE, SENSOR_LOCK_FILE
+    elif mode == 'autonomous_drive': pid_file, lock_file = AUTONOMOUS_PID_FILE, AUTONOMOUS_LOCK_FILE
+    elif mode == 'free_movement': pid_file, lock_file = FREE_MOVEMENT_PID_FILE, FREE_MOVEMENT_LOCK_FILE
+    else: return no_update
     if os.path.exists(pid_file):
         try:
-            with open(pid_file, 'r') as pf:
-                pid = int(pf.read().strip())
+            with open(pid_file, 'r') as pf: pid = int(pf.read().strip())
             if is_process_running(pid):
-                os.kill(pid, signal.SIGTERM);
-                time.sleep(1)
+                os.kill(pid, signal.SIGTERM); time.sleep(1)
                 if is_process_running(pid): os.kill(pid, signal.SIGKILL)
                 msg, color = f"Betik (PID:{pid}) durduruldu.", "info"
-            else:
-                msg, color = "PID dosyası var ama süreç çalışmıyor. Temizleniyor.", "warning"
-        except Exception as e:
-            msg, color = f"Durdurma hatası: {e}", "danger"
-    else:
-        msg, color = "Çalışan betik bulunamadı.", "warning"
-
+            else: msg, color = "PID dosyası var ama süreç çalışmıyor. Temizleniyor.", "warning"
+        except Exception as e: msg, color = f"Durdurma hatası: {e}", "danger"
+    else: msg, color = "Çalışan betik bulunamadı.", "warning"
     for fp in [pid_file, lock_file]:
         if os.path.exists(fp):
-            try:
-                os.remove(fp)
-            except:
-                pass
+            try: os.remove(fp)
+            except: pass
     return dbc.Alert(msg, color=color)
 
-
-# SİSTEM DURUM KARTI GÜNCELLEME
-@app.callback(
-    [Output('script-status', 'children'), Output('script-status', 'className'),
-     Output('cpu-usage', 'value'), Output('cpu-usage', 'label'),
-     Output('ram-usage', 'value'), Output('ram-usage', 'label')],
-    Input('interval-component-system', 'n_intervals'),
-    State('mode-selection-radios', 'value')
-)
+@app.callback([Output('script-status', 'children'), Output('script-status', 'className'), Output('cpu-usage', 'value'), Output('cpu-usage', 'label'), Output('ram-usage', 'value'), Output('ram-usage', 'label')], Input('interval-component-system', 'n_intervals'), State('mode-selection-radios', 'value'))
 def update_system_card(n, mode):
-    pid_file, mode_name = {
-        'scan_and_map': (SENSOR_PID_FILE, "Haritalama"),
-        'autonomous_drive': (AUTONOMOUS_PID_FILE, "Otonom Sürüş"),
-        'free_movement': (FREE_MOVEMENT_PID_FILE, "Gözcü Modu")
-    }.get(mode, (None, "Bilinmeyen"))
-
+    if mode == 'scan_and_map': pid_file, mode_name = SENSOR_PID_FILE, "Haritalama"
+    elif mode == 'autonomous_drive': pid_file, mode_name = AUTONOMOUS_PID_FILE, "Otonom Sürüş"
+    elif mode == 'free_movement': pid_file, mode_name = FREE_MOVEMENT_PID_FILE, "Gözcü Modu"
+    else: pid_file, mode_name = None, "Bilinmeyen"
     status_text, status_class = f"{mode_name}: Çalışmıyor", "text-danger"
     if pid_file and os.path.exists(pid_file):
         try:
-            with open(pid_file, 'r') as pf:
-                pid = int(pf.read().strip())
-            if is_process_running(pid):
-                status_text, status_class = f"{mode_name}: Çalışıyor (PID:{pid})", "text-success"
-        except (ValueError, IOError):
-            pass
-
+            with open(pid_file, 'r') as pf: pid = int(pf.read().strip())
+            if is_process_running(pid): status_text, status_class = f"{mode_name}: Çalışıyor (PID:{pid})", "text-success"
+        except: pass
     cpu = psutil.cpu_percent(interval=0.1)
     ram = psutil.virtual_memory().percent
     return status_text, status_class, cpu, f"{cpu:.1f}%", ram, f"{ram:.1f}%"
 
-
-# ANLIK DEĞERLER KARTI GÜNCELLEME
-@app.callback(
-    [Output('current-angle', 'children'), Output('current-distance', 'children'),
-     Output('current-speed', 'children'), Output('current-distance-col', 'style'),
-     Output('max-detected-distance', 'children')],
-    Input('interval-component-main', 'n_intervals')
-)
+@app.callback([Output('current-angle', 'children'), Output('current-distance', 'children'), Output('current-speed', 'children'), Output('current-distance-col', 'style'), Output('max-detected-distance', 'children')], Input('interval-component-main', 'n_intervals'))
 def update_realtime_values(n):
     scan = get_latest_scan()
-    if not scan or not DJANGO_MODELS_AVAILABLE:
-        return "--°", "-- cm", "-- cm/s", {}, "-- cm"
-
+    if not scan or not DJANGO_MODELS_AVAILABLE: return "--°", "-- cm", "-- cm/s", {}, "-- cm"
     point = scan.points.order_by('-timestamp').first()
-    if not point:
-        return "--°", "-- cm", "-- cm/s", {}, "-- cm"
-
+    if not point: return "--°", "-- cm", "-- cm/s", {}, "-- cm"
     angle = f"{point.derece:.1f}°" if pd.notnull(point.derece) else "--°"
     dist = f"{point.mesafe_cm:.1f} cm" if pd.notnull(point.mesafe_cm) else "-- cm"
-    speed = f"{getattr(point, 'hiz_cm_s', 0):.1f} cm/s" if hasattr(point, 'hiz_cm_s') and pd.notnull(
-        getattr(point, 'hiz_cm_s', 0)) else "-- cm/s"
-
+    speed = f"{getattr(point, 'hiz_cm_s', 0):.1f} cm/s" if hasattr(point, 'hiz_cm_s') and pd.notnull(getattr(point, 'hiz_cm_s', 0)) else "-- cm/s"
     style = {'padding': '5px', 'borderRadius': '5px', 'transition': 'background-color 0.5s ease'}
-    if scan.buzzer_distance_setting and pd.notnull(
-            point.mesafe_cm) and 0 < point.mesafe_cm <= scan.buzzer_distance_setting:
-        style.update({'backgroundColor': '#d9534f', 'color': 'white'})
-
+    if scan.buzzer_distance_setting and pd.notnull(point.mesafe_cm) and 0 < point.mesafe_cm <= scan.buzzer_distance_setting: style.update({'backgroundColor': '#d9534f', 'color': 'white'})
     max_dist_agg = scan.points.filter(mesafe_cm__lt=3000, mesafe_cm__gt=0).aggregate(Max('mesafe_cm'))
-    max_dist = f"{max_dist_agg['mesafe_cm__max']:.1f} cm" if max_dist_agg and max_dist_agg.get(
-        'mesafe_cm__max') else "-- cm"
-
+    max_dist = f"{max_dist_agg['mesafe_cm__max']:.1f} cm" if max_dist_agg and max_dist_agg.get('mesafe_cm__max') else "-- cm"
     return angle, dist, speed, style, max_dist
 
-
-# ANALİZ PANELİ GÜNCELLEME
-@app.callback(
-    [Output('calculated-area', 'children'), Output('perimeter-length', 'children'),
-     Output('max-width', 'children'), Output('max-depth', 'children')],
-    Input('interval-component-main', 'n_intervals')
-)
+@app.callback([Output('calculated-area', 'children'), Output('perimeter-length', 'children'), Output('max-width', 'children'), Output('max-depth', 'children')], Input('interval-component-main', 'n_intervals'))
 def update_analysis_panel(n):
     scan = get_latest_scan()
-    if not scan or not DJANGO_MODELS_AVAILABLE:
-        return "N/A", "N/A", "N/A", "N/A"
-
+    if not scan or not DJANGO_MODELS_AVAILABLE: return "N/A", "N/A", "N/A", "N/A"
     area = f"{scan.calculated_area_cm2:.1f} cm²" if pd.notnull(scan.calculated_area_cm2) else "N/A"
     perim = f"{scan.perimeter_cm:.1f} cm" if pd.notnull(scan.perimeter_cm) else "N/A"
     width = f"{scan.max_width_cm:.1f} cm" if pd.notnull(scan.max_width_cm) else "N/A"
     depth = f"{scan.max_depth_cm:.1f} cm" if pd.notnull(scan.max_depth_cm) else "N/A"
     return area, perim, width, depth
 
-
-# YENİ - PERFORMANS ODAKLI CALLBACK 1: VERİLERİ ÇEK VE MERKEZİ DEPOYA KAYDET
-@app.callback(
-    Output('scan-data-store', 'data'),
-    Output('environment-estimation-text', 'children'),
-    Input('interval-component-main', 'n_intervals')
-)
-def fetch_data_to_store(n):
-    scan = get_latest_scan()
-    if not scan or not DJANGO_MODELS_AVAILABLE:
-        return None, "Veri bekleniyor..."
-
-    points = scan.points.filter(mesafe_cm__gt=0).values('derece', 'mesafe_cm', 'x_cm', 'y_cm', 'z_cm', 'timestamp')
-    if not points.exists():
-        return None, "Tarama için nokta verisi bulunamadı."
-
-    df = pd.DataFrame(list(points))
-    df_val = df.dropna()
-
-    analysis_desc, df_clustered_json = analyze_environment_shape(df_val.copy())
-    return df_clustered_json, analysis_desc
-
-
-# YENİ - PERFORMANS ODAKLI CALLBACK 2: SADECE GÖRÜNÜR GRAFİĞİ GÜNCELLE
-@app.callback(
-    [Output('scan-map-graph-3d', 'figure'),
-     Output('scan-map-graph', 'figure'),
-     Output('polar-regression-graph', 'figure'),
-     Output('polar-graph', 'figure'),
-     Output('time-series-graph', 'figure')],
-    [Input('scan-data-store', 'data'),
-     Input('graph-selector-dropdown', 'value')]
-)
-def update_visible_graph(json_data, selected_graph):
-    if not json_data:
-        empty_fig = go.Figure(layout={'title': 'Veri Bekleniyor...'})
-        return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig
-
-    df = pd.read_json(io.StringIO(json_data), orient='split')
-    df_val = df.dropna()
-
-    # Tüm figürler için başlangıç değeri no_update olarak ayarlanır
-    figs = {key: no_update for key in ['3d_map', 'map', 'regression', 'polar', 'time']}
-
-    # Sadece seçili olan figür oluşturulur
-    if selected_graph == '3d_map':
-        fig_3d = go.Figure(data=[go.Scatter3d(x=df_val['y_cm'], y=df_val['x_cm'], z=df_val['z_cm'], mode='markers',
-                                              marker=dict(size=2, color=df_val['z_cm'], colorscale='Viridis'))])
-        fig_3d.update_layout(title='3D Harita', scene=dict(aspectmode='data'), margin=dict(l=0, r=0, b=0, t=40))
-        figs['3d_map'] = fig_3d
-
-    elif selected_graph == 'map':
-        fig_2d = go.Figure()
-        if 'cluster' in df.columns:
-            for cid in sorted(df['cluster'].unique()):
-                cluster_df = df[df['cluster'] == cid]
-                name = f'Küme {cid}' if cid != -1 else 'Gürültü'
-                fig_2d.add_trace(go.Scatter(x=cluster_df['y_cm'], y=cluster_df['x_cm'], mode='markers', name=name))
-        else:
-            fig_2d.add_trace(go.Scatter(x=df_val['y_cm'], y=df_val['x_cm'], mode='markers', name='Noktalar'))
-        add_scan_rays(fig_2d, df_val)
-        fig_2d.update_layout(title='2D Kartezyen Harita', yaxis_scaleanchor="x", xaxis_title="Y Ekseni (cm)",
-                             yaxis_title="X Ekseni (cm)", margin=dict(l=0, r=0, b=0, t=40))
-        figs['map'] = fig_2d
-
-    elif selected_graph == 'regression':
-        fig_reg = go.Figure(data=[go.Scatter(x=df_val['derece'], y=df_val['mesafe_cm'], mode='markers')])
-        fig_reg.update_layout(title='Mesafe-Açı İlişkisi (Regresyon)', xaxis_title="Açı (°)", yaxis_title="Mesafe (cm)",
-                              margin=dict(l=0, r=0, b=0, t=40))
-        figs['regression'] = fig_reg
-
-    elif selected_graph == 'polar':
-        fig_pol = go.Figure(data=[go.Scatterpolar(r=df_val['mesafe_cm'], theta=df_val['derece'], mode='markers')])
-        fig_pol.update_layout(title='Polar Grafik', margin=dict(l=0, r=0, b=0, t=40))
-        figs['polar'] = fig_pol
-
-    elif selected_graph == 'time':
-        fig_time = go.Figure(
-            data=[go.Scatter(x=pd.to_datetime(df_val['timestamp']), y=df_val['mesafe_cm'], mode='lines')])
-        fig_time.update_layout(title='Zaman Serisi (Mesafe)', xaxis_title="Zaman", yaxis_title="Mesafe (cm)",
-                               margin=dict(l=0, r=0, b=0, t=40))
-        figs['time'] = fig_time
-
-    return figs['3d_map'], figs['map'], figs['regression'], figs['polar'], figs['time']
-
-
-# GRAFİK GÖRÜNÜRLÜĞÜ YÖNETİMİ
-@app.callback(
-    [Output('scan-map-graph-3d', 'style'), Output('scan-map-graph', 'style'),
-     Output('polar-regression-graph', 'style'), Output('polar-graph', 'style'),
-     Output('time-series-graph', 'style')],
-    Input('graph-selector-dropdown', 'value')
-)
+@app.callback([Output('container-map-graph-3d', 'style'), Output('container-map-graph', 'style'), Output('container-regression-graph', 'style'), Output('container-polar-graph', 'style'), Output('container-time-series-graph', 'style')], Input('graph-selector-dropdown', 'value'))
 def update_graph_visibility(selected_graph):
-    styles = {key: {'display': 'none'} for key in ['3d_map', 'map', 'regression', 'polar', 'time']}
-    if selected_graph in styles:
-        styles[selected_graph] = {'display': 'block', 'height': '75vh'}
+    styles = { '3d_map': {}, 'map': {}, 'regression': {}, 'polar': {}, 'time': {} }
+    for key in styles: styles[key] = {'display': 'block'} if key == selected_graph else {'display': 'none'}
     return styles['3d_map'], styles['map'], styles['regression'], styles['polar'], styles['time']
 
-
-# VERİ İNDİRME CALLBACK'LERİ (CSV VE EXCEL)
-@app.callback(
-    Output('download-csv', 'data'),
-    Input('export-csv-button', 'n_clicks'),
-    State('scan-data-store', 'data'),
-    prevent_initial_call=True
-)
-def export_csv(n_clicks, json_data):
-    if not json_data:
-        return dcc.send_data_frame(pd.DataFrame().to_csv, "veri_yok.csv", index=False)
-    df = pd.read_json(io.StringIO(json_data), orient='split')
+@app.callback([Output('scan-map-graph-3d', 'figure'), Output('scan-map-graph', 'figure'), Output('polar-regression-graph', 'figure'), Output('polar-graph', 'figure'), Output('time-series-graph', 'figure'), Output('environment-estimation-text', 'children'), Output('clustered-data-store', 'data')], Input('interval-component-main', 'n_intervals'))
+def update_all_outputs(n):
     scan = get_latest_scan()
-    filename = f"scan_{scan.id}.csv" if scan else "scan_data.csv"
-    return dcc.send_data_frame(df.to_csv, filename, index=False)
+    if not scan or not DJANGO_MODELS_AVAILABLE:
+        empty_fig = go.Figure(layout={'title': 'Veri Bekleniyor...'})
+        return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, "Veri bekleniyor...", None
+    points = scan.points.filter(mesafe_cm__gt=0).values('derece', 'mesafe_cm', 'x_cm', 'y_cm', 'z_cm', 'timestamp')
+    if not points.exists():
+        empty_fig = go.Figure(layout={'title': f"Tarama #{scan.id} için nokta yok."})
+        return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, "Nokta verisi yok.", None
+    df = pd.DataFrame(list(points)); df_val = df.dropna()
+    fig_3d = go.Figure(data=[go.Scatter3d(x=df_val['y_cm'], y=df_val['x_cm'], z=df_val['z_cm'], mode='markers', marker=dict(size=2, color=df_val['z_cm'], colorscale='Viridis'))]); fig_3d.update_layout(title='3D Harita', scene=dict(aspectmode='data'))
+    analysis_desc, df_clustered = analyze_environment_shape(df_val.copy()); fig_2d = go.Figure()
+    if 'cluster' in df_clustered.columns:
+        for cid in df_clustered['cluster'].unique(): fig_2d.add_trace(go.Scatter(x=df_clustered[df_clustered['cluster']==cid]['y_cm'], y=df_clustered[df_clustered['cluster']==cid]['x_cm'], mode='markers', name=f'Küme {cid}'))
+    else: fig_2d.add_trace(go.Scatter(x=df_val['y_cm'], y=df_val['x_cm'], mode='markers'))
+    add_scan_rays(fig_2d, df_val); fig_2d.update_layout(title='2D Kartezyen Harita', yaxis_scaleanchor="x")
+    fig_pol = go.Figure(data=[go.Scatterpolar(r=df_val['mesafe_cm'], theta=df_val['derece'], mode='markers')]); fig_pol.update_layout(title='Polar Grafik')
+    fig_reg = go.Figure(data=[go.Scatter(x=df_val['derece'], y=df_val['mesafe_cm'], mode='markers')]); fig_reg.update_layout(title='Regresyon Analizi')
+    fig_time = go.Figure(data=[go.Scatter(x=pd.to_datetime(df_val['timestamp']), y=df_val['mesafe_cm'], mode='lines')]); fig_time.update_layout(title='Zaman Serisi')
+    return fig_3d, fig_2d, fig_reg, fig_pol, fig_time, analysis_desc, df_clustered.to_json(orient='split')
 
+@app.callback(Output('download-csv', 'data'), Input('export-csv-button', 'n_clicks'), prevent_initial_call=True)
+def export_csv(n_clicks):
+    if not n_clicks: return no_update
+    scan = get_latest_scan();
+    if not scan: return dcc.send_data_frame(pd.DataFrame().to_csv, "tarama_yok.csv")
+    points = scan.points.all().values(); df = pd.DataFrame(list(points))
+    return dcc.send_data_frame(df.to_csv, f"scan_{scan.id}.csv", index=False)
 
-@app.callback(
-    Output('download-excel', 'data'),
-    Input('export-excel-button', 'n_clicks'),
-    State('scan-data-store', 'data'),
-    prevent_initial_call=True
-)
-def export_excel(n_clicks, json_data):
-    if not json_data:
-        return dcc.send_bytes(b"", "veri_yok.xlsx")
-    df = pd.read_json(io.StringIO(json_data), orient='split')
+@app.callback(Output('download-excel', 'data'), Input('export-excel-button', 'n_clicks'), prevent_initial_call=True)
+def export_excel(n_clicks):
+    if not n_clicks: return no_update
     scan = get_latest_scan()
-    filename = f"scan_{scan.id}.xlsx" if scan else "scan_data.xlsx"
+    if not scan: return dcc.send_bytes(b"", "tarama_yok.xlsx")
+    points_df = pd.DataFrame(list(scan.points.all().values()))
     with io.BytesIO() as buffer:
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            df.to_excel(writer, sheet_name='ScanPoints', index=False)
-        return dcc.send_bytes(buffer.getvalue(), filename)
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer: points_df.to_excel(writer, sheet_name='ScanPoints', index=False)
+        return dcc.send_bytes(buffer.getvalue(), f"scan_{scan.id}.xlsx")
 
-
-# DÜZELTİLMİŞ - VERİ TABLOSU SEKMESİ İÇERİĞİ
-@app.callback(
-    Output('tab-content-datatable', 'children'),
-    Input('visualization-tabs', 'active_tab'),
-    Input('scan-data-store', 'data')
-)
-def render_datatable(active_tab, json_data):
-    # Sadece Veri Tablosu sekmesi aktifse çalış
-    if active_tab != "tab-datatable" or not json_data:
-        return no_update
-
-    df = pd.read_json(io.StringIO(json_data), orient='split')
-    if 'timestamp' in df.columns:
-        df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
-
-    # ID'ye göre tersten sırala
-    if 'id' in df.columns:
-        df = df.sort_values(by='id', ascending=False)
-
-    return dash_table.DataTable(
-        data=df.to_dict('records'),
-        columns=[{"name": i.replace("_", " ").title(), "id": i} for i in df.columns],
-        page_size=20,
-        sort_action="native",
-        filter_action="native",
-        virtualization=True,
-        style_table={'height': '70vh', 'overflowY': 'auto'},
-        style_cell={'textAlign': 'left', 'minWidth': '100px', 'width': '150px', 'maxWidth': '200px'},
-        style_header={'backgroundColor': 'rgb(230, 230, 230)', 'fontWeight': 'bold'}
-    )
+@app.callback(Output('tab-content-datatable', 'children'), [Input('visualization-tabs-main', 'active_tab'), Input('interval-component-main', 'n_intervals')])
+def render_datatable(active_tab, n):
+    if active_tab != "Veri Tablosu" or not DJANGO_MODELS_AVAILABLE: return None
+    scan = get_latest_scan()
+    if not scan: return html.P("Veri yok.")
+    points_qs = scan.points.order_by('-id').values()
+    if not points_qs: return html.P("Nokta verisi yok.")
+    df = pd.DataFrame(list(points_qs))
+    if 'timestamp' in df.columns: df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+    return dash_table.DataTable(data=df.to_dict('records'), columns=[{"name": i.replace("_", " ").title(), "id": i} for i in df.columns], page_size=50, sort_action="native", filter_action="native", virtualization=True)

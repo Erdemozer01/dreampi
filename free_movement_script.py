@@ -17,22 +17,20 @@ except ImportError as e:
     sys.exit(1)
 
 # --- SABİTLER VE PINLER ---
-# Pinler (Diğer scriptlerle aynı)
 TRIG_PIN, ECHO_PIN = 23, 24
 IN1_GPIO_PIN, IN2_GPIO_PIN, IN3_GPIO_PIN, IN4_GPIO_PIN = 6, 13, 19, 26
 BUZZER_PIN = 17
 LCD_I2C_ADDRESS, LCD_PORT_EXPANDER, LCD_COLS, LCD_ROWS, I2C_PORT = 0x27, 'PCF8574', 16, 2, 1
 
-# DÜZELTME: Bu moda özel, bağımsız PID ve Kilit dosyaları
 LOCK_FILE_PATH = '/tmp/free_movement_script.lock'
 PID_FILE_PATH = '/tmp/free_movement_script.pid'
 
 # Çalışma Parametreleri
-SWEEP_ANGLE = 90.0  # Tarama merkezden +/- bu açı kadar olacak (toplam 180 derece)
-DETECTION_THRESHOLD_CM = 30.0  # Bu mesafeden yakını nesne olarak kabul edilir
-PAUSE_ON_DETECTION_S = 3.0  # Nesne algılandığında motorun duraklama süresi
+SWEEP_ANGLE = 90.0
+DETECTION_THRESHOLD_CM = 30.0
+PAUSE_ON_DETECTION_S = 3.0
 STEPS_PER_REVOLUTION = 4096
-STEP_MOTOR_INTER_STEP_DELAY = 0.0020  # Daha yavaş ve sessiz tarama için
+STEP_MOTOR_INTER_STEP_DELAY = 0.0020
 
 # --- GLOBAL DEĞİŞKENLER ---
 lock_file_handle, sensor, buzzer, lcd = None, None, None, None
@@ -61,10 +59,10 @@ def acquire_lock_and_pid():
 
 def release_resources_on_exit():
     print("\nProgram sonlandırılıyor, kaynaklar serbest bırakılıyor...")
-    _set_step_pins(0, 0, 0, 0)  # Motoru durdur
+    _set_step_pins(0, 0, 0, 0)
     if lcd:
         try:
-            lcd.clear()
+            lcd.clear();
             lcd.write_string("Gorusuruz!")
         except Exception as e:
             print(f"LCD temizlenemedi: {e}")
@@ -126,16 +124,16 @@ def check_environment_and_react():
     mesafe = sensor.distance * 100
 
     if 0 < mesafe < DETECTION_THRESHOLD_CM:
-        if not motor_paused:  # Sadece ilk algılamada tepki ver
+        if not motor_paused:
             print(f"!!! NESNE ALGILANDI: {mesafe:.1f} cm !!!")
             if lcd:
                 try:
-                    lcd.clear()
-                    lcd.write_string("NESNE ALGILANDI")
-                    lcd.cursor_pos = (1, 0)
+                    lcd.clear();
+                    lcd.write_string("NESNE ALGILANDI");
+                    lcd.cursor_pos = (1, 0);
                     lcd.write_string(f"{mesafe:.1f} cm".center(LCD_COLS))
                 except OSError as e:
-                    print(f"LCD YAZMA HATASI (algılama): {e}")
+                    print(f"LCD YAZMA HATASI: {e}")
             buzzer.beep(on_time=0.1, off_time=0.1, n=2, background=True)
             motor_paused = True
             pause_end_time = time.time() + PAUSE_ON_DETECTION_S
@@ -143,42 +141,61 @@ def check_environment_and_react():
         if motor_paused and time.time() > pause_end_time:
             print("...Alan temiz, taramaya devam ediliyor.")
             motor_paused = False
-
         if not motor_paused and lcd:
             try:
-                lcd.clear()
-                lcd.write_string("Gozcu Modu Aktif")
-                lcd.cursor_pos = (1, 0)
+                lcd.clear();
+                lcd.write_string("Gozcu Modu Aktif");
+                lcd.cursor_pos = (1, 0);
                 lcd.write_string(f"Aci: {current_motor_angle_global:.1f}*".center(LCD_COLS))
             except OSError as e:
-                print(f"LCD YAZMA HATASI (normal): {e}")
+                print(f"LCD YAZMA HATASI: {e}")
 
 
-# --- ANA ÇALIŞMA BLOĞU ---
+# --- ANA ÇALIŞMA BLOĞU (DÜZELTİLMİŞ) ---
 if __name__ == "__main__":
     atexit.register(release_resources_on_exit)
     if not acquire_lock_and_pid() or not init_hardware(): sys.exit(1)
 
     print("\n>>> Serbest Hareket (Gözcü) Modu Başlatıldı <<<")
-    target_angle = SWEEP_ANGLE
 
     try:
         while True:
-            # Hedefe doğru adım adım ilerle
-            while abs(current_motor_angle_global - target_angle) > DEG_PER_STEP:
-                check_environment_and_react()
+            # Tarama hedeflerini (sağ kenar, sol kenar, merkez) tanımla
+            targets = [SWEEP_ANGLE, -SWEEP_ANGLE, 0]
 
-                if motor_paused:
-                    time.sleep(0.1)
+            for target_angle in targets:
+                print(f"\n>> Yeni Hedef: {target_angle:.1f} derece. Harekete başlanıyor...")
+
+                # Bu etap için gereken adım sayısını ve yönü hesapla
+                angle_diff = target_angle - current_motor_angle_global
+                num_steps = int(round(abs(angle_diff) / DEG_PER_STEP))
+
+                if num_steps == 0:
                     continue
 
-                direction = target_angle > current_motor_angle_global
-                _single_step_motor(direction)
+                direction_is_positive = angle_diff > 0
 
-            print(f"Tarama kenarına ulaşıldı ({target_angle}°). Yön değiştiriliyor.")
-            check_environment_and_react()
-            time.sleep(1)
-            target_angle = -target_angle
+                # Adım adım hedefe git
+                for i in range(num_steps):
+                    # Her adımdan önce ortamı kontrol et
+                    check_environment_and_react()
+
+                    # Eğer motorun duraklatılması gerekiyorsa, bekleme döngüsüne gir
+                    while motor_paused:
+                        # Duraklatma sırasında da ortamı sürekli kontrol et
+                        check_environment_and_react()
+                        if not motor_paused:  # Duraklatma süresi dolmuş olabilir
+                            print("...Duraklatma bitti, harekete devam ediliyor.")
+                            break
+                        time.sleep(0.1)  # CPU'yu yormamak için kısa bekleme
+
+                    # Motor duraklatılmamışsa bir adım at
+                    _single_step_motor(direction_is_positive)
+
+                # Etap sonu
+                print(f"   Hedefe ulaşıldı. Mevcut Açı: {current_motor_angle_global:.1f}°")
+                check_environment_and_react()  # Varış noktasında son bir kontrol
+                time.sleep(1)  # Kenarda veya merkezde kısa bir bekleme
 
     except KeyboardInterrupt:
         print("\nKullanıcı tarafından durduruldu.")

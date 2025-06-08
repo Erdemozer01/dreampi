@@ -559,12 +559,8 @@ def generate_image_from_text(analysis_text, model_name):
 
     try:
         genai.configure(api_key=google_api_key)
-        # Görüntü üretimi için uygun bir model seçin, bu genellikle metin modelinden farklıdır.
-        # Örneğin 'gemini-pro-vision' gibi modeller metni anlar ama resim üretmez.
-        # Resim üreten bir modele (örn: Imagen) API üzerinden erişim gerekir.
-        # Gemini API'sinin doğrudan resim üreten bir endpoint'i varsa, o modelin adı kullanılmalıdır.
-        # Şimdilik, metin modelinin bir "resim istemi" oluşturduğunu varsayalım.
-        image_model = genai.GenerativeModel('gemini-1.5-flash-latest')  # Bu model resim üretmez, sadece metin üretir
+        # Bu model resim üretmez, sadece metin tabanlı bir resim istemi (prompt) oluşturur.
+        image_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
         final_prompt = (
             "Aşağıda bir 3D sensör taramasının metin tabanlı analizi yer almaktadır. "
@@ -581,12 +577,17 @@ def generate_image_from_text(analysis_text, model_name):
         # Bu örnekte, üretilen prompt'u ve bir yer tutucu resim gösteriyoruz.
         return html.Div([
             dbc.Alert("Aşağıdaki prompt ile bir resim üretilebilir:", color="info"),
-            html.Pre(f"< code > {image_prompt} < / code >"),
+
+            # --- DÜZELTİLMİŞ SATIR ---
+            # `html.Code` bileşeni, `<code>` etiketini doğru şekilde oluşturur.
+            html.Pre(html.Code(image_prompt)),
+            # -------------------------
+
             html.Img(
                 src="https://via.placeholder.com/512x512.png?text=Image+Generation+API+Needed",
                 style={'maxWidth': '100%', 'height': 'auto', 'borderRadius': '10px', 'marginTop': '10px'}
             )
-            ])
+        ])
 
     except Exception as e:
         return dbc.Alert(f"Resim istemi oluşturulurken bir hata oluştu: {e}", color="danger")

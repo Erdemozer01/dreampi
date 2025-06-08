@@ -8,39 +8,30 @@ import signal
 import psutil
 import pandas as pd
 import numpy as np
+import matplotlib
 
-from scipy.spatial import ConvexHull
-from sklearn.cluster import DBSCAN
-from sklearn.linear_model import RANSACRegressor
-import google.generativeai as genai
-
-# Attempt to import Django models; handle cases where they might not be available
+# Django Modelleri (Hata kontrolü ile)
 try:
     from django.db.models import Max
     from scanner.models import Scan, ScanPoint
 
     DJANGO_MODELS_AVAILABLE = True
     print("Dashboard: Django modelleri başarıyla import edildi.")
-except ModuleNotFoundError:
-    print("UYARI: 'scanner.models' import edilemedi. Django proje yapınızı ve PYTHONPATH'ı kontrol edin.")
-    print("Django entegrasyonu olmadan devam edilecek, veritabanı işlemleri çalışmayabilir.")
-    DJANGO_MODELS_AVAILABLE = False
-    Scan, ScanPoint = None, None
 except Exception as e:
-    print(f"Django modelleri import edilirken bir hata oluştu: {e}")
+    print(f"UYARI: Django modelleri import edilemedi: {e}. Veritabanı işlemleri çalışmayabilir.")
     DJANGO_MODELS_AVAILABLE = False
     Scan, ScanPoint = None, None
 
-# Dash and Plotly Libraries
+# Dash Kütüphaneleri
 from django_plotly_dash import DjangoDash
 from dash import html, dcc, Output, Input, State, no_update, dash_table
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
-import matplotlib.pyplot as plt
 
-# Google Generative AI import (with error handling)
+# Google AI Kütüphanesi
 try:
-    from google import generativeai
+    import google.generativeai as genai
+
     GOOGLE_GENAI_AVAILABLE = True
 except ImportError:
     print("UYARI: 'google.generativeai' kütüphanesi bulunamadı. AI yorumlama özelliği çalışmayacak.")
@@ -48,33 +39,34 @@ except ImportError:
 
 from dotenv import load_dotenv
 
-
-load_dotenv() # Loads environment variables from .env file
+load_dotenv()
 google_api_key = os.getenv("GOOGLE_API_KEY")
 
-# --- CONSTANTS AND APPLICATION INITIALIZATION ---
+# --- SABİTLER VE UYGULAMA BAŞLATMA ---
 SENSOR_SCRIPT_FILENAME = 'sensor_script.py'
-FREE_MOVEMENT_SCRIPT_FILENAME = 'free_movement_script.py'
-AUTONOMOUS_DRIVE_SCRIPT_FILENAME = 'autonomous_drive.py' # YENİ SATIR
+AUTONOMOUS_DRIVE_SCRIPT_FILENAME = 'autonomous_drive.py'
 
+# Script yolları
+APP_DIR = os.getcwd()
+SENSOR_SCRIPT_PATH = os.path.join(APP_DIR, SENSOR_SCRIPT_FILENAME)
+AUTONOMOUS_DRIVE_SCRIPT_PATH = os.path.join(APP_DIR, AUTONOMOUS_DRIVE_SCRIPT_FILENAME)
 
-SENSOR_SCRIPT_PATH = os.path.join(os.getcwd(), SENSOR_SCRIPT_FILENAME)
-FREE_MOVEMENT_SCRIPT_PATH = os.path.join(os.getcwd(), FREE_MOVEMENT_SCRIPT_FILENAME)
+# Her mod için ayrı PID ve Kilit dosyaları
+SENSOR_PID_FILE = '/tmp/sensor_scan_script.pid'
+SENSOR_LOCK_FILE = '/tmp/sensor_scan_script.lock'
+AUTONOMOUS_PID_FILE = '/tmp/autonomous_drive.pid'
+AUTONOMOUS_LOCK_FILE = '/tmp/autonomous_drive.lock'
 
-SENSOR_SCRIPT_LOCK_FILE = '/tmp/sensor_scan_script.lock'
-SENSOR_SCRIPT_PID_FILE = '/tmp/sensor_scan_script.pid'
-
+# Arayüz için varsayılan değerler
 DEFAULT_UI_SCAN_DURATION_ANGLE = 270.0
 DEFAULT_UI_SCAN_STEP_ANGLE = 10.0
 DEFAULT_UI_BUZZER_DISTANCE = 10
 DEFAULT_UI_INVERT_MOTOR = False
 DEFAULT_UI_STEPS_PER_REVOLUTION = 4096
-# Define a default servo angle for the UI, matching sensor_script's default
-DEFAULT_UI_SERVO_ANGLE = 180
 
 app = DjangoDash('RealtimeSensorDashboard', external_stylesheets=[dbc.themes.BOOTSTRAP])
 
-# --- NAVBAR CREATION ---
+# --- NAVBAR OLUŞTURMA ---
 navbar = dbc.NavbarSimple(
     children=[
         dbc.NavItem(dbc.NavLink("Admin Paneli", href="/admin/", external_link=True, target="_blank")),
@@ -88,14 +80,10 @@ navbar = dbc.NavbarSimple(
     className="mb-4"
 )
 
-# --- LAYOUT COMPONENTS ---
+# --- LAYOUT BİLEŞENLERİ ---
 title_card = dbc.Row(
     [dbc.Col(html.H1("Kullanıcı Paneli", className="text-center my-3 mb-5"), width=12), html.Hr()]
 )
-
-
-
-# app.py dosyasındaki mevcut control_panel tanımını silip bunu yapıştırın.
 
 control_panel = dbc.Card([
     dbc.CardHeader("Kontrol ve Ayarlar", className="bg-primary text-white"),
@@ -104,9 +92,8 @@ control_panel = dbc.Card([
         dbc.RadioItems(
             id='mode-selection-radios',
             options=[
-                {'label': 'Mesafe Ölçümü ve Haritalama', 'value': 'scan_and_map'},
+                {'label': '3D Haritalama Modu', 'value': 'scan_and_map'},
                 {'label': 'Otonom Sürüş Modu', 'value': 'autonomous_drive'},
-                {'label': 'Serbest Hareket (Gözcü)', 'value': 'free_movement'},
             ],
             value='scan_and_map',
             inline=False,
@@ -115,39 +102,25 @@ control_panel = dbc.Card([
         html.Hr(),
         dbc.Row([
             dbc.Col(html.Button('Başlat', id='start-scan-button', n_clicks=0,
-                                 className="btn btn-success btn-lg w-100 mb-2"), width=6),
+                                className="btn btn-success btn-lg w-100 mb-2"), width=6),
             dbc.Col(html.Button('Durdur', id='stop-scan-button', n_clicks=0,
-                                 className="btn btn-danger btn-lg w-100 mb-2"), width=6)
+                                className="btn btn-danger btn-lg w-100 mb-2"), width=6)
         ]),
         html.Div(id='scan-status-message', style={'marginTop': '10px', 'minHeight': '40px', 'textAlign': 'center'},
                  className="mb-3"),
         html.Hr(),
         html.Div(id='scan-parameters-wrapper', children=[
-            html.H6("Yapay Zeka Seçimi:", className="mt-3"),
-            dcc.Dropdown(
-                id='ai-model-dropdown',
-                options=[
-                    {'label': 'Gemini Flash (Hızlı)', 'value': 'gemini-2.5-flash-preview-05-20'},
-                    {'label': 'Gemini Pro (Gelişmiş)', 'value': 'gemini-2.5-pro-preview-06-05'},
-                    {'label': 'Gemma', 'value': 'gemma-3n-e4b-it'},
-                ],
-                placeholder="Yorumlama için bir metin modeli seçin...",
-                clearable=True,
-                className="mb-3"
-            ),
-            html.Hr(),
-            html.H6("Tarama Parametreleri:", className="mt-2"),
+            html.H6("Haritalama Parametreleri:", className="mt-2"),
             dbc.InputGroup([dbc.InputGroupText("Tarama Açısı (°)", style={"width": "150px"}),
                             dbc.Input(id="scan-duration-angle-input", type="number",
                                       value=DEFAULT_UI_SCAN_DURATION_ANGLE,
                                       min=10, max=720, step=1)], className="mb-2"),
             dbc.InputGroup([dbc.InputGroupText("Adım Açısı (°)", style={"width": "150px"}),
                             dbc.Input(id="step-angle-input", type="number", value=DEFAULT_UI_SCAN_STEP_ANGLE, min=0.1,
-                                      max=45, step=0.1)], className="mb-2"), # Adım Açısı dikey açıyı da belirleyecek
+                                      max=45, step=0.1)], className="mb-2"),
             dbc.InputGroup([dbc.InputGroupText("Uyarı Mes. (cm)", style={"width": "150px"}),
                             dbc.Input(id="buzzer-distance-input", type="number", value=DEFAULT_UI_BUZZER_DISTANCE,
-                                      min=0,
-                                      max=200, step=1)], className="mb-2"),
+                                      min=0, max=200, step=1)], className="mb-2"),
             dbc.InputGroup([dbc.InputGroupText("Motor Adım/Tur", style={"width": "150px"}),
                             dbc.Input(id="steps-per-rev-input", type="number", value=DEFAULT_UI_STEPS_PER_REVOLUTION,
                                       min=500, max=10000, step=1)], className="mb-2"),
@@ -157,26 +130,23 @@ control_panel = dbc.Card([
     ])
 ])
 
-
 stats_panel = dbc.Card([dbc.CardHeader("Anlık Sensör Değerleri", className="bg-info text-white"), dbc.CardBody(dbc.Row(
-    [dbc.Col(html.Div([html.H6("Mevcut Açı:"), html.H4(id='current-angle', children="--°")]), width=3,
-               className="text-center border-end"),
+    [dbc.Col(html.Div([html.H6("Mevcut Açı:"), html.H4(id='current-angle', children="--°")]), width=4,
+             className="text-center border-end"),
      dbc.Col(html.Div([html.H6("Mevcut Mesafe:"), html.H4(id='current-distance', children="-- cm")]),
-               id='current-distance-col', width=3, className="text-center rounded border-end"),
-     dbc.Col(html.Div([html.H6("Anlık Hız:"), html.H4(id='current-speed', children="-- cm/s")]), width=3,
-               className="text-center border-end"),
-     dbc.Col(html.Div([html.H6("Max. Algılanan Mesafe:"), html.H4(id='max-detected-distance', children="-- cm")]),
-               width=3, className="text-center")]))], className="mb-3")
+             id='current-distance-col', width=4, className="text-center rounded border-end"),
+     dbc.Col(html.Div([html.H6("Max. Mesafe:"), html.H4(id='max-detected-distance', children="-- cm")]),
+             width=4, className="text-center")]))], className="mb-3")
 
 system_card = dbc.Card([dbc.CardHeader("Sistem Durumu", className="bg-secondary text-white"), dbc.CardBody(
-    [dbc.Row([dbc.Col(html.Div([html.H6("Sensör Betiği Durumu:"), html.H5(id='script-status', children="Beklemede")]))],
+    [dbc.Row([dbc.Col(html.Div([html.H6("Aktif Mod Durumu:"), html.H5(id='script-status', children="Beklemede")]))],
              className="mb-2"),
      dbc.Row([dbc.Col(html.Div([html.H6("Pi CPU Kullanımı:"),
-                                 dbc.Progress(id='cpu-usage', value=0, color="success", style={"height": "20px"},
-                                              className="mb-1", label="0%")])),
-               dbc.Col(html.Div([html.H6("Pi RAM Kullanımı:"),
-                                 dbc.Progress(id='ram-usage', value=0, color="info", style={"height": "20px"},
-                                              className="mb-1", label="0%")]))])])], className="mb-3")
+                                dbc.Progress(id='cpu-usage', value=0, color="success", style={"height": "20px"},
+                                             className="mb-1", label="0%")])),
+              dbc.Col(html.Div([html.H6("Pi RAM Kullanımı:"),
+                                dbc.Progress(id='ram-usage', value=0, color="info", style={"height": "20px"},
+                                             className="mb-1", label="0%")]))])])], className="mb-3")
 
 export_card = dbc.Card([dbc.CardHeader("Veri Dışa Aktarma (En Son Tarama)", className="bg-light"), dbc.CardBody(
     [dbc.Button('En Son Taramayı CSV İndir', id='export-csv-button', color="primary", className="w-100 mb-2"),
@@ -184,92 +154,22 @@ export_card = dbc.Card([dbc.CardHeader("Veri Dışa Aktarma (En Son Tarama)", cl
      dbc.Button('En Son Taramayı Excel İndir', id='export-excel-button', color="success", className="w-100"),
      dcc.Download(id='download-excel')])], className="mb-3")
 
-analysis_card = dbc.Card(
-    [
-        dbc.CardHeader("Tarama Analizi (En Son Tarama)", className="bg-dark text-white"),
-        dbc.CardBody(
-            [
-                dbc.Row(
-                    [
-                        dbc.Col([html.H6("Hesaplanan Alan:"), html.H4(id='calculated-area', children="-- cm²")]),
-                        dbc.Col([html.H6("Çevre Uzunluğu:"), html.H4(id='perimeter-length', children="-- cm")])
-                    ]
-                ),
-                dbc.Row(
-                    [
-                        dbc.Col([html.H6("Max Genişlik:"), html.H4(id='max-width', children="-- cm")]),
-                        dbc.Col([html.H6("Max Derinlik:"), html.H4(id='max-depth', children="-- cm")])
-                    ],
-                    className="mt-2"
-                )
-            ]
-        )
-    ]
-)
-
-estimation_card = dbc.Card(
-    [
-        dbc.CardHeader("Akıllı Ortam Analizi", className="bg-success text-white"),
-        dbc.CardBody(html.Div("Tahmin: Bekleniyor...", id='environment-estimation-text', className="text-center"))
-
-    ]
-)
-
 visualization_tabs = dbc.Tabs(
     [
-        dbc.Tab(
-            [
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            dcc.Dropdown(
-                                id='graph-selector-dropdown',
-                                options=[
-                                    {'label': '3D Harita', 'value': '3d_map'}, # Changed value to '3d_map'
-                                    {'label': '2D Kartezyen Harita', 'value': 'map'},
-                                    {'label': 'Regresyon Analizi', 'value': 'regression'},
-                                    {'label': 'Polar Grafik', 'value': 'polar'},
-                                    {'label': 'Zaman Serisi (Mesafe)', 'value': 'time'},
-                                ],
-                                value='3d_map', # Default to 3D map
-                                clearable=False,
-                                style={'marginTop': '10px'}
-                            ),
-                            width=6,
-                        )
-                    ],
-                    justify="center",
-                    className="mb-3"
-                ),
-                html.Div(
-                    [
-                        html.Div(dcc.Graph(id='scan-map-graph-3d', style={'height': '75vh'}), id='container-map-graph-3d'), # NEW: 3D graph container
-                        html.Div(dcc.Graph(id='scan-map-graph', style={'height': '75vh'}), id='container-map-graph'),
-                        html.Div(dcc.Graph(id='polar-regression-graph', style={'height': '75vh'}),
-                                 id='container-regression-graph'),
-                        html.Div(dcc.Graph(id='polar-graph', style={'height': '75vh'}), id='container-polar-graph'),
-                        html.Div(dcc.Graph(id='time-series-graph', style={'height': '75vh'}),
-                                 id='container-time-series-graph'),
-                    ]
-                )
-            ],
-            label="Grafikler",
-            tab_id="tab-graphics"
-        ),
-        dbc.Tab(
-            dcc.Loading(id="loading-datatable", children=[html.Div(id='tab-content-datatable')]),
-            label="Veri Tablosu",
-            tab_id="tab-datatable"
-        )
+        dbc.Tab(dcc.Graph(id='scan-map-graph-3d', style={'height': '75vh'}), label="3D Harita"),
+        dbc.Tab(dcc.Graph(id='scan-map-graph', style={'height': '75vh'}), label="2D Harita"),
+        dbc.Tab(dcc.Loading(id="loading-datatable", children=[html.Div(id='tab-content-datatable')]),
+                label="Veri Tablosu"),
     ],
-    id="visualization-tabs-main",
-    active_tab="tab-graphics"
+    id="visualization-tabs-main"
 )
 
+# Ana Uygulama Layout'u
 app.layout = html.Div(
     style={'padding': '20px'},
     children=[
         navbar,
+        title_card,
         dbc.Row([
             dbc.Col(
                 [
@@ -287,72 +187,28 @@ app.layout = html.Div(
             dbc.Col(
                 [
                     visualization_tabs,
-                    html.Br(),
-                    dbc.Row(
-                        [
-                            dbc.Col(analysis_card, md=8),
-                            dbc.Col(estimation_card, md=4)
-                        ]
-                    ),
-                    dbc.Row(
-                        [
-                            dbc.Col(
-                                [
-                                    dbc.Card(
-                                        [
-                                            dbc.CardHeader("Akıllı Yorumlama (Yapay Zeka)",
-                                                           className="bg-info text-white"),
-                                            dbc.CardBody(
-                                                dcc.Loading(
-                                                    id="loading-ai-comment",
-                                                    type="default",
-                                                    children=[
-                                                        html.Div(id='ai-yorum-sonucu', children=[
-                                                            html.P(
-                                                                "Yorum almak için yukarıdan bir yapay zeka modeli seçin."),
-                                                        ], className="text-center mt-2"),
-                                                        html.Div(id='ai-image', children=[
-                                                            html.P(
-                                                                "Ortamın görüntüsünü oluşturmak için model seçin"),
-                                                        ], className="text-center mt-2")
-                                                    ]
-                                                )
-                                            )
-                                        ],
-                                        className="mt-3"
-                                    )
-                                ],
-                                md=12
-                            )
-                        ],
-                        className="mt-3"
-                    )
                 ],
                 md=8
             )
         ]),
-        dcc.Store(id='clustered-data-store'),
-        dbc.Modal(
-            [dbc.ModalHeader(dbc.ModalTitle(id="modal-title")), dbc.ModalBody(id="modal-body")],
-            id="cluster-info-modal",
-            is_open=False,
-            centered=True
-        ),
         dcc.Interval(id='interval-component-main', interval=2500, n_intervals=0),
         dcc.Interval(id='interval-component-system', interval=3000, n_intervals=0),
     ]
 )
 
-# --- HELPER FUNCTIONS (omitted for brevity, assume they are the same as provided earlier) ---
-# ... (all helper functions: is_process_running, get_latest_scan, add_scan_rays, etc.) ...
+
+# --- YARDIMCI FONKSİYONLAR ---
 def is_process_running(pid):
+    """Verilen PID'ye sahip bir sürecin çalışıp çalışmadığını kontrol eder."""
     if pid is None: return False
     try:
         return psutil.pid_exists(pid)
-    except Exception:
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
         return False
 
+
 def get_latest_scan():
+    """Veritabanından en son tarama nesnesini alır."""
     if not DJANGO_MODELS_AVAILABLE: return None
     try:
         running_scan = Scan.objects.filter(status=Scan.Status.RUNNING).order_by('-start_time').first()
@@ -362,271 +218,15 @@ def get_latest_scan():
         print(f"DB Hatası (get_latest_scan): {e}");
         return None
 
-def add_scan_rays(fig, df):
-    if df.empty or not all(col in df.columns for col in ['x_cm', 'y_cm']): return
-    x_lines, y_lines = [], []
-    for _, row in df.iterrows():
-        x_lines.extend([0, row['y_cm'], None])
-        y_lines.extend([0, row['x_cm'], None])
-    fig.add_trace(
-        go.Scatter(x=x_lines, y=y_lines, mode='lines', line=dict(color='rgba(255,100,100,0.4)', dash='dash', width=1),
-                   showlegend=False))
 
-def add_sector_area(fig, df):
-    if df.empty or not all(col in df.columns for col in ['x_cm', 'y_cm']): return
-    poly_x, poly_y = df['y_cm'].tolist(), df['x_cm'].tolist()
-    fig.add_trace(go.Scatter(x=[0] + poly_x + [0], y=[0] + poly_y + [0], mode='lines', fill='toself',
-                             fillcolor='rgba(255,0,0,0.15)', line=dict(color='rgba(255,0,0,0.4)'),
-                             name='Taranan Sektör'))
-
-def add_sensor_position(fig):
-    fig.add_trace(
-        go.Scatter(x=[0], y=[0], mode='markers', marker=dict(size=12, symbol='circle', color='red'), name='Sensör'))
-
-def update_polar_graph(fig, df):
-    if df.empty or not all(col in df.columns for col in ['mesafe_cm', 'derece']): return
-    fig.add_trace(go.Scatterpolar(r=df['mesafe_cm'], theta=df['derece'], mode='lines+markers', name='Mesafe'))
-    fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 250]),
-                                 angularaxis=dict(direction="clockwise", period=360, thetaunit="degrees")))
-
-def update_time_series_graph(fig, df):
-    if df.empty or 'timestamp' not in df.columns or 'mesafe_cm' not in df.columns:
-        fig.add_trace(go.Scatter(x=[], y=[], mode='lines', name='Veri Yok'))
-        return
-    try:
-        df_s = df.copy()
-        df_s['timestamp'] = pd.to_datetime(df_s['timestamp'], errors='coerce')
-        df_s.dropna(subset=['timestamp'], inplace=True)
-        if len(df_s) < 2:
-            fig.add_trace(go.Scatter(x=[], y=[], mode='lines', name='Yetersiz Veri'))
-            return
-        df_s = df_s.sort_values(by='timestamp')
-        min_time = df_s['timestamp'].min()
-        max_time = df_s['timestamp'].max()
-        padding = pd.Timedelta(seconds=(max_time - min_time).total_seconds() * 0.05)
-        if padding.total_seconds() < 2:
-            padding = pd.Timedelta(seconds=2)
-        x_range_start = min_time - padding
-        x_range_end = max_time + padding
-        fig.add_trace(go.Scatter(
-            x=df_s['timestamp'],
-            y=df_s['mesafe_cm'],
-            mode='lines+markers',
-            name='Mesafe'
-        ))
-        fig.update_layout(
-            xaxis_type='date',
-            xaxis_range=[x_range_start, x_range_end],
-            xaxis_title="Zaman",
-            yaxis_title="Mesafe (cm)",
-            xaxis_tickformat='%d %b %Y<br>%H:%M:%S',
-            xaxis_rangeselector=dict(
-                buttons=list([
-                    dict(count=1, label="1dk", step="minute", stepmode="backward"),
-                    dict(count=5, label="5dk", step="minute", stepmode="backward"),
-                    dict(count=15, label="15dk", step="minute", stepmode="backward"),
-                    dict(step="all", label="Tümü")
-                ])
-            ),
-            xaxis_rangeslider_visible=True
-        )
-    except Exception as e:
-        logging.error(f"Zaman serisi grafiği oluşturulurken HATA: {e}")
-        fig.add_trace(go.Scatter(x=[], y=[], mode='lines', name='Grafik Hatası'))
-
-def find_clearest_path(df_valid):
-    if df_valid.empty or not all(
-        col in df_valid.columns for col in ['mesafe_cm', 'derece']): return "En açık yol için veri yok."
-    try:
-        # Hata buradaydı: df_filtered yerine df_valid kullanılmalı
-        df_filtered = df_valid[df_valid['mesafe_cm'] > 0]
-        if df_filtered.empty: return "Geçerli pozitif mesafe bulunamadı."
-        cp = df_filtered.loc[df_filtered['mesafe_cm'].idxmax()]
-        return f"En Açık Yol: {cp['derece']:.1f}° yönünde, {cp['mesafe_cm']:.1f} cm."
-    except Exception as e:
-        print(f"En açık yol hesaplama hatası: {e}");
-        return "En açık yol hesaplanamadı."
-
-def analyze_polar_regression(df_valid):
-    if len(df_valid) < 5 or not all(
-        col in df_valid.columns for col in
-        ['mesafe_cm', 'derece']): return None, "Polar regresyon için yetersiz veri."
-    X, y = df_valid[['derece']].values, df_valid['mesafe_cm'].values
-    try:
-        ransac = RANSACRegressor(random_state=42);
-        ransac.fit(X, y)
-        slope = ransac.estimator_.coef_[0]
-        inf = f"Yüzey dairesel/paralel (Eğim:{slope:.3f})" if abs(slope) < 0.1 else (
-            f"Yüzey açı arttıkça uzaklaşıyor (Eğim:{slope:.3f})" if slope > 0 else f"Yüzey açı arttıkça yaklaşıyor (Eğim:{slope:.3f})")
-        xr = np.array([df_valid['derece'].min(), df_valid['derece'].max()]).reshape(-1, 1)
-        return {'x': xr.flatten(), 'y': ransac.predict(xr)}, "Polar Regresyon: " + inf
-    except Exception as e:
-        print(f"Polar regresyon hatası: {e}");
-        return None, "Polar regresyon hatası."
-
-def analyze_environment_shape(fig, df_valid_input):
-    df_valid = df_valid_input.copy()
-    if len(df_valid) < 10 or not all(col in df_valid.columns for col in ['y_cm', 'x_cm']):
-        df_valid.loc[:, 'cluster'] = -2
-        return "Analiz için yetersiz veri.", df_valid
-    points_all = df_valid[['y_cm', 'x_cm']].to_numpy()
-    try:
-        db = DBSCAN(eps=15, min_samples=3).fit(points_all)
-        df_valid.loc[:, 'cluster'] = db.labels_
-    except Exception as e:
-        print(f"DBSCAN hatası: {e}");
-        df_valid.loc[:, 'cluster'] = -2
-        return "DBSCAN kümeleme hatası.", df_valid
-    unique_clusters = set(df_valid['cluster'].unique())
-    num_actual_clusters = len(unique_clusters - {-1, -2})
-    desc = f"{num_actual_clusters} potansiyel nesne kümesi bulundu." if num_actual_clusters > 0 else "Belirgin bir nesne kümesi bulunamadı (DBSCAN)."
-    cmap_len = num_actual_clusters
-    colors = plt.cm.get_cmap('viridis', cmap_len if cmap_len > 0 else 1)
-    for k_label in unique_clusters:
-        if k_label == -2: continue
-        cluster_points_df = df_valid[df_valid['cluster'] == k_label]
-        if cluster_points_df.empty: continue
-        cluster_points_np = cluster_points_df[['y_cm', 'x_cm']].to_numpy()
-        if k_label == -1:
-            color_val, point_size, name_val = 'rgba(128,128,128,0.3)', 5, 'Gürültü/Diğer'
-        else:
-            norm_k = (k_label / (cmap_len - 1)) if cmap_len > 1 else 0.0
-            raw_col = colors(np.clip(norm_k, 0.0, 1.0))
-            color_val = f'rgba({raw_col[0] * 255:.0f},{raw_col[1] * 255:.0f},{raw_col[2] * 255:.0f},0.9)'
-            point_size, name_val = 8, f'Küme {k_label}'
-        fig.add_trace(go.Scatter(x=cluster_points_np[:, 0], y=cluster_points_np[:, 1], mode='markers',
-                                 marker=dict(color=color_val, size=point_size), name=name_val,
-                                 customdata=[k_label] * len(cluster_points_np)))
-    return desc, df_valid
-
-def estimate_geometric_shape(df_input):
-    df = df_input.copy()
-    if len(df) < 15 or not all(
-        col in df.columns for col in ['x_cm', 'y_cm']): return "Şekil tahmini için yetersiz nokta."
-    try:
-        points = df[['x_cm', 'y_cm']].values
-        hull = ConvexHull(points)
-        hull_area = hull.area
-        min_x_val, max_x_val = df['x_cm'].min(), df['x_cm'].max()
-        min_y_val, max_y_val = df['y_cm'].min(), df['y_cm'].max()
-        width = max_y_val - min_y_val
-        depth = max_x_val
-        if width < 1 or depth < 1: return "Algılanan şekil çok küçük."
-        bbox_area = depth * width
-        fill_factor = hull_area / bbox_area if bbox_area > 0 else 0
-        if depth > 150 and width < 50 and fill_factor < 0.3: return "Tahmin: Dar ve derin bir boşluk (Koridor)."
-        if fill_factor > 0.7 and (
-            0.8 < (width / depth if depth > 0 else 0) < 1.2): return "Tahmin: Dolgun, kutu/dairesel bir nesne."
-        if fill_factor > 0.6 and width > depth * 2.5: return "Tahmin: Geniş bir yüzey (Duvar)."
-        if fill_factor < 0.4: return "Tahmin: İçbükey bir yapı veya dağınık nesneler."
-        return "Tahmin: Düzensiz veya karmaşık bir yapı."
-    except Exception as e:
-        print(f"Geometrik analiz hatası: {e}");
-        return "Geometrik analiz hatası."
-
-
-# app.py içindeki eski fonksiyonu silip bunu yapıştırın.
-
-def yorumla_tablo_verisi_gemini(df, model_name, prompt_text):  # Artık 3. parametre olarak prompt_text'i de alıyor
-    if not GOOGLE_GENAI_AVAILABLE:
-        return "Hata: Google GenerativeAI kütüphanesi yüklenemedi."
-    if not google_api_key:
-        return "Hata: `GOOGLE_API_KEY` ayarlanmamış."
-    if df is None or df.empty:
-        return "Yorumlanacak tablo verisi bulunamadı."
-    try:
-        generativeai.configure(api_key=google_api_key)
-        model = generativeai.GenerativeModel(model_name=model_name)
-
-        # Fonksiyon artık, dışarıdan gelen hazır prompt'u kullanarak yorumlama yapıyor.
-        response = model.generate_content(contents=prompt_text)
-        return response.text
-    except Exception as e:
-        return f"Gemini'den yanıt alınırken bir hata oluştu: {e}"
-
-def summarize_analysis_for_image_prompt(analysis_text, model_name):
-    """
-    Detaylı metin analizini, resim modeli için kısa ve görsel bir komuta dönüştürür.
-    """
-    if not GOOGLE_GENAI_AVAILABLE or not google_api_key:
-        return "Özetleme için AI modeline erişilemiyor."
-    if not analysis_text or "Hata:" in analysis_text:
-        return "Geçersiz analiz metni özetlenemez."
-
-    try:
-        generativeai.configure(api_key=google_api_key)
-        # Bu işlem için hızlı bir model kullanmak yeterlidir.
-        model = generativeai.GenerativeModel(model_name='gemini-2.5-flash-preview-05-20')
-
-        summarization_prompt = (
-            "Aşağıdaki teknik sensör verisi analizini temel alarak, taranan ortamı betimleyen "
-            "kısa, canlı ve görsel bir paragraf oluştur. Bu paragraf, bir yapay zeka resim üreticisi "
-            "için komut olarak kullanılacak. Ana geometrik şekillere, tahmin edilen nesnelere (duvar, koridor, kutu gibi) "
-            "ve ortamın genel atmosferine odaklan. Sayısal değerler veya teknik jargon kullanma. "
-            "Sanki ortama bakıyormuşsun gibi betimle. İşte analiz metni:\n\n"
-            f'"{analysis_text}"'
-        )
-
-        response = model.generate_content(contents=summarization_prompt)
-
-        if response.text and len(response.text) > 10:
-            clean_prompt = response.text.strip().replace('"', '')
-            print(f"✅ Görüntü için özet prompt oluşturuldu: {clean_prompt}")
-            return clean_prompt
-        else:
-            # Eğer özetleme başarısız olursa, orijinal metnin bir kısmını kullan
-            return f"Şu analize dayanan teknik bir çizim: {analysis_text[:500]}"
-
-    except Exception as e:
-        print(f"Görüntü istemi özetlenirken hata oluştu: {e}")
-        return f"Şu analize dayanan bir şema: {analysis_text[:500]}"
-
-
-def generate_image_from_text(prompt_for_image):
-    """
-    Verilen basit ve görsel bir metin komutundan resim oluşturur.
-    """
-    if not GOOGLE_GENAI_AVAILABLE:
-        return dbc.Alert("Hata: Google GenerativeAI kütüphanesi yüklenemedi.", color="danger")
-    if not google_api_key:
-        return dbc.Alert("Hata: `GOOGLE_API_KEY` ayarlanmamış.", color="danger")
-    if not prompt_for_image:
-        return dbc.Alert("Resim oluşturmak için geçerli bir metin komutu gerekli.", color="warning")
-
-    try:
-        genai.configure(api_key=google_api_key)
-        # Resim üretimi için özelleşmiş bir model kullanmak daha iyi sonuç verebilir.
-        model = genai.GenerativeModel(model_name='gemini-2.5-flash-preview-05-20')  # Veya 'imagen' destekli bir model
-
-        print(f">> Resim modeli için son komut: '{prompt_for_image}'")
-
-        # generation_config ile daha fazla kontrol sağlanabilir
-        response = model.generate_content(prompt_for_image)
-
-        # Yanıttan resmi çıkarmak için bu kısım API'nin tam yapısına göre ayarlanmalıdır.
-        # Bu örnek, genel bir yapıyı temsil eder.
-        if response.candidates and hasattr(response.candidates[0].content.parts[0], 'file_data'):
-            part = response.candidates[0].content.parts[0]
-            if part.file_data.file_uri:
-                return html.Img(src=part.file_data.file_uri,
-                                style={'maxWidth': '100%', 'height': 'auto', 'borderRadius': '10px',
-                                       'marginTop': '10px'})
-
-        finish_reason = response.candidates[0].finish_reason if response.candidates else 'Bilinmiyor'
-        error_message = f"Model, verilen komuttan bir resim oluşturamadı. Bitiş Sebebi: {finish_reason}."
-        raise Exception(error_message)
-
-    except Exception as e:
-        return dbc.Alert(f"Resim oluşturulurken bir hata oluştu: {e}", color="danger")
-
-# --- CALLBACK FUNCTIONS ---
+# --- CALLBACK FONKSİYONLARI ---
 
 @app.callback(
     Output('scan-parameters-wrapper', 'style'),
     Input('mode-selection-radios', 'value')
 )
 def toggle_parameter_visibility(selected_mode):
-    """Toggles visibility of scan parameters based on the selected operating mode."""
+    """Haritalama parametrelerini yalnızca ilgili mod seçildiğinde gösterir."""
     if selected_mode == 'scan_and_map':
         return {'display': 'block'}
     else:
@@ -640,169 +240,209 @@ def toggle_parameter_visibility(selected_mode):
      State('scan-duration-angle-input', 'value'),
      State('step-angle-input', 'value'),
      State('buzzer-distance-input', 'value'),
-     State('invert-motor-checkbox', 'value'),  # HATA BURADAYDI, .get() KALDIRILDI
+     State('invert-motor-checkbox', 'value'),
      State('steps-per-rev-input', 'value')],
     prevent_initial_call=True
 )
-def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dist, invert, steps_rev):
-    """Handles starting the sensor script based on selected mode and parameters."""
+def handle_start_script(n_clicks, selected_mode, duration, step, buzzer_dist, invert, steps_rev):
+    """Seçilen moda göre doğru script'i başlatır ve kendi PID dosyasını kullanır."""
     if n_clicks == 0:
         return no_update
 
-    if os.path.exists(SENSOR_SCRIPT_PID_FILE):
-        try:
-            with open(SENSOR_SCRIPT_PID_FILE, 'r') as pf:
-                pid = int(pf.read().strip())
-            if is_process_running(pid):
-                return dbc.Alert(f"Bir betik zaten çalışıyor (PID:{pid}). Önce durdurun.", color="warning")
-        except:
-            pass
-
-    for fp_lock_pid in [SENSOR_SCRIPT_LOCK_FILE, SENSOR_SCRIPT_PID_FILE]:
-        if os.path.exists(fp_lock_pid):
-            try:
-                os.remove(fp_lock_pid)
-            except OSError as e_rm:
-                print(f"Eski dosya silinemedi ({fp_lock_pid}): {e_rm}")
-
-    py_exec = sys.executable
+    script_path_to_run = None
+    pid_file_to_check = None
     cmd = []
+    py_exec = sys.executable
+
     if selected_mode == 'scan_and_map':
+        script_path_to_run = SENSOR_SCRIPT_PATH
+        pid_file_to_check = SENSOR_PID_FILE
         if not (isinstance(duration, (int, float)) and 10 <= duration <= 720):
-            return dbc.Alert("Tarama Açısı 10-720 derece arasında olmalı!", color="danger", duration=4000)
+            return dbc.Alert("Tarama Açısı 10-720 derece arasında olmalı!", color="danger")
         if not (isinstance(step, (int, float)) and 0.1 <= abs(step) <= 45):
-            return dbc.Alert("Adım açısı 0.1-45 arasında olmalı!", color="danger", duration=4000)
-        if not (isinstance(buzzer_dist, (int, float)) and 0 <= buzzer_dist <= 200):
-            return dbc.Alert("Uyarı mesafesi 0-200 cm arasında olmalı!", color="danger", duration=4000)
-        if not (isinstance(steps_rev, (int, float)) and 500 <= steps_rev <= 10000):
-            return dbc.Alert("Motor Adım/Tur 500-10000 arasında olmalı!", color="danger", duration=4000)
+            return dbc.Alert("Adım açısı 0.1-45 arasında olmalı!", color="danger")
 
-        cmd = [py_exec, SENSOR_SCRIPT_PATH,
-               "--scan_duration_angle", str(duration),
-               "--step_angle", str(step),
-               "--buzzer_distance", str(buzzer_dist),
-               "--invert_motor_direction", str(bool(invert)),
-               "--steps_per_rev", str(steps_rev)]
-
-    elif selected_mode == 'free_movement':
-        cmd = [py_exec, FREE_MOVEMENT_SCRIPT_PATH]
+        cmd = [py_exec, script_path_to_run,
+               "--h-angle", str(duration),
+               "--h-step", str(step),
+               "--buzzer-distance", str(buzzer_dist),
+               "--invert-motor-direction", str(bool(invert)),
+               "--steps-per-rev", str(steps_rev)]
 
     elif selected_mode == 'autonomous_drive':
-        AUTONOMOUS_DRIVE_SCRIPT_PATH = os.path.join(os.getcwd(), AUTONOMOUS_DRIVE_SCRIPT_FILENAME)
-        cmd = [py_exec, AUTONOMOUS_DRIVE_SCRIPT_PATH]
+        script_path_to_run = AUTONOMOUS_DRIVE_SCRIPT_PATH
+        pid_file_to_check = AUTONOMOUS_PID_FILE
+        cmd = [py_exec, script_path_to_run]
     else:
         return dbc.Alert("Geçersiz mod seçildi!", color="danger")
 
-    try:
-        if not os.path.exists(cmd[1]):
-            return dbc.Alert(f"HATA: Betik dosyası bulunamadı: {cmd[1]}", color="danger")
+    if os.path.exists(pid_file_to_check):
+        try:
+            with open(pid_file_to_check, 'r') as pf:
+                pid = int(pf.read().strip())
+            if is_process_running(pid):
+                return dbc.Alert(f"Bu modda bir betik zaten çalışıyor (PID:{pid}). Önce durdurun.", color="warning")
+        except:
+            pass
 
+    try:
         print(f"Çalıştırılacak komut: {' '.join(cmd)}")
         subprocess.Popen(cmd, start_new_session=True)
-
-        max_wait_time, check_interval, start_time_wait = 7, 0.25, time.time()
-        pid_file_found = False
-        while time.time() - start_time_wait < max_wait_time:
-            if os.path.exists(SENSOR_SCRIPT_PID_FILE):
-                pid_file_found = True
-                break
-            time.sleep(check_interval)
-
-        if pid_file_found:
-            with open(SENSOR_SCRIPT_PID_FILE, 'r') as pf:
+        time.sleep(2)
+        if os.path.exists(pid_file_to_check):
+            with open(pid_file_to_check, 'r') as pf:
                 new_pid = pf.read().strip()
-            mode_name = "Mesafe Ölçüm Modu" if selected_mode == 'scan_and_map' else "Serbest Hareket Modu"
-            return dbc.Alert(f"{mode_name} başlatıldı (PID:{new_pid}).", color="success")
+            return dbc.Alert(f"{selected_mode.replace('_', ' ').title()} modu başlatıldı (PID:{new_pid}).",
+                             color="success")
         else:
-            return dbc.Alert(f"Başlatılamadı. PID dosyası {max_wait_time} saniye içinde oluşmadı.", color="danger")
-
+            return dbc.Alert("Başlatılamadı. PID dosyası beklenilen sürede oluşmadı.", color="danger")
     except Exception as e:
         return dbc.Alert(f"Betik başlatma hatası: {e}", color="danger")
 
 
 @app.callback(
-    Output('scan-status-message', 'children', allow_duplicate=True), # Allow duplicate as this might be updated by stop button too
+    Output('scan-status-message', 'children', allow_duplicate=True),
     [Input('stop-scan-button', 'n_clicks')],
+    [State('mode-selection-radios', 'value')],
     prevent_initial_call=True
 )
-def handle_stop_scan_script(n_clicks):
+def handle_stop_script(n_clicks, selected_mode):
+    """Seçili olan moda ait çalışan script'i, doğru PID dosyasını kullanarak durdurur."""
     if n_clicks == 0: return no_update
+
+    if selected_mode == 'scan_and_map':
+        pid_file_to_check = SENSOR_PID_FILE
+        lock_file_to_clean = SENSOR_LOCK_FILE
+    elif selected_mode == 'autonomous_drive':
+        pid_file_to_check = AUTONOMOUS_PID_FILE
+        lock_file_to_clean = AUTONOMOUS_LOCK_FILE
+    else:
+        return no_update
+
     pid_to_kill = None
     message = ""
     color = "warning"
-    if os.path.exists(SENSOR_SCRIPT_PID_FILE):
+
+    if os.path.exists(pid_file_to_check):
         try:
-            with open(SENSOR_SCRIPT_PID_FILE, 'r') as pf:
+            with open(pid_file_to_check, 'r') as pf:
                 pid_to_kill = int(pf.read().strip())
-        except (IOError, ValueError):
-            pass
-    if pid_to_kill and is_process_running(pid_to_kill):
-        try:
-            os.kill(pid_to_kill, signal.SIGTERM) # Try graceful termination first
-            time.sleep(1) # Give process time to terminate
-            if is_process_running(pid_to_kill): # If still running, force kill
-                os.kill(pid_to_kill, signal.SIGKILL)
-                time.sleep(0.5)
-            if not is_process_running(pid_to_kill):
+            if is_process_running(pid_to_kill):
+                os.kill(pid_to_kill, signal.SIGTERM)
+                time.sleep(1)
+                if is_process_running(pid_to_kill):
+                    os.kill(pid_to_kill, signal.SIGKILL)
                 message = f"Çalışan betik (PID:{pid_to_kill}) durduruldu."
                 color = "info"
             else:
-                message = f"Betik (PID:{pid_to_kill}) durdurulamadı!"
-                color = "danger"
-        except ProcessLookupError: # Process might have already died
-            message = f"Betik (PID:{pid_to_kill}) zaten çalışmıyordu."; color = "warning"
+                message = "PID dosyası var ama ilgili süreç çalışmıyor. Dosyalar temizleniyor."
         except Exception as e:
-            message = f"Durdurma hatası: {e}"; color = "danger"
+            message = f"Durdurma hatası: {e}";
+            color = "danger"
     else:
-        message = "Çalışan betik bulunamadı."
-    # Clean up PID and lock files regardless of kill success
-    for fp_lock_pid_stop in [SENSOR_SCRIPT_PID_FILE, SENSOR_SCRIPT_LOCK_FILE]:
-        if os.path.exists(fp_lock_pid_stop):
+        message = "Bu modda çalışan bir betik bulunamadı."
+
+    for fp in [pid_file_to_check, lock_file_to_clean]:
+        if os.path.exists(fp):
             try:
-                os.remove(fp_lock_pid_stop)
+                os.remove(fp)
             except OSError:
                 pass
+
     return dbc.Alert(message, color=color)
 
+
 @app.callback(
-    [Output('script-status', 'children'), Output('script-status', 'className'), Output('cpu-usage', 'value'),
-     Output('cpu-usage', 'label'), Output('ram-usage', 'value'), Output('ram-usage', 'label')],
-    [Input('interval-component-system', 'n_intervals')]
+    [Output('script-status', 'children'), Output('script-status', 'className'),
+     Output('cpu-usage', 'value'), Output('cpu-usage', 'label'),
+     Output('ram-usage', 'value'), Output('ram-usage', 'label')],
+    [Input('interval-component-system', 'n_intervals'),
+     Input('mode-selection-radios', 'value')]
 )
-def update_system_card(n):
-    """Updates system status (script, CPU, RAM usage) periodically."""
-    status_text, status_class, pid_val = "Beklemede", "text-secondary", None
-    if os.path.exists(SENSOR_SCRIPT_PID_FILE):
+def update_system_card(n, selected_mode):
+    """Sistem durumu kartını (CPU, RAM ve aktif mod durumu) günceller."""
+    if selected_mode == 'scan_and_map':
+        pid_file_to_check = SENSOR_PID_FILE
+        mode_name = "Haritalama"
+    elif selected_mode == 'autonomous_drive':
+        pid_file_to_check = AUTONOMOUS_PID_FILE
+        mode_name = "Otonom Sürüş"
+    else:
+        mode_name = "Bilinmeyen Mod"
+
+    status_text, status_class = f"{mode_name}: Çalışmıyor", "text-danger"
+    pid_val = None
+
+    if os.path.exists(pid_file_to_check):
         try:
-            with open(SENSOR_SCRIPT_PID_FILE, 'r') as pf:
+            with open(pid_file_to_check, 'r') as pf:
                 pid_val = int(pf.read().strip())
+            if is_process_running(pid_val):
+                status_text, status_class = f"{mode_name}: Çalışıyor (PID:{pid_val})", "text-success"
         except:
             pass
-    if pid_val and is_process_running(pid_val):
-        status_text, status_class = f"Çalışıyor (PID:{pid_val})", "text-success"
-    else:
-        status_text, status_class = "Çalışmıyor", "text-danger"
+
     cpu = psutil.cpu_percent(interval=0.1)
     ram = psutil.virtual_memory().percent
     return status_text, status_class, cpu, f"{cpu:.1f}%", ram, f"{ram:.1f}%"
 
 
 @app.callback(
-    [Output('current-angle', 'children'), Output('current-distance', 'children'), Output('current-speed', 'children'),
-     Output('current-distance-col', 'style'), Output('max-detected-distance', 'children')],
+    [Output('scan-map-graph-3d', 'figure'),
+     Output('scan-map-graph', 'figure')],
+    [Input('interval-component-main', 'n_intervals')]
+)
+def update_graphs(n):
+    """Grafikleri periyodik olarak günceller."""
+    scan = get_latest_scan()
+    fig_3d = go.Figure()
+    fig_2d = go.Figure()
+
+    fig_3d.update_layout(title_text='3D Harita', uirevision=str(time.time()), scene=dict(aspectmode='data'))
+    fig_2d.update_layout(title_text='2D Projeksiyon', uirevision=str(time.time()), yaxis_scaleanchor="x",
+                         yaxis_scaleratio=1)
+
+    if scan and DJANGO_MODELS_AVAILABLE:
+        points_qs = ScanPoint.objects.filter(scan=scan).values('x_cm', 'y_cm', 'z_cm')
+        if points_qs.exists():
+            df = pd.DataFrame(list(points_qs))
+            df_val = df.dropna().copy()
+
+            if not df_val.empty:
+                # 3D Grafik
+                fig_3d.add_trace(go.Scatter3d(
+                    x=df_val['y_cm'], y=df_val['x_cm'], z=df_val['z_cm'],
+                    mode='markers',
+                    marker=dict(size=3, color=df_val['z_cm'], colorscale='Viridis', showscale=True,
+                                colorbar_title='Yükseklik (cm)')
+                ))
+                # 2D Grafik
+                fig_2d.add_trace(go.Scatter(
+                    x=df_val['y_cm'], y=df_val['x_cm'],
+                    mode='markers',
+                    marker=dict(size=5, color='blue')
+                ))
+
+    return fig_3d, fig_2d
+
+
+@app.callback(
+    [Output('current-angle', 'children'),
+     Output('current-distance', 'children'),
+     Output('current-distance-col', 'style'),
+     Output('max-detected-distance', 'children')],
     [Input('interval-component-main', 'n_intervals')]
 )
 def update_realtime_values(n):
-    """Updates real-time sensor values (angle, distance, speed, max distance) and applies buzzer styling."""
+    """Anlık sensör değerlerini günceller ve uyarı mesafesine göre stil uygular."""
     scan = get_latest_scan()
-    angle_s, dist_s, speed_s, max_dist_s = "--°", "-- cm", "-- cm/s", "-- cm"
+    angle_s, dist_s, max_dist_s = "--°", "-- cm", "-- cm"
     dist_style = {'padding': '10px', 'transition': 'background-color 0.5s ease', 'borderRadius': '5px'}
-    if scan:
+    if scan and DJANGO_MODELS_AVAILABLE:
         point = scan.points.order_by('-timestamp').first()
         if point:
             angle_s = f"{point.derece:.1f}°" if pd.notnull(point.derece) else "--°"
             dist_s = f"{point.mesafe_cm:.1f} cm" if pd.notnull(point.mesafe_cm) else "-- cm"
-            speed_s = f"{point.hiz_cm_s:.1f} cm/s" if pd.notnull(point.hiz_cm_s) else "-- cm/s"
             buzzer_threshold = scan.buzzer_distance_setting
             if buzzer_threshold is not None and pd.notnull(point.mesafe_cm) and 0 < point.mesafe_cm <= buzzer_threshold:
                 dist_style.update({'backgroundColor': '#d9534f', 'color': 'white'})
@@ -810,30 +450,17 @@ def update_realtime_values(n):
                 max_dist_val=Max('mesafe_cm'))
             if max_dist_agg and max_dist_agg.get('max_dist_val') is not None:
                 max_dist_s = f"{max_dist_agg['max_dist_val']:.1f} cm"
-    return angle_s, dist_s, speed_s, dist_style, max_dist_s
+    return angle_s, dist_s, dist_style, max_dist_s
 
 
 @app.callback(
-    [Output('calculated-area', 'children'), Output('perimeter-length', 'children'), Output('max-width', 'children'),
-     Output('max-depth', 'children')],
-    [Input('interval-component-main', 'n_intervals')]
+    Output('download-csv', 'data'),
+    Input('export-csv-button', 'n_clicks'),
+    prevent_initial_call=True
 )
-def update_analysis_panel(n):
-    """Updates calculated analysis metrics (area, perimeter, max width/depth) for the latest scan."""
-    scan = get_latest_scan()
-    area_s, perim_s, width_s, depth_s = "-- cm²", "-- cm", "-- cm", "-- cm"
-    if scan:
-        area_s = f"{scan.calculated_area_cm2:.2f} cm²" if pd.notnull(scan.calculated_area_cm2) else "N/A"
-        perim_s = f"{scan.perimeter_cm:.2f} cm" if pd.notnull(scan.perimeter_cm) else "N/A"
-        width_s = f"{scan.max_width_cm:.2f} cm" if pd.notnull(scan.max_width_cm) else "N/A"
-        depth_s = f"{scan.max_depth_cm:.2f} cm" if pd.notnull(scan.max_depth_cm) else "N/A"
-    return area_s, perim_s, width_s, depth_s
-
-
-@app.callback(Output('download-csv', 'data'), Input('export-csv-button', 'n_clicks'), prevent_initial_call=True)
 def export_csv_callback(n_clicks_csv):
-    """Exports the latest scan data to a CSV file."""
-    if not n_clicks_csv: return no_update
+    """En son tarama verilerini CSV dosyası olarak indirir."""
+    if not n_clicks_csv or not DJANGO_MODELS_AVAILABLE: return no_update
     scan = get_latest_scan()
     if not scan: return dcc.send_data_frame(pd.DataFrame().to_csv, "tarama_yok.csv", index=False)
     points_qs = scan.points.all().values()
@@ -843,10 +470,14 @@ def export_csv_callback(n_clicks_csv):
     return dcc.send_data_frame(df.to_csv, f"tarama_id_{scan.id}_noktalar.csv", index=False)
 
 
-@app.callback(Output('download-excel', 'data'), Input('export-excel-button', 'n_clicks'), prevent_initial_call=True)
+@app.callback(
+    Output('download-excel', 'data'),
+    Input('export-excel-button', 'n_clicks'),
+    prevent_initial_call=True
+)
 def export_excel_callback(n_clicks_excel):
-    """Exports the latest scan data and metadata to an Excel file."""
-    if not n_clicks_excel: return no_update
+    """En son tarama verilerini ve metadata'yı Excel dosyası olarak indirir."""
+    if not n_clicks_excel or not DJANGO_MODELS_AVAILABLE: return no_update
     scan = get_latest_scan()
     if not scan: return dcc.send_bytes(b"", "tarama_yok.xlsx")
     try:
@@ -855,326 +486,41 @@ def export_excel_callback(n_clicks_excel):
         points_df = pd.DataFrame(list(scan.points.all().values()))
     except Exception as e_excel_data:
         print(f"Excel için veri çekme hatası: {e_excel_data}")
-        return dcc.send_bytes(b"", f"veri_cekme_hatasi_{scan.id if scan else 'yok'}.xlsx")
+        return dcc.send_bytes(b"", f"veri_cekme_hatasi.xlsx")
+
     with io.BytesIO() as buf:
-        try:
-            with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
-                if not scan_info_df.empty: scan_info_df.to_excel(writer, sheet_name=f'Scan_{scan.id}_Info', index=False)
-                if not points_df.empty:
-                    points_df.to_excel(writer, sheet_name=f'Scan_{scan.id}_Points', index=False)
-                elif scan_info_df.empty:
-                    pd.DataFrame().to_excel(writer, sheet_name='Veri Yok', index=False)
-        except Exception as e_excel_write:
-            print(f"Excel yazma hatası: {e_excel_write}")
-            pd.DataFrame([{"Hata": str(e_excel_write)}]).to_excel(writer, sheet_name='Hata', index=False)
-        return dcc.send_bytes(buf.getvalue(), f"tarama_detaylari_id_{scan.id if scan else 'yok'}.xlsx")
+        with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+            if not scan_info_df.empty: scan_info_df.to_excel(writer, sheet_name='Tarama_Bilgisi', index=False)
+            if not points_df.empty: points_df.to_excel(writer, sheet_name='Tarama_Noktalari', index=False)
+        return dcc.send_bytes(buf.getvalue(), f"tarama_detaylari_id_{scan.id}.xlsx")
 
 
-@app.callback(Output('tab-content-datatable', 'children'),
-              [Input('visualization-tabs-main', 'active_tab'), Input('interval-component-main', 'n_intervals')])
+@app.callback(
+    Output('tab-content-datatable', 'children'),
+    [Input('visualization-tabs-main', 'active_tab'),
+     Input('interval-component-main', 'n_intervals')]
+)
 def render_and_update_data_table(active_tab, n):
-    """Renders and updates the data table with the latest scan points."""
-    if active_tab != "tab-datatable": return None
+    """Veri Tablosu sekmesini en son tarama verileriyle günceller."""
+    if active_tab != "tab-datatable" or not DJANGO_MODELS_AVAILABLE: return None
     scan = get_latest_scan()
     if not scan: return html.P("Görüntülenecek tarama verisi yok.")
-    points_qs = scan.points.order_by('-id').values('id', 'derece', 'mesafe_cm', 'hiz_cm_s', 'x_cm', 'y_cm', 'timestamp')
+    points_qs = scan.points.order_by('-id').values('id', 'derece', 'dikey_aci', 'mesafe_cm', 'x_cm', 'y_cm', 'z_cm',
+                                                   'timestamp')
     if not points_qs: return html.P(f"Tarama ID {scan.id} için nokta verisi bulunamadı.")
     df = pd.DataFrame(list(points_qs))
-    if 'timestamp' in df.columns: df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime(
-        '%Y-%m-%d %H:%M:%S.%f').str[:-3]
-    return dash_table.DataTable(data=df.to_dict('records'),
-                                columns=[{"name": i.replace("_", " ").title(), "id": i} for i in df.columns],
-                                style_cell={'textAlign': 'left', 'padding': '5px', 'fontSize': '0.9em'},
-                                style_header={'backgroundColor': 'rgb(230,230,230)', 'fontWeight': 'bold'},
-                                style_table={'minHeight': '65vh', 'height': '70vh', 'maxHeight': '75vh',
-                                             'overflowY': 'auto', 'overflowX': 'auto'},
-                                page_size=50, sort_action="native", filter_action="native", virtualization=True,
-                                fixed_rows={'headers': True},
-                                style_data_conditional=[
-                                    {'if': {'row_index': 'odd'}, 'backgroundColor': 'rgb(248, 248, 248)'}])
+    if 'timestamp' in df.columns:
+        df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
 
-
-@app.callback(
-    [
-        Output('scan-map-graph-3d', 'figure'),  # NEW: Output for 3D map
-        Output('scan-map-graph', 'figure'),
-        Output('polar-regression-graph', 'figure'),
-        Output('polar-graph', 'figure'),
-        Output('time-series-graph', 'figure'),
-        Output('environment-estimation-text', 'children'),
-        Output('clustered-data-store', 'data')
-    ],
-    Input('interval-component-main', 'n_intervals')
-)
-def update_all_graphs(n):
-    """
-    Main callback that periodically updates all graphs and analyses.
-    This function is the visual core of the application.
-    """
-    # --- DEBUGGING CODE START ---
-    print("\n--- Grafik güncelleme tetiklendi ---")
-    # Local import for safety, though it's already imported globally
-    from scanner.models import Scan, ScanPoint
-
-    scan = get_latest_scan()
-    if not scan:
-        print(">> DATA_DEBUG: get_latest_scan() fonksiyonu 'None' döndürdü. Veritabanında gösterilecek tarama yok.")
-
-        empty_figs = [go.Figure() for _ in range(5)] # 5 empty figures
-        empty_text = html.Div([html.P("Tarama başlatın veya verinin gelmesini bekleyin...")])
-        return empty_figs[0], empty_figs[1], empty_figs[2], empty_figs[3], empty_figs[4], empty_text, None
-    else:
-        print(f">> DATA_DEBUG: Son tarama bulundu. Scan ID: {scan.id}, Durum: {scan.status}")
-    # --- DEBUGGING CODE END ---
-
-    # Initialize 5 figures: [0]=3D, [1]=2D, [2]=Regression, [3]=Polar, [4]=TimeSeries
-    figs = [go.Figure() for _ in range(5)]
-    est_text = html.Div([html.P("Tarama başlatın veya verinin gelmesini bekleyin...")])
-    store_data = None
-    scan_id_for_revision = 'initial_load'
-
-    if scan:
-        scan_id_for_revision = str(scan.id)
-        # Fetch all necessary columns, including z_cm for 3D plot
-        points_qs = ScanPoint.objects.filter(scan=scan).values('x_cm', 'y_cm', 'z_cm', 'derece', 'mesafe_cm', 'timestamp')
-        df_pts = pd.DataFrame(list(points_qs))
-
-        # ========================= FIX START =========================
-        # If the dataframe is empty, it means the scan has started but no points
-        # have been recorded yet. Return empty graphs gracefully.
-        if df_pts.empty:
-            print(f">> DATA_DEBUG: Tarama #{scan.id} bulundu, ancak henüz nokta kaydedilmemiş. Boş grafikler döndürülüyor.")
-            empty_text = html.Div([html.P(f"Tarama #{scan.id} başlatıldı, veriler bekleniyor...")])
-            titles = ['Ortamın 3D Haritası', '2D Harita (Projeksiyon)', 'Açıya Göre Mesafe Regresyonu', 'Polar Grafik', 'Zaman Serisi - Mesafe']
-            for i, fig in enumerate(figs):
-                fig.update_layout(title_text=titles[i], uirevision=scan_id_for_revision, margin=dict(l=40, r=40, t=80, b=40))
-            return figs[0], figs[1], figs[2], figs[3], figs[4], empty_text, None
-        # ========================== FIX END ==========================
-
-        # Filter out invalid distance readings for analysis
-        df_val = df_pts[(df_pts['mesafe_cm'] > 0.1) & (df_pts['mesafe_cm'] < 300.0)].copy()
-
-        # --- NEW: 3D Scatter Plot (figs[0]) ---
-        if not df_val.empty and all(k in df_val for k in ['x_cm', 'y_cm', 'z_cm']):
-            figs[0].add_trace(go.Scatter3d(
-                x=df_val['y_cm'],
-                y=df_val['x_cm'],
-                z=df_val['z_cm'],
-                mode='markers',
-                marker=dict(
-                    size=3,
-                    color=df_val['z_cm'],
-                    colorscale='Viridis',
-                    showscale=True,
-                    colorbar_title='Yükseklik (cm)'
-                ),
-                name='3D Noktalar'
-            ))
-            figs[0].add_trace(go.Scatter3d(
-                x=[0], y=[0], z=[0],
-                mode='markers',
-                marker=dict(size=8, symbol='circle', color='red'),
-                name='Sensör Konumu'
-            ))
-
-        # --- DEBUGGING CODE START ---
-        print(f">> DATA_DEBUG: Tarama #{scan.id} için {len(df_pts)} adet nokta bulundu.")
-        # --- DEBUGGING CODE END ---
-
-        # ========================= FIX START (Logical Correction) =========================
-        # Correctly check if the DataFrame has valid points for analysis
-        if not df_val.empty:
-        # ========================== FIX END ==========================
-            if len(df_val) >= 5: # Enough valid points for meaningful analysis
-                # 2D Map (figs[1]) - Clustering, rays, and sector
-                est_cart, df_clus = analyze_environment_shape(figs[1], df_val.copy())
-                store_data = df_clus.to_json(orient='split') # Store clustered data for modal
-                add_scan_rays(figs[1], df_val)
-                add_sector_area(figs[1], df_val)
-
-                # Polar Regression (figs[2])
-                line_data, est_polar = analyze_polar_regression(df_val)
-                figs[2].add_trace(
-                    go.Scatter(x=df_val['derece'], y=df_val['mesafe_cm'], mode='markers', name='Noktalar'))
-                if line_data:
-                    figs[2].add_trace(
-                        go.Scatter(x=line_data['x'], y=line_data['y'], mode='lines', name='Regresyon Çizgisi',
-                                   line=dict(color='red', width=3)))
-
-                # Polar Graph (figs[3]) - The original polar plot
-                update_polar_graph(figs[3], df_val)
-
-                # Time Series Graph (figs[4])
-                update_time_series_graph(figs[4], df_val)
-
-                # Environment estimation text
-                clear_path = find_clearest_path(df_val)
-                shape_estimation = estimate_geometric_shape(df_val)
-                est_text = html.Div([
-                    html.P(shape_estimation, className="fw-bold"), html.Hr(),
-                    html.P(clear_path, className="fw-bold text-primary"), html.Hr(),
-                    html.P(f"Kümeleme: {est_cart}"), html.Hr(),
-                    html.P(f"Regresyon: {est_polar}")
-                ])
-            else:
-                est_text = html.Div([html.P("Analiz için yeterli sayıda geçerli nokta bulunamadı.")])
-        else: # No valid scan points found for the latest scan
-            est_text = html.Div([html.P(f"Tarama ID #{scan.id} için geçerli nokta verisi bulunamadı.")])
-
-    # Add sensor position to 2D, Regression, Polar, and TimeSeries graphs
-    for i in range(1, 5):
-        add_sensor_position(figs[i])
-
-    # Titles for the 5 figures based on their new index
-    titles = [
-        'Ortamın 3D Haritası',
-        '2D Harita (Projeksiyon)',
-        'Açıya Göre Mesafe Regresyonu',
-        'Polar Grafik',
-        'Zaman Serisi - Mesafe'
-    ]
-    common_legend = dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-
-    for i, fig in enumerate(figs):
-        fig.update_layout(title_text=titles[i], uirevision=scan_id_for_revision, legend=common_legend,
-                          margin=dict(l=40, r=40, t=80, b=40))
-        if i == 0:  # 3D Harita Düzeni
-            fig.update_layout(scene=dict(
-                xaxis_title='Y Ekseni (cm)',
-                yaxis_title='X Ekseni (cm)',
-                zaxis_title='Z Ekseni (cm)',
-                aspectmode='data',
-                aspectratio=dict(x=1, y=1, z=0.5),
-                camera=dict(
-                    eye=dict(x=1.2, y=1.2, z=0.8)
-                )
-            ))
-        elif i == 1:  # 2D Harita Düzeni
-            fig.update_layout(xaxis_title="Yatay Mesafe (cm)", yaxis_title="Dikey Mesafe (cm)", yaxis_scaleanchor="x",
-                              yaxis_scaleratio=1)
-        elif i == 2:  # Regresyon Analizi
-            fig.update_layout(xaxis_title="Tarama Açısı (Derece)", yaxis_title="Mesafe (cm)")
-        # Polar and Time Series graphs will have their specific layouts set by their update functions.
-
-    # Return all 7 outputs in the correct order
-    return figs[0], figs[1], figs[2], figs[3], figs[4], est_text, store_data
-
-
-@app.callback(
-    [Output('container-map-graph-3d', 'style'),  # NEW: 3D graph container style output
-     Output('container-map-graph', 'style'),
-     Output('container-regression-graph', 'style'),
-     Output('container-polar-graph', 'style'),
-     Output('container-time-series-graph', 'style')],
-    Input('graph-selector-dropdown', 'value')
-)
-def update_graph_visibility(selected_graph):
-    """Controls the visibility of different graph types based on dropdown selection."""
-    style_3d = {'display': 'none'}  # Initialize 3D graph style
-    style_map = {'display': 'none'}
-    style_regression = {'display': 'none'}
-    style_polar = {'display': 'none'}
-    style_time = {'display': 'none'}
-
-    if selected_graph == '3d_map': # Corresponds to the 'value' in the dropdown
-        style_3d = {'display': 'block'}
-    elif selected_graph == 'map':
-        style_map = {'display': 'block'}
-    elif selected_graph == 'regression':
-        style_regression = {'display': 'block'}
-    elif selected_graph == 'polar':
-        style_polar = {'display': 'block'}
-    elif selected_graph == 'time':
-        style_time = {'display': 'block'}
-
-    return style_3d, style_map, style_regression, style_polar, style_time
-
-
-@app.callback(
-    [Output("cluster-info-modal", "is_open"), Output("modal-title", "children"), Output("modal-body", "children")],
-    [Input("scan-map-graph", "clickData")], [State("clustered-data-store", "data")], prevent_initial_call=True)
-def display_cluster_info(clickData, stored_data_json):
-    """Displays detailed information about a clicked cluster in a modal."""
-    if not clickData or not stored_data_json: return False, no_update, no_update
-    try:
-        df_clus = pd.read_json(stored_data_json, orient='split')
-        if 'cluster' not in df_clus.columns: return False, "Hata", "Küme verisi bulunamadı."
-        cl_label = clickData["points"][0].get('customdata')
-        if cl_label is None:
-            point_idx = clickData["points"][0].get('pointIndex')
-            if point_idx is not None and point_idx < len(df_clus):
-                cl_label = df_clus.iloc[point_idx]['cluster']
-            else:
-                return False, "Hata", "Küme etiketi alınamadı."
-        if cl_label == -2:
-            title, body = "Analiz Yok", "Bu nokta için küme analizi yapılamadı."
-        elif cl_label == -1:
-            title, body = "Gürültü Noktası", "Bu nokta bir nesne kümesine ait değil."
-        else:
-            cl_df_points = df_clus[df_clus['cluster'] == cl_label];
-            n_pts = len(cl_df_points);
-            w_cl, d_cl = 0, 0
-            if n_pts > 0: w_cl = cl_df_points['y_cm'].max() - cl_df_points['y_cm'].min(); d_cl = cl_df_points[
-                                                                                                     'x_cm'].max() - \
-                                                                                                 cl_df_points[
-                                                                                                     'x_cm'].min()
-            title = f"Küme #{int(cl_label)} Detayları";
-            body = html.Div([html.P(f"Nokta Sayısı: {n_pts}"), html.P(f"Yaklaşık Genişlik (Y): {w_cl:.1f} cm"),
-                             html.P(f"Yaklaşık Derinlik (X): {d_cl:.1f} cm")])
-        return True, title, body
-    except Exception as e:
-        return True, "Hata", f"Küme bilgisi gösterilemedi: {e}"
-
-
-@app.callback(
-    [Output('ai-yorum-sonucu', 'children'), Output('ai-image', 'children')],
-    [Input('ai-model-dropdown', 'value')],
-    prevent_initial_call=True
-)
-def yorumla_model_secimi(selected_model_value):
-    """
-    Tetikleyici: AI modeli seçildiğinde.
-    Aksiyon: Önce detaylı analiz yapar, sonra bu analizi özetleyip görsel bir komut oluşturur
-             ve bu komutla resim üretir.
-    """
-    if not selected_model_value:
-        return [html.Div("Yorum için bir model seçin.", className="text-center"), no_update]
-
-    scan = get_latest_scan()
-    if not scan:
-        return [dbc.Alert("Analiz edilecek bir tarama bulunamadı.", color="warning"), no_update]
-
-    # --- AŞAMA 1: Detaylı Metin Analizi ---
-    points_qs = scan.points.all().values('x_cm', 'y_cm', 'z_cm', 'mesafe_cm')
-    if not points_qs:
-        return [dbc.Alert("Yorumlanacak tarama verisi bulunamadı.", color="warning"), no_update]
-
-    df_data_for_ai = pd.DataFrame(list(points_qs))
-    if len(df_data_for_ai) > 300:
-        df_data_for_ai = df_data_for_ai.sample(n=300, random_state=1).round(1)
-
-    prompt_text_final = (
-        f"Aşağıdaki tablo, bir 3-boyutlu tarayıcının oluşturduğu verileri içermektedir. "
-        f"'mesafe_cm' sütunu sensörden nesneye olan ham direkt uzaklığı, x/y/z sütunları ise bu mesafenin cm cinsinden 3 boyutlu kartezyen koordinatlarını temsil eder. "
-        f"Sensör (0,0,0) noktasındadır. 'z_cm' sütunu, sensör seviyesine göre yüksekliği temsil eder. "
-        f"Bu 3D verilere ve ham mesafe bilgisine dayanarak, ortamın yapısını analiz et veMarkdown formatında düzenli bir şekilde sun."
-        f"\n\n--- VERİ TABLOSU ---\n{df_data_for_ai.to_string(index=False)}"
+    return dash_table.DataTable(
+        data=df.to_dict('records'),
+        columns=[{"name": i.replace("_", " ").title(), "id": i} for i in df.columns],
+        style_cell={'textAlign': 'left', 'padding': '5px', 'fontSize': '0.9em'},
+        style_header={'backgroundColor': 'rgb(230,230,230)', 'fontWeight': 'bold'},
+        style_table={'minHeight': '65vh', 'height': '70vh', 'maxHeight': '75vh', 'overflowY': 'auto'},
+        page_size=50,
+        sort_action="native",
+        filter_action="native",
+        virtualization=True,
+        fixed_rows={'headers': True}
     )
-
-    yorum_text_from_ai = yorumla_tablo_verisi_gemini(df_data_for_ai, selected_model_value, prompt_text_final)
-
-    if "Hata:" in yorum_text_from_ai:
-        return [dbc.Alert(yorum_text_from_ai, color="danger"),
-                dbc.Alert("Metin yorumu alınamadığı için resim oluşturulamadı.", color="warning")]
-
-    commentary_component = dbc.Alert(
-        dcc.Markdown(yorum_text_from_ai, dangerously_allow_html=True, link_target="_blank"), color="success")
-
-    # --- AŞAMA 2: Görsel Komut Oluşturma ve Resim Çizme ---
-    # Alınan detaylı analizi, resim modeli için daha basit bir komuta çeviriyoruz.
-    visual_prompt = summarize_analysis_for_image_prompt(yorum_text_from_ai, selected_model_value)
-
-    # Resim üretme fonksiyonuna bu yeni, temiz komutu gönderiyoruz.
-    image_component = generate_image_from_text(visual_prompt)
-
-    return [commentary_component, image_component]

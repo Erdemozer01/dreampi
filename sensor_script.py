@@ -63,7 +63,7 @@ DEFAULT_VERTICAL_STEP_ANGLE = 15.0
 DEFAULT_BUZZER_DISTANCE = 10
 DEFAULT_INVERT_MOTOR_DIRECTION = False
 DEFAULT_STEPS_PER_REVOLUTION = 4096
-STEP_MOTOR_INTER_STEP_DELAY, STEP_MOTOR_SETTLE_TIME, LOOP_TARGET_INTERVAL_S = 0.0015, 0.05, 0.2
+STEP_MOTOR_INTER_STEP_DELAY, STEP_MOTOR_SETTLE_TIME, LOOP_TARGET_INTERVAL_S = 0.0015, 0.05, 0.6
 
 # Servo'nun başlangıç açısını kaydırmak için yeni sabit
 # Bu değer, servo'nun fiziksel 0 derecesine karşılık gelen mantıksal açıyı belirtir.
@@ -155,7 +155,7 @@ def init_hardware():
         # 500 µs = 0.0005 s
         # 2500 µs = 0.0025 s
         MIN_PULSE = 0.0005  # Genellikle 0 dereceye karşılık gelen minimum darbe genişliği (saniye cinsinden)
-        MAX_PULSE = 0.0025  # Genellikle 180 dereceye karşılık gelen maksimum darbe genişliği (saniye cinsinden)
+        MAX_PULSE = 0.0027  # Genellikle 180 dereceye karşılık gelen maksimum darbe genişliği (saniye cinsinden)
 
         # Eğer bu değerlerle tam 180 derece dönmüyorsa veya 0'a ulaşmıyorsa, küçük adımlarla ayarlama yapın.
         # Örneğin: MIN_PULSE = 0.00048, MAX_PULSE = 0.00252

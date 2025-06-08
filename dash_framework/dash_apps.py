@@ -242,7 +242,7 @@ def handle_start_script(n_clicks, mode, duration, step, buzzer, invert, steps_re
         pid_file, script_path = AUTONOMOUS_PID_FILE, AUTONOMOUS_DRIVE_SCRIPT_PATH
         cmd = [py_exec, script_path]
     elif mode == 'free_movement':
-        pid_file, script_path = FREE_MOVEMENT_PID_FILE, FREE_MOVEMENT_SCRIPT_PATH
+        pid_file, script_path = FREE_MOVEMENT_SCRIPT_PATH, FREE_MOVEMENT_SCRIPT_PATH
         cmd = [py_exec, script_path]
     else: return dbc.Alert("Geçersiz mod.", color="danger")
     if os.path.exists(pid_file):
@@ -344,7 +344,7 @@ def update_all_outputs(n):
     fig_3d = go.Figure(data=[go.Scatter3d(x=df_val['y_cm'], y=df_val['x_cm'], z=df_val['z_cm'], mode='markers', marker=dict(size=2, color=df_val['z_cm'], colorscale='Viridis'))]); fig_3d.update_layout(title='3D Harita', scene=dict(aspectmode='data'))
     analysis_desc, df_clustered = analyze_environment_shape(df_val.copy()); fig_2d = go.Figure()
     if 'cluster' in df_clustered.columns:
-        for cid in df_clustered['cluster'].unique(): fig_2d.add_trace(go.Scatter(x=df_clustered[df_clustered['cluster']==cid]['y_cm'], y=df_clustered[df_clustered['cluster']==cid]['x_cm'], mode='markers', name=f'Küme {cid}'))
+        for cid in df_clustered['cluster'].unique(): fig_2d.add_trace(go.Scatter(x=df_clustered[df_clustered['cluster']==cid]['y_cm'], y=df_clustered[df_clustered['cluster']==cid]['x_cm'], mode='markers', name=f'Küme {cid}' if cid != -1 else 'Gürültü'))
     else: fig_2d.add_trace(go.Scatter(x=df_val['y_cm'], y=df_val['x_cm'], mode='markers'))
     add_scan_rays(fig_2d, df_val); fig_2d.update_layout(title='2D Kartezyen Harita', yaxis_scaleanchor="x")
     fig_pol = go.Figure(data=[go.Scatterpolar(r=df_val['mesafe_cm'], theta=df_val['derece'], mode='markers')]); fig_pol.update_layout(title='Polar Grafik')

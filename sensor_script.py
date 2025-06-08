@@ -37,7 +37,7 @@ except ImportError as e:
 
 # --- SABİTLER VE PINLER ---
 MOTOR_BAGLI = True
-# Pinler
+# Pinler (Kullanıcının orijinal pinleri)
 TRIG_PIN, ECHO_PIN = 23, 24
 SERVO_PIN = 12
 IN1_GPIO_PIN, IN2_GPIO_PIN, IN3_GPIO_PIN, IN4_GPIO_PIN = 6, 13, 19, 26
@@ -51,7 +51,7 @@ LOCK_FILE_PATH, PID_FILE_PATH = '/tmp/sensor_scan_script.lock', '/tmp/sensor_sca
 DEFAULT_HORIZONTAL_SCAN_ANGLE = 270.0
 DEFAULT_HORIZONTAL_STEP_ANGLE = 10.0
 DEFAULT_VERTICAL_SCAN_ANGLE = 180.0
-DEFAULT_VERTICAL_STEP_ANGLE = 15.0  # Dikey adımı biraz daha büyük tutalım
+DEFAULT_VERTICAL_STEP_ANGLE = 15.0
 DEFAULT_BUZZER_DISTANCE = 10
 DEFAULT_INVERT_MOTOR_DIRECTION = False
 DEFAULT_STEPS_PER_REVOLUTION = 4096
@@ -94,12 +94,14 @@ def release_resources_on_exit():
         try:
             scan_to_update = Scan.objects.get(id=current_scan_object_global.id)
             scan_to_update.status = script_exit_status_global
+            scan_to_update.end_time = timezone.now()
             scan_to_update.save()
             print(f"Scan #{scan_to_update.id} durumu güncellendi: {scan_to_update.status}")
         except Exception as e:
             print(f"DB çıkış hatası: {e}")
 
     if MOTOR_BAGLI: _set_step_pins(0, 0, 0, 0)
+    if buzzer: buzzer.off()
     if lcd:
         try:
             lcd.clear()
@@ -194,10 +196,9 @@ def move_motor_to_angle(target_angle_deg, invert_direction):
 
 
 def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist, invert_dir, steps_rev):
-    """Veritabanında yeni bir tarama kaydı oluşturur."""
+    """Veritabanında yeni bir tarama kaydı oluşturur (DÜZELTİLMİŞ)."""
     global current_scan_object_global
     try:
-        # Önceki yarım kalmış taramaları temizle
         Scan.objects.filter(status=Scan.Status.RUNNING).update(status=Scan.Status.ERROR, end_time=timezone.now())
         current_scan_object_global = Scan.objects.create(
             start_angle_setting=h_angle,
@@ -205,13 +206,19 @@ def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist, invert_dir, steps_r
             end_angle_setting=v_angle,
             buzzer_distance_setting=buzzer_dist,
             invert_motor_direction_setting=invert_dir,
-            steps_per_revolution_setting=steps_rev,
+            # steps_per_revolution_setting=steps_rev, # BU ALAN MODELDE YOKSA TypeError VERİR
             status=Scan.Status.RUNNING
         )
         print(f"Yeni tarama kaydı veritabanında oluşturuldu: ID #{current_scan_object_global.id}")
         return True
+    except TypeError as te:
+        print(f"DB Hatası (create_scan_entry): {te}")
+        print("Modelinizde olmayan bir alanı (örn: steps_per_revolution_setting) kaydetmeye çalışıyor olabilirsiniz.")
+        print("Lütfen scanner/models.py dosyasındaki Scan modelini kontrol edin.")
+        return False
     except Exception as e:
         print(f"DB Hatası (create_scan_entry): {e}")
+        traceback.print_exc()
         return False
 
 
@@ -254,8 +261,6 @@ if __name__ == "__main__":
         servo.value = degree_to_servo_value(0)
         time.sleep(1.5)
         print("Başlangıç pozisyonu ayarlandı. Tarama başlıyor.")
-
-        collected_points_for_analysis = []
 
         # 2. TARAMA DÖNGÜSÜ
         num_horizontal_steps = int(TOTAL_H_ANGLE / H_STEP)
@@ -306,8 +311,6 @@ if __name__ == "__main__":
                 )
 
         script_exit_status_global = Scan.Status.COMPLETED
-        current_scan_object_global.end_time = timezone.now()
-        current_scan_object_global.save()
         print("Tarama başarıyla tamamlandı.")
 
     except KeyboardInterrupt:
@@ -321,5 +324,4 @@ if __name__ == "__main__":
         print(f"[{pid}] İşlem sonlanıyor. Motor merkez konuma getiriliyor...")
         move_motor_to_angle(0, INVERT_MOTOR)  # Mutlak 0'a geri dön
         if servo: servo.value = degree_to_servo_value(90)  # Servo'yu ortaya al
-        if buzzer: buzzer.off()
         print(f"[{pid}] Donanımlar başlangıç konumuna getirildi.")

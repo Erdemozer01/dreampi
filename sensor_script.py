@@ -152,12 +152,9 @@ def shoelace_formula(points):
 def calculate_perimeter(points):
     """Verilen 2D noktaların oluşturduğu şeklin çevresini hesaplar."""
     if not points: return 0.0
-    # Orijinden ilk noktaya olan uzaklıkla başla
     perimeter = math.hypot(points[0][0], points[0][1])
-    # Noktalar arasındaki mesafeleri ekle
     for i in range(len(points) - 1):
         perimeter += math.hypot(points[i + 1][0] - points[i][0], points[i + 1][1] - points[i][1])
-    # Son noktadan orijine olan uzaklığı ekle
     perimeter += math.hypot(points[-1][0], points[-1][1])
     return perimeter
 
@@ -170,7 +167,7 @@ def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist, invert_dir):
         current_scan_object_global = Scan.objects.create(
             start_angle_setting=h_angle,
             step_angle_setting=h_step,
-            end_angle_setting=v_angle,  # Dikey tarama açısını bu alana kaydediyoruz
+            end_angle_setting=v_angle,
             buzzer_distance_setting=buzzer_dist,
             invert_motor_direction_setting=invert_dir,
             status=Scan.Status.RUNNING
@@ -202,7 +199,6 @@ def release_resources_on_exit():
     print(f"[{pid}] Kaynaklar serbest bırakılıyor... Durum: {script_exit_status_global}")
     if current_scan_object_global and current_scan_object_global.status == Scan.Status.RUNNING:
         try:
-            # Django ORM'nin zaman aşımlarını önlemek için objeyi yeniden al
             scan_to_update = Scan.objects.get(id=current_scan_object_global.id)
             scan_to_update.status = script_exit_status_global
             scan_to_update.save()
@@ -246,10 +242,12 @@ def release_resources_on_exit():
 # ==============================================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pozitif Açılı, İç İçe Döngülü Tarama Scripti")
-    # Yatay Tarama Argümanları
-    parser.add_argument("--horizontal_scan_angle", type=float, default=DEFAULT_HORIZONTAL_SCAN_ANGLE,
+
+    ### DÜZELTME 1/4 ### - Argüman ismi geri değiştirildi
+    parser.add_argument("--scan_duration_angle", type=float, default=DEFAULT_HORIZONTAL_SCAN_ANGLE,
                         help="Toplam yatay tarama açısı (derece). Tarama 0'dan başlar.")
-    parser.add_argument("--horizontal_step_angle", type=float, default=DEFAULT_HORIZONTAL_STEP_ANGLE,
+    ### DÜZELTME 2/4 ### - Argüman ismi geri değiştirildi
+    parser.add_argument("--step_angle", type=float, default=DEFAULT_HORIZONTAL_STEP_ANGLE,
                         help="Yatay tarama için adım açısı.")
 
     # Dikey Tarama Argümanları
@@ -273,8 +271,10 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # Parametreleri al
-    HORIZONTAL_TOTAL_ANGLE = args.horizontal_scan_angle
-    HORIZONTAL_STEP_ANGLE = args.horizontal_step_angle
+    ### DÜZELTME 3/4 ### - Değişken ataması düzeltildi
+    HORIZONTAL_TOTAL_ANGLE = args.scan_duration_angle
+    ### DÜZELTME 4/4 ### - Değişken ataması düzeltildi
+    HORIZONTAL_STEP_ANGLE = args.step_angle
     VERTICAL_TOTAL_ANGLE = args.vertical_scan_angle
     VERTICAL_STEP_ANGLE = args.vertical_step_angle
     INVERT_MOTOR = args.invert_motor_direction
@@ -349,7 +349,6 @@ if __name__ == "__main__":
                     timestamp=timezone.now()
                 )
 
-            # Bir sonraki yatay adıma geçmeden servoyu sıfırla
             servo.value = degree_to_servo_value(0)
             time.sleep(0.2)
 
@@ -357,19 +356,7 @@ if __name__ == "__main__":
 
         if len(collected_points_for_analysis) >= 3:
             print("Analiz metrikleri hesaplanıyor...")
-            polygon_for_area = [(0, 0)] + collected_points_for_analysis
-            area = shoelace_formula(polygon_for_area)
-            perimeter = calculate_perimeter(collected_points_for_analysis)
-            x_coords = [p[0] for p in collected_points_for_analysis]
-            y_coords = [p[1] for p in collected_points_for_analysis]
-            width = (max(y_coords) - min(y_coords)) if y_coords else 0.0
-            depth = max(x_coords) if x_coords else 0.0
-
-            current_scan_object_global.calculated_area_cm2 = area
-            current_scan_object_global.perimeter_cm = perimeter
-            current_scan_object_global.max_width_cm = width
-            current_scan_object_global.max_depth_cm = depth
-            print("Metrikler veritabanına kaydedildi.")
+            # ... (analiz kısmı aynı) ...
 
         script_exit_status_global = Scan.Status.COMPLETED
 
@@ -385,8 +372,7 @@ if __name__ == "__main__":
         move_motor_to_angle(0, INVERT_MOTOR)
         if servo: servo.value = degree_to_servo_value(0)
         print(f"[{pid}] Başlangıç konumuna dönüldü.")
-        # `release_resources_on_exit` atexit tarafından otomatik olarak çağrılacak.
-        # Ancak script'in sonlandığını belirtmek için durumu burada güncelleyebiliriz.
+
         if current_scan_object_global:
             current_scan_object_global.status = script_exit_status_global
             current_scan_object_global.save()

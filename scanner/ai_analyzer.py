@@ -51,7 +51,7 @@ class AIAnalyzerService:
         print(f"📊 {len(df)} adet kayıt DataFrame'e yüklendi. Analiz için gönderiliyor...")
         data_string = df.to_string()
         full_prompt = (
-            f"Bir Django modelinden alınan aşağıdaki veritabanı tablosunu analiz et:\n\n"
+            f"Ultrasonic sensör mesafe ölçümlerinden elde edilen veriler analiz et:\n\n"
             f"--- VERİ TABLOSU ({django_model.__name__}) ---\n"
             f"{data_string}\n\n"
             f"--- ANALİZ İSTEĞİ ---\n"

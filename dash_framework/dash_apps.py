@@ -545,27 +545,6 @@ def update_realtime_values(n):
     return angle_s, dist_s, speed_s, dist_style, max_dist_s
 
 
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-# !!! HATA KAYNAĞI - BU CALLBACK'İ SİLİN !!!
-# Bu fonksiyon, update_all_graphs ile aynı Output'ları hedeflediği için hataya neden olur.
-@app.callback(
-    [Output('calculated-area', 'children'), Output('perimeter-length', 'children'), Output('max-width', 'children'),
-     Output('max-depth', 'children')],
-    [Input('interval-component-main', 'n_intervals')]
-)
-def update_analysis_panel(n):
-    """Updates calculated analysis metrics (area, perimeter, max width/depth) for the latest scan."""
-    scan = get_latest_scan()
-    area_s, perim_s, width_s, depth_s = "-- cm²", "-- cm", "-- cm", "-- cm"
-    if scan:
-        area_s = f"{scan.calculated_area_cm2:.2f} cm²" if pd.notnull(scan.calculated_area_cm2) else "N/A"
-        perim_s = f"{scan.perimeter_cm:.2f} cm" if pd.notnull(scan.perimeter_cm) else "N/A"
-        width_s = f"{scan.max_width_cm:.2f} cm" if pd.notnull(scan.max_width_cm) else "N/A"
-        depth_s = f"{scan.max_depth_cm:.2f} cm" if pd.notnull(scan.max_depth_cm) else "N/A"
-    return area_s, perim_s, width_s, depth_s
-
-
-# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
 @app.callback(Output('download-csv', 'data'), Input('export-csv-button', 'n_clicks'), prevent_initial_call=True)

@@ -1,12 +1,22 @@
-import os, sys, time, fcntl, atexit, math, traceback
+import os
+import sys
+import time
+import fcntl
+import atexit
+import math
+import traceback
 
+# --- DONANIM KÜTÜPHANELERİ ---
 try:
     from gpiozero import DistanceSensor, Buzzer, OutputDevice, LED
     from RPLCD.i2c import CharLCD
-except ImportError as e:
-    print(f"Hata: Gerekli kütüphane bulunamadı: {e}"); sys.exit(1)
 
-# --- Sabitler ve Pinler ---
+    print("FreeMovementScript: Donanım kütüphaneleri başarıyla import edildi.")
+except ImportError as e:
+    print(f"FreeMovementScript: Gerekli kütüphane bulunamadı: {e}")
+    sys.exit(1)
+
+# --- SABİTLER VE PINLER ---
 TRIG_PIN, ECHO_PIN = 23, 24
 IN1_GPIO_PIN, IN2_GPIO_PIN, IN3_GPIO_PIN, IN4_GPIO_PIN = 6, 13, 19, 26
 BUZZER_PIN = 17
@@ -20,7 +30,7 @@ PAUSE_ON_DETECTION_S = 3.0
 STEPS_PER_REVOLUTION = 4096
 STEP_MOTOR_INTER_STEP_DELAY = 0.0020
 
-# --- Global Değişkenler ve Fonksiyonlar ---
+# --- GLOBAL DEĞİŞKENLER ---
 lock_file_handle, sensor, buzzer, lcd = None, None, None, None
 in1_dev, in2_dev, in3_dev, in4_dev = None, None, None, None
 DEG_PER_STEP = 360.0 / STEPS_PER_REVOLUTION
@@ -30,6 +40,7 @@ step_sequence = [[1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0], [0, 1, 1, 0], [0, 0, 
 motor_paused, pause_end_time = False, 0
 
 
+# --- SÜREÇ YÖNETİMİ VE KAYNAK KONTROLÜ ---
 def acquire_lock_and_pid():
     global lock_file_handle
     try:
@@ -37,20 +48,19 @@ def acquire_lock_and_pid():
         fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         with open(PID_FILE_PATH, 'w') as pf:
             pf.write(str(os.getpid()))
-        print(f"Gözcü Modu: PID ({os.getpid()}) ve Kilit dosyaları oluşturuldu.")
         return True
     except IOError:
         return False
 
 
 def release_resources_on_exit():
-    print("\nGözcü modu sonlanıyor...")
+    print("\nProgram sonlandırılıyor...")
     _set_step_pins(0, 0, 0, 0)
     if lcd:
         try:
-            lcd.clear(); lcd.write_string("Gorusuruz!")
-        except:
-            pass
+            lcd.clear()
+        except Exception as e:
+            print(f"LCD temizlenemedi: {e}")
     if buzzer: buzzer.off()
     if lock_file_handle:
         try:
@@ -65,6 +75,7 @@ def release_resources_on_exit():
                 pass
 
 
+# --- DONANIM FONKSİYONLARI ---
 def init_hardware():
     global sensor, buzzer, lcd, in1_dev, in2_dev, in3_dev, in4_dev
     try:
@@ -72,13 +83,17 @@ def init_hardware():
             IN3_GPIO_PIN), OutputDevice(IN4_GPIO_PIN)
         sensor = DistanceSensor(echo=ECHO_PIN, trigger=TRIG_PIN, max_distance=3.0)
         buzzer = Buzzer(BUZZER_PIN)
-        lcd = CharLCD(i2c_expander=LCD_PORT_EXPANDER, address=LCD_I2C_ADDRESS, port=I2C_PORT, cols=LCD_COLS,
-                      rows=LCD_ROWS, auto_linebreaks=True)
-        lcd.clear();
-        lcd.write_string("Gozcu Modu Aktif")
+        try:
+            lcd = CharLCD(i2c_expander=LCD_PORT_EXPANDER, address=LCD_I2C_ADDRESS, port=I2C_PORT, cols=LCD_COLS,
+                          rows=LCD_ROWS, auto_linebreaks=True)
+            lcd.clear()
+        except Exception as e:
+            print(f"UYARI: LCD başlatılamadı, LCD olmadan devam edilecek. Hata: {e}")
+            lcd = None
         return True
     except Exception as e:
-        print(f"Donanım Hatası: {e}"); return False
+        print(f"KRİTİK HATA: Donanım başlatılamadı: {e}");
+        return False
 
 
 def _set_step_pins(s1, s2, s3, s4):
@@ -97,26 +112,38 @@ def _single_step_motor(direction_positive):
     time.sleep(STEP_MOTOR_INTER_STEP_DELAY)
 
 
+# --- ANA GÖZCÜ MANTIĞI ---
 def check_environment_and_react():
     global motor_paused, pause_end_time
     mesafe = sensor.distance * 100
+
     if 0 < mesafe < DETECTION_THRESHOLD_CM:
         if not motor_paused:
             print(f"!!! NESNE ALGILANDI: {mesafe:.1f} cm !!!")
-            if lcd: lcd.clear(); lcd.write_string("NESNE ALGILANDI"); lcd.cursor_pos = (1, 0); lcd.write_string(
-                f"{mesafe:.1f} cm".center(16))
+            if lcd:
+                try:  # DÜZELTME: LCD işlemleri için try-except bloğu
+                    lcd.clear()
+                    lcd.write_string("NESNE ALGILANDI")
+                    lcd.cursor_pos = (1, 0)
+                    lcd.write_string(f"{mesafe:.1f} cm".center(LCD_COLS))
+                except OSError as e:
+                    print(f"LCD YAZMA HATASI (algılama): {e}")
             buzzer.beep(on_time=0.1, off_time=0.1, n=2, background=True)
             motor_paused = True
             pause_end_time = time.time() + PAUSE_ON_DETECTION_S
     else:
         if motor_paused and time.time() > pause_end_time:
-            print("...Alan temiz, taramaya devam.")
+            print("...Alan temiz, taramaya devam ediliyor.")
             motor_paused = False
+
         if not motor_paused and lcd:
-            lcd.clear();
-            lcd.write_string("Gozcu Modu Aktif");
-            lcd.cursor_pos = (1, 0);
-            lcd.write_string(f"Aci: {current_motor_angle_global:.1f}*".center(16))
+            try:  # DÜZELTME: LCD işlemleri için try-except bloğu
+                lcd.clear()
+                lcd.write_string("Gozcu Modu Aktif")
+                lcd.cursor_pos = (1, 0)
+                lcd.write_string(f"Aci: {current_motor_angle_global:.1f}*".center(LCD_COLS))
+            except OSError as e:
+                print(f"LCD YAZMA HATASI (normal): {e}")
 
 
 # --- ANA ÇALIŞMA BLOĞU ---
@@ -124,19 +151,23 @@ if __name__ == "__main__":
     atexit.register(release_resources_on_exit)
     if not acquire_lock_and_pid() or not init_hardware(): sys.exit(1)
 
+    print("\n>>> Serbest Hareket (Gözcü) Modu Başlatıldı <<<")
     target_angle = SWEEP_ANGLE
+
     try:
         while True:
             while abs(current_motor_angle_global - target_angle) > DEG_PER_STEP:
                 check_environment_and_react()
-                if motor_paused: time.sleep(0.1); continue
-                _single_step_motor(target_angle > current_motor_angle_global)
-
-            check_environment_and_react();
+                if motor_paused:
+                    time.sleep(0.1)
+                    continue
+                direction = target_angle > current_motor_angle_global
+                _single_step_motor(direction)
+            check_environment_and_react()
             time.sleep(1)
             target_angle = -target_angle
     except KeyboardInterrupt:
         print("\nKullanıcı tarafından durduruldu.")
     except Exception as e:
-        print(f"KRİTİK HATA: {e}"); traceback.print_exc()
-
+        print(f"KRİTİK HATA: {e}");
+        traceback.print_exc()

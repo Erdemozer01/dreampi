@@ -56,7 +56,7 @@ class AIAnalyzerService:
             f"{data_string}\n\n"
             f"--- ANALİZ İSTEĞİ ---\n"
             f"{custom_prompt}\n\n"
-            f"Lütfen cevabını net başlıklar ve maddeler halinde Markdown formatında sun."
+            f"Lütfen cevabını net başlıklar ve maddeler halinde Markdown formatında sun. multimodal ÖZELLİĞİNLE ORTAMIN RESİMİNİ OLUŞTUR"
         )
         try:
             response = self.model.generate_content(full_prompt)

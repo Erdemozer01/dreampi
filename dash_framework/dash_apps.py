@@ -581,14 +581,14 @@ def generate_image_from_text(analysis_text, model_name):
         # Bu örnekte, üretilen prompt'u ve bir yer tutucu resim gösteriyoruz.
         return html.Div([
             dbc.Alert("Aşağıdaki prompt ile bir resim üretilebilir:", color="info"),
-            html.Pre(f < code > {image_prompt} < / code >),
-        html.Img(
-            src="https://via.placeholder.com/512x512.png?text=Image+Generation+API+Needed",
-            style={'maxWidth': '100%', 'height': 'auto', 'borderRadius': '10px', 'marginTop': '10px'}
-        )
-        ])
+            html.Pre(f"< code > {image_prompt} < / code >"),
+            html.Img(
+                src="https://via.placeholder.com/512x512.png?text=Image+Generation+API+Needed",
+                style={'maxWidth': '100%', 'height': 'auto', 'borderRadius': '10px', 'marginTop': '10px'}
+            )
+            ])
 
-        except Exception as e:
+    except Exception as e:
         return dbc.Alert(f"Resim istemi oluşturulurken bir hata oluştu: {e}", color="danger")
 
 

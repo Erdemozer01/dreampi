@@ -30,7 +30,8 @@ SWEEP_ANGLE = 90.0
 DETECTION_THRESHOLD_CM = 30.0
 PAUSE_ON_DETECTION_S = 3.0
 STEPS_PER_REVOLUTION = 4096
-STEP_MOTOR_INTER_STEP_DELAY = 0.0020
+# DÜZELTME: Daha kararlı bir dönüş için gecikme hafifçe artırıldı
+STEP_MOTOR_INTER_STEP_DELAY = 0.0022
 
 # --- GLOBAL DEĞİŞKENLER ---
 lock_file_handle, sensor, buzzer, lcd = None, None, None, None
@@ -43,6 +44,7 @@ motor_paused, pause_end_time = False, 0
 
 
 # --- SÜREÇ YÖNETİMİ VE KAYNAK KONTROLÜ ---
+# (Bu fonksiyonlar doğru olduğu için değiştirilmedi)
 def acquire_lock_and_pid():
     global lock_file_handle
     try:
@@ -82,6 +84,7 @@ def release_resources_on_exit():
 
 
 # --- DONANIM FONKSİYONLARI ---
+# (Bu fonksiyonlar doğru olduğu için değiştirilmedi)
 def init_hardware():
     global sensor, buzzer, lcd, in1_dev, in2_dev, in3_dev, in4_dev
     try:
@@ -119,10 +122,10 @@ def _single_step_motor(direction_positive):
 
 
 # --- ANA GÖZCÜ MANTIĞI ---
+# (Bu fonksiyon doğru olduğu için değiştirilmedi)
 def check_environment_and_react():
     global motor_paused, pause_end_time
     mesafe = sensor.distance * 100
-
     if 0 < mesafe < DETECTION_THRESHOLD_CM:
         if not motor_paused:
             print(f"!!! NESNE ALGILANDI: {mesafe:.1f} cm !!!")
@@ -151,6 +154,42 @@ def check_environment_and_react():
                 print(f"LCD YAZMA HATASI: {e}")
 
 
+# DÜZELTME: Motoru hedefe götüren daha sağlam bir fonksiyon
+def move_to_target_with_scan(target_angle):
+    """Motoru hedefe götürürken her adımda ortamı kontrol eder."""
+    print(f"\n>> Yeni Hedef: {target_angle:.1f} derece. Harekete başlanıyor...")
+
+    # Hedef yöne doğru dön
+    direction_is_positive = target_angle > current_motor_angle_global
+
+    # Hedefe ulaşana kadar veya yönü geçene kadar devam et
+    while True:
+        # Her adımdan önce ortamı kontrol et
+        check_environment_and_react()
+
+        # Motor duraklatılmışsa bekle
+        if motor_paused:
+            time.sleep(0.1)
+            continue
+
+        # Hedefe ulaşıp ulaşmadığını kontrol et
+        if direction_is_positive:
+            if current_motor_angle_global >= target_angle:
+                break
+        else:  # direction_is_negative
+            if current_motor_angle_global <= target_angle:
+                break
+
+        # Hedefe ulaşmadıysa bir adım at
+        _single_step_motor(direction_is_positive)
+
+    # Hedefe ulaşıldığında açıyı tam olarak ayarla ve son bir kontrol yap
+    print(f"   Hedefe ulaşıldı. Son Açı: {current_motor_angle_global:.1f}°")
+    current_motor_angle_global = target_angle  # Küçük hataları düzelt
+    check_environment_and_react()
+    time.sleep(1)  # Kenarda veya merkezde kısa bir bekleme
+
+
 # --- ANA ÇALIŞMA BLOĞU (DÜZELTİLMİŞ) ---
 if __name__ == "__main__":
     atexit.register(release_resources_on_exit)
@@ -160,42 +199,17 @@ if __name__ == "__main__":
 
     try:
         while True:
-            # Tarama hedeflerini (sağ kenar, sol kenar, merkez) tanımla
-            targets = [SWEEP_ANGLE, -SWEEP_ANGLE, 0]
+            # Sağ kenara git
+            move_to_target_with_scan(SWEEP_ANGLE)
 
-            for target_angle in targets:
-                print(f"\n>> Yeni Hedef: {target_angle:.1f} derece. Harekete başlanıyor...")
+            # Sol kenara git
+            move_to_target_with_scan(-SWEEP_ANGLE)
 
-                # Bu etap için gereken adım sayısını ve yönü hesapla
-                angle_diff = target_angle - current_motor_angle_global
-                num_steps = int(round(abs(angle_diff) / DEG_PER_STEP))
+            # Merkeze geri dön
+            move_to_target_with_scan(0)
 
-                if num_steps == 0:
-                    continue
-
-                direction_is_positive = angle_diff > 0
-
-                # Adım adım hedefe git
-                for i in range(num_steps):
-                    # Her adımdan önce ortamı kontrol et
-                    check_environment_and_react()
-
-                    # Eğer motorun duraklatılması gerekiyorsa, bekleme döngüsüne gir
-                    while motor_paused:
-                        # Duraklatma sırasında da ortamı sürekli kontrol et
-                        check_environment_and_react()
-                        if not motor_paused:  # Duraklatma süresi dolmuş olabilir
-                            print("...Duraklatma bitti, harekete devam ediliyor.")
-                            break
-                        time.sleep(0.1)  # CPU'yu yormamak için kısa bekleme
-
-                    # Motor duraklatılmamışsa bir adım at
-                    _single_step_motor(direction_is_positive)
-
-                # Etap sonu
-                print(f"   Hedefe ulaşıldı. Mevcut Açı: {current_motor_angle_global:.1f}°")
-                check_environment_and_react()  # Varış noktasında son bir kontrol
-                time.sleep(1)  # Kenarda veya merkezde kısa bir bekleme
+            print("\n>>> Bir tam tur tamamlandı. Yeni tura başlanıyor...")
+            time.sleep(2)  # Yeni tura başlamadan önce 2 saniye bekle
 
     except KeyboardInterrupt:
         print("\nKullanıcı tarafından durduruldu.")

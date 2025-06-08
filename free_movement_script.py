@@ -17,18 +17,22 @@ except ImportError as e:
     sys.exit(1)
 
 # --- SABİTLER VE PINLER ---
+# Pinler (Diğer scriptlerle aynı)
 TRIG_PIN, ECHO_PIN = 23, 24
 IN1_GPIO_PIN, IN2_GPIO_PIN, IN3_GPIO_PIN, IN4_GPIO_PIN = 6, 13, 19, 26
 BUZZER_PIN = 17
 LCD_I2C_ADDRESS, LCD_PORT_EXPANDER, LCD_COLS, LCD_ROWS, I2C_PORT = 0x27, 'PCF8574', 16, 2, 1
-LOCK_FILE_PATH, PID_FILE_PATH = '/tmp/free_movement_script.lock', '/tmp/free_movement_script.pid'
+
+# DÜZELTME: Bu moda özel, bağımsız PID ve Kilit dosyaları
+LOCK_FILE_PATH = '/tmp/free_movement_script.lock'
+PID_FILE_PATH = '/tmp/free_movement_script.pid'
 
 # Çalışma Parametreleri
-SWEEP_ANGLE = 90.0
-DETECTION_THRESHOLD_CM = 30.0
-PAUSE_ON_DETECTION_S = 3.0
+SWEEP_ANGLE = 90.0  # Tarama merkezden +/- bu açı kadar olacak (toplam 180 derece)
+DETECTION_THRESHOLD_CM = 30.0  # Bu mesafeden yakını nesne olarak kabul edilir
+PAUSE_ON_DETECTION_S = 3.0  # Nesne algılandığında motorun duraklama süresi
 STEPS_PER_REVOLUTION = 4096
-STEP_MOTOR_INTER_STEP_DELAY = 0.0020
+STEP_MOTOR_INTER_STEP_DELAY = 0.0020  # Daha yavaş ve sessiz tarama için
 
 # --- GLOBAL DEĞİŞKENLER ---
 lock_file_handle, sensor, buzzer, lcd = None, None, None, None
@@ -48,17 +52,20 @@ def acquire_lock_and_pid():
         fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         with open(PID_FILE_PATH, 'w') as pf:
             pf.write(str(os.getpid()))
+        print(f"Gözcü Modu: PID ({os.getpid()}) ve Kilit dosyaları oluşturuldu.")
         return True
     except IOError:
+        print("Gözcü Modu: Kilit dosyası oluşturulamadı. Başka bir script çalışıyor olabilir.")
         return False
 
 
 def release_resources_on_exit():
-    print("\nProgram sonlandırılıyor...")
-    _set_step_pins(0, 0, 0, 0)
+    print("\nProgram sonlandırılıyor, kaynaklar serbest bırakılıyor...")
+    _set_step_pins(0, 0, 0, 0)  # Motoru durdur
     if lcd:
         try:
             lcd.clear()
+            lcd.write_string("Gorusuruz!")
         except Exception as e:
             print(f"LCD temizlenemedi: {e}")
     if buzzer: buzzer.off()
@@ -73,6 +80,7 @@ def release_resources_on_exit():
                 os.remove(fp)
             except:
                 pass
+    print("Temizleme tamamlandı.")
 
 
 # --- DONANIM FONKSİYONLARI ---
@@ -118,10 +126,10 @@ def check_environment_and_react():
     mesafe = sensor.distance * 100
 
     if 0 < mesafe < DETECTION_THRESHOLD_CM:
-        if not motor_paused:
+        if not motor_paused:  # Sadece ilk algılamada tepki ver
             print(f"!!! NESNE ALGILANDI: {mesafe:.1f} cm !!!")
             if lcd:
-                try:  # DÜZELTME: LCD işlemleri için try-except bloğu
+                try:
                     lcd.clear()
                     lcd.write_string("NESNE ALGILANDI")
                     lcd.cursor_pos = (1, 0)
@@ -137,7 +145,7 @@ def check_environment_and_react():
             motor_paused = False
 
         if not motor_paused and lcd:
-            try:  # DÜZELTME: LCD işlemleri için try-except bloğu
+            try:
                 lcd.clear()
                 lcd.write_string("Gozcu Modu Aktif")
                 lcd.cursor_pos = (1, 0)
@@ -156,16 +164,22 @@ if __name__ == "__main__":
 
     try:
         while True:
+            # Hedefe doğru adım adım ilerle
             while abs(current_motor_angle_global - target_angle) > DEG_PER_STEP:
                 check_environment_and_react()
+
                 if motor_paused:
                     time.sleep(0.1)
                     continue
+
                 direction = target_angle > current_motor_angle_global
                 _single_step_motor(direction)
+
+            print(f"Tarama kenarına ulaşıldı ({target_angle}°). Yön değiştiriliyor.")
             check_environment_and_react()
             time.sleep(1)
             target_angle = -target_angle
+
     except KeyboardInterrupt:
         print("\nKullanıcı tarafından durduruldu.")
     except Exception as e:

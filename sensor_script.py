@@ -139,23 +139,42 @@ def release_resources_on_exit():
 def init_hardware():
     global sensor, servo, buzzer, lcd, in1_dev, in2_dev, in3_dev, in4_dev
     try:
-        if MOTOR_BAGLI: in1_dev, in2_dev, in3_dev, in4_dev = OutputDevice(IN1_GPIO_PIN), OutputDevice(
-            IN2_GPIO_PIN), OutputDevice(IN3_GPIO_PIN), OutputDevice(IN4_GPIO_PIN)
+        if MOTOR_BAGLI:
+            # Step motor pinleri
+            in1_dev, in2_dev, in3_dev, in4_dev = OutputDevice(IN1_GPIO_PIN), OutputDevice(
+                IN2_GPIO_PIN), OutputDevice(IN3_GPIO_PIN), OutputDevice(IN4_GPIO_PIN)
+
+        # Ultrasonik mesafe sensörü
         sensor = DistanceSensor(echo=ECHO_PIN, trigger=TRIG_PIN, max_distance=3.0)
-        servo = Servo(SERVO_PIN)
+
+        # Servo motor: Darbe genişlikleri ile başlatılıyor
+        # Bu değerleri kendi servo motorunuzun modeline göre ayarlamanız KRİTİKTİR.
+        # Örnek değerler (SG90 gibi yaygın servolar için):
+        # 500 µs = 0.0005 s
+        # 2500 µs = 0.0025 s
+        MIN_PULSE = 0.0005  # Genellikle 0 dereceye karşılık gelen minimum darbe genişliği (saniye cinsinden)
+        MAX_PULSE = 0.0025  # Genellikle 180 dereceye karşılık gelen maksimum darbe genişliği (saniye cinsinden)
+
+        # Eğer bu değerlerle tam 180 derece dönmüyorsa, küçük adımlarla ayarlama yapın.
+        # Örneğin: MIN_PULSE = 0.00048, MAX_PULSE = 0.00252
+        servo = Servo(SERVO_PIN, min_pulse_width=MIN_PULSE, max_pulse_width=MAX_PULSE)
+
+        # Buzzer
         buzzer = Buzzer(BUZZER_PIN)
+
+        # LCD Ekran (isteğe bağlı, hata durumunda script durmaz)
         try:
             lcd = CharLCD(i2c_expander=LCD_PORT_EXPANDER, address=LCD_I2C_ADDRESS, port=I2C_PORT, cols=LCD_COLS,
                           rows=LCD_ROWS, auto_linebreaks=True)
-            lcd.clear();
+            lcd.clear()
             lcd.write_string("Haritalama Modu")
         except Exception as e:
             print(f"UYARI: LCD başlatılamadı, LCD olmadan devam edilecek. Hata: {e}")
-            lcd = None
+            lcd = None  # LCD başlatılamazsa None olarak ayarla
         return True
     except Exception as e:
-        print(f"KRİTİK HATA: Donanım başlatılamadı: {e}");
-        traceback.print_exc();
+        print(f"KRİTİK HATA: Donanım başlatılamadı: {e}")
+        traceback.print_exc()  # Hata detaylarını yazdır
         return False
 
 

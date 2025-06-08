@@ -34,6 +34,7 @@ except ImportError as e:
 
 # --- SABİTLER VE PINLER ---
 MOTOR_BAGLI = True
+# Pinler (Kullanıcının orijinal pinleri)
 TRIG_PIN, ECHO_PIN = 23, 24
 SERVO_PIN = 12
 IN1_GPIO_PIN, IN2_GPIO_PIN, IN3_GPIO_PIN, IN4_GPIO_PIN = 6, 13, 19, 26
@@ -72,6 +73,7 @@ def acquire_lock_and_pid():
         fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         with open(PID_FILE_PATH, 'w') as pf:
             pf.write(str(os.getpid()))
+        print(f"Haritalama Modu: PID ({os.getpid()}) ve Kilit dosyaları oluşturuldu.")
         return True
     except IOError:
         print("Kilit dosyası oluşturulamadı. Başka bir script çalışıyor olabilir.")
@@ -87,6 +89,7 @@ def release_resources_on_exit():
             scan_to_update.status = script_exit_status_global
             scan_to_update.end_time = timezone.now()
             scan_to_update.save()
+            print(f"Scan #{scan_to_update.id} durumu güncellendi: {scan_to_update.status}")
         except Exception as e:
             print(f"DB çıkış hatası: {e}")
     if MOTOR_BAGLI: _set_step_pins(0, 0, 0, 0)
@@ -111,8 +114,9 @@ def release_resources_on_exit():
         if os.path.exists(fp):
             try:
                 os.remove(fp)
-            except:
-                pass
+            except OSError as e:
+                print(f"Hata: {fp} dosyası silinemedi: {e}")
+    print(f"[{pid}] Temizleme tamamlandı.")
 
 
 def init_hardware():
@@ -160,6 +164,7 @@ def move_motor_to_angle(target_angle_deg, invert_direction):
     physical_dir = not logical_dir if invert_direction else logical_dir
     _step_motor_4in(num_steps, physical_dir)
     current_motor_angle_global = target_angle_deg
+    time.sleep(STEP_MOTOR_SETTLE_TIME)
 
 
 def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist, invert_dir, steps_rev):
@@ -248,5 +253,6 @@ if __name__ == "__main__":
         print(f"KRİTİK HATA: {e}");
         traceback.print_exc()
     finally:
+        print("İşlem sonlanıyor. Motor merkez konuma getiriliyor...")
         move_motor_to_angle(0, INVERT_MOTOR)
         if servo: servo.value = degree_to_servo_value(90)

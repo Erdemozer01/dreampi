@@ -388,4 +388,36 @@ if __name__ == "__main__":
                     # Ana döngü bir sonraki tura geçtiğinde motor hareket edebilir.
 
                 # Eğer motor duraklatılmışsa (uyarıdan dolayı), duraklatma döngüsü içinde kalmalı
-                # Bu, CYCLE_END_PAUSE'u uzatabilir, ki bu istenen davranış olabil
+                # Bu, CYCLE_END_PAUSE'u uzatabilir, ki bu istenen davranış olabilir.
+                if motor_movement_paused:
+                    # Duraklatma aktifken, CYCLE_END_PAUSE'un ana sayacını etkilememek için
+                    # burada ayrı bir iç döngü ile sadece motor_pause_end_time'a kadar beklenir
+                    # ve sürekli ölçüm yapılır.
+                    temp_pause_start = time.time()
+                    while time.time() < motor_pause_end_time:
+                        perform_measurement_and_react()
+                        time.sleep(0.05)
+                    motor_movement_paused = False  # 3 saniyelik duraklatma bitti
+                    # 5 saniyelik ana döngüye geri dön, kalan süreyi tamamla
+                    # Bu, pause_start_time_cycle_end'in yeniden ayarlanmasını gerektirebilir veya
+                    # 5 saniyelik bekleme 3 saniyelik duraklamayı da içerir.
+                    # Şimdiki mantıkla, 3sn + kalan 5sn şeklinde olabilir.
+                    # Daha basit bir yaklaşım, eğer tur sonu beklemesindeyken nesne algılanırsa,
+                    # sadece uyarı verip motoru zaten durduğu için ekstra durdurmamak.
+                    # Şimdiki kodda zaten motor duruyor, bu yüzden motor_movement_paused sadece
+                    # _single_step_motor'u etkiler.
+                    print("   Nesne uyarısı sonrası tur sonu beklemesine devam...")
+
+                time.sleep(0.1)  # CPU'yu yormamak için
+
+    except KeyboardInterrupt:
+        print("\nKullanıcı tarafından durduruluyor...")
+    finally:
+        print("Program sonlanıyor...")
+        if init_hardware_called_successfully:
+            print("Motor başlangıç pozisyonuna (0°) getiriliyor...")
+            move_motor_to_absolute_angle(0, speed_factor=0.5)
+        else:
+            print("Donanım başlatılamadığı için motor homing atlanıyor, pinler sıfırlanacak.")
+            _set_step_pins(0, 0, 0, 0)
+        print("Çıkış işlemleri tamamlandı.")

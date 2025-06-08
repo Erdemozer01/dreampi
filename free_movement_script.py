@@ -1,6 +1,8 @@
 import time, os
 import atexit
 import sys
+import random # DÜZELTME: Rastgele seçim için import edildi
+
 # PID dosyası yönetimi için sabitler (dashboard ile aynı olmalı)
 SENSOR_SCRIPT_PID_FILE = '/tmp/sensor_scan_script.pid'
 SENSOR_SCRIPT_LOCK_FILE = '/tmp/sensor_scan_script.lock'
@@ -58,7 +60,7 @@ STEPS_PER_REVOLUTION = 4096
 STEP_MOTOR_INTER_STEP_DELAY = 0.0015
 STEP_MOTOR_SETTLE_TIME = 0.05
 
-SWEEP_TARGET_ANGLE = 60
+SWEEP_TARGET_ANGLE = 45
 ALGILAMA_ESIGI_CM = 20
 MOTOR_PAUSE_ON_DETECTION_S = 3.0
 CYCLE_END_PAUSE_S = 5.0
@@ -89,6 +91,15 @@ object_alert_active = False
 motor_movement_paused = False
 motor_pause_end_time = 0
 
+# DÜZELTME: Rastgele selamlama mesajları için bir liste oluşturuldu.
+# Her bir eleman, LCD'nin iki satırını temsil eden bir demettir (tuple).
+GREETING_MESSAGES = [
+    ("Selam!", "Birini gordum :)"),
+    ("Hey!", "Orada biri var!"),
+    ("Dikkat!", "Engel algilandi."),
+    ("Merhaba", "Dream Pi devriyede"),
+    ("Ooo, bir misafir", "Hos geldiniz!")
+]
 
 # ==============================================================================
 # --- Donanım ve Yardımcı Fonksiyonlar ---
@@ -218,9 +229,11 @@ def update_lcd_display(message_type):
         else:  # Durum değişti veya ilk yazım
             lcd.clear()
             if message_type == "alert_greeting":
-                lcd.write_string("Merhaba")
+                # DÜZELTME: Listeden rastgele bir selamlama seçilir.
+                line1, line2 = random.choice(GREETING_MESSAGES)
+                lcd.write_string(line1.ljust(LCD_COLS))
                 lcd.cursor_pos = (1, 0);
-                lcd.write_string("Dream Pi")
+                lcd.write_string(line2.ljust(LCD_COLS))
             elif message_type == "normal_time":
                 lcd.write_string("Dream Pi")
                 lcd.cursor_pos = (1, 0);

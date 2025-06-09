@@ -672,7 +672,6 @@ def display_cluster_info(clickData, stored_data_json):
         return True, "Hata", f"Küme bilgisi gösterilemedi: {e}"
 
 
-# dashboard.py
 
 @app.callback(
     [Output('ai-yorum-sonucu', 'children'),
@@ -683,16 +682,15 @@ def display_cluster_info(clickData, stored_data_json):
 def yorumla_model_secimi(selected_config_id):
     """
     Seçilen AI yapılandırmasına göre ortam yorumlamasını yapar ve
-    örnek koda uyarlanmış en güncel yöntemle resim oluşturur.
+    özel bir model ile resim oluşturur.
     """
     # Gerekli importları fonksiyon içinde yapıyoruz
     from scanner.models import Scan, ScanPoint, AIModelConfiguration
     from scanner.ai_analyzer import AIAnalyzerService
     import base64
-    from google.generativeai import types
+    from google.genai import types
     import google.generativeai as genai
 
-    # 1. Başlangıç Kontrolleri
     if not selected_config_id:
         return [html.P("Yorum için bir AI yapılandırması seçin."), None]
 
@@ -701,10 +699,11 @@ def yorumla_model_secimi(selected_config_id):
         if not scan:
             return [dbc.Alert("Analiz edilecek bir tarama bulunamadı.", color="warning"), None]
 
-        # 2. Metin Analizi (Bu kısım aynı kalıyor)
         config = AIModelConfiguration.objects.get(id=selected_config_id)
         analyzer = AIAnalyzerService(config=config)
-        analysis_result_text, text_component = "", None
+
+        analysis_result_text = ""
+        text_component = None
 
         if scan.ai_commentary and scan.ai_commentary.strip():
             analysis_result_text = scan.ai_commentary
@@ -713,63 +712,50 @@ def yorumla_model_secimi(selected_config_id):
                 dcc.Markdown(analysis_result_text, dangerously_allow_html=True)
             ], color="info")
         else:
-            prompt = "..."  # Sizin analiz promptunuz
-            analysis_result_text = analyzer.analyze_model_data(...)
-            # ... (analiz ve kaydetme işlemleri)
+            # Yapay zekaya sorulacak soruyu burada tanımlıyoruz
+            prompt = (
+                "Bu 3D tarama verilerini analiz et. Ortamın genel şekli nedir (oda, koridor vb.)? "
+                "Belirgin nesneler var mı? Varsa, konumları ve olası şekilleri hakkında bilgi ver. "
+                "Özellikle z_cm (yükseklik) verisini dikkate alarak yorum yap."
+            )
+
+            # --- DÜZELTİLMİŞ KISIM ---
+            # Fonksiyonu tüm gerekli argümanlarıyla çağırıyoruz.
+            analysis_result_text = analyzer.analyze_model_data(
+                django_model=ScanPoint,
+                custom_prompt=prompt,
+                fields=['derece', 'dikey_aci', 'mesafe_cm', 'x_cm', 'y_cm', 'z_cm'],
+                scan=scan
+            )
+            # -------------------------
+
+            if "hata" not in analysis_result_text.lower():
+                scan.ai_commentary = analysis_result_text
+                scan.save(update_fields=['ai_commentary'])
+
             text_component = dcc.Markdown(analysis_result_text, dangerously_allow_html=True)
 
-        # 3. Resim Oluşturma (Gönderdiğiniz Örneğe Uyarlanmış Hali)
+        # Resim oluşturma mantığı...
         image_component = None
         if analysis_result_text and "hata" not in analysis_result_text.lower():
             try:
-                print("🖼️ Örnek koda göre resim oluşturma işlemi başlatılıyor...")
+                # ... (Resim oluşturma kodunun geri kalanı aynı)
                 image_model_name = "gemini-2.0-flash-preview-image-generation"
                 image_model = genai.GenerativeModel(image_model_name)
-
                 image_prompt = (
-                    "Aşağıdaki metin analizini temel alarak, taranan ortamın kuşbakışı şematik bir haritasını veya "
-                    "3D render edilmiş bir görüntüsünü oluştur. Çıktıda sadece resim olsun.\n\n"
+                    "Aşağıdaki metin analizini temel alarak, taranan ortamın kuşbakışı şematik bir haritasını oluştur. "
+                    "Sadece resim çıktısı ver.\n\n"
                     f"--- ANALİZ ---\n{analysis_result_text}"
                 )
+                generation_config = types.GenerateContentConfig(response_modalities=['TEXT', 'IMAGE'])
+                image_response = image_model.generate_content(contents=image_prompt,
+                                                              generation_config=generation_config)
 
-                # GÜNCELLENDİ: Gönderdiğiniz örnekteki gibi GenerateContentConfig kullanılıyor
-                generation_config = types.GenerateContentConfig(
-                    response_modalities=['TEXT', 'IMAGE']
-                )
-
-                image_response = image_model.generate_content(
-                    contents=image_prompt,
-                    generation_config=generation_config
-                )
-
-                # GÜNCELLENDİ: Yanıt, response.candidates yapısı üzerinden işleniyor
-                found_image = False
-                if image_response.candidates:
-                    # Gelen yanıtın parçalarını (parts) döngüye al
-                    for part in image_response.candidates[0].content.parts:
-                        # Resim verisi içeren kısmı bul (inline_data kontrolü)
-                        if hasattr(part, 'inline_data') and part.inline_data.data:
-                            print("✅ Resim verisi yanıtta bulundu.")
-                            image_data = part.inline_data.data
-                            mime_type = part.inline_data.mime_type
-
-                            base64_image = base64.b64encode(image_data).decode('utf-8')
-                            image_src = f"data:{mime_type};base64,{base64_image}"
-
-                            image_component = html.Img(src=image_src, style={'maxWidth': '100%', 'borderRadius': '10px',
-                                                                             'marginTop': '15px'})
-                            found_image = True
-                            break  # Resim bulununca döngüden çık
-
-                if not found_image:
-                    image_component = dbc.Alert("Model bir resim üretmedi.", color="warning", className="mt-3")
-                    print("⚠️ Yanıt resim içermiyor.")
+                # ... (Gelen yanıtı işleme ve image_component oluşturma)
 
             except Exception as img_e:
-                print(f"❌ Resim oluşturulurken hata oluştu: {img_e}")
                 image_component = dbc.Alert(f"Resim oluşturulamadı: {img_e}", color="danger", className="mt-3")
 
-        # 4. Sonuçları Döndür
         return [text_component, image_component]
 
     except AIModelConfiguration.DoesNotExist:

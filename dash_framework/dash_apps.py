@@ -318,20 +318,72 @@ visualization_tabs = dbc.Tabs([dbc.Tab([dbc.Row([dbc.Col(dcc.Dropdown(id='graph-
     tab_id="tab-datatable")], id="visualization-tabs-main", active_tab="tab-graphics")
 
 # --- ANA UYGULAMA YERLEŞİMİ (LAYOUT) ---
-app.layout = html.Div(style={'padding': '20px'}, children=[navbar, dbc.Row(
-    [dbc.Col([control_panel, html.Br(), stats_panel, html.Br(), system_card, html.Br(), export_card], md=4,
-             className="mb-3"), dbc.Col(
-        [visualization_tabs, html.Br(), dbc.Row([dbc.Col(analysis_card, md=8), dbc.Col(estimation_card, md=4)]),
-         dbc.Row([dbc.Col([dbc.Card([dbc.CardHeader("Akıllı Yorumlama (Yapay Zeka)", className="bg-info text-white"),
-                                     dbc.CardBody(dcc.Loading(id="loading-ai-comment", type="default", children=[
-                                         html.Div(id='ai-yorum-sonucu', children=[
-                                             html.P("Yorum almak için yukarıdan bir AI yapılandırması seçin.")],
-                                                  className="text-center mt-2"),
-                                         html.Div(id='ai-image', className="text-center mt-3")]))])],
-                          className="mt-3")], md=12)], className="mt-3")], md=8)]), dcc.Store( id='clustered-data-store'), dbc.Modal(
-    [dbc.ModalHeader(dbc.ModalTitle(id="modal-title")), dbc.ModalBody(id="modal-body")], id="cluster-info-modal",
-    is_open=False, centered=True), dcc.Interval(id='interval-component-main', interval=2500, n_intervals=0), dcc.Interval(id='interval-component-system',
-                                                                             interval=3000, n_intervals=0)])
+
+app.layout = html.Div(
+    style={'padding': '20px'},
+    children=[
+        # En üstteki navigasyon çubuğu
+        navbar,
+
+        # Ana içerik alanı (iki sütunlu yapı)
+        dbc.Row([
+
+            # --- Sol Sütun (Kontroller ve Bilgi Kartları) ---
+            dbc.Col([
+                control_panel,
+                html.Br(),
+                stats_panel,
+                html.Br(),
+                system_card,
+                html.Br(),
+                export_card
+            ], md=4, className="mb-3"),
+
+            # --- Sağ Sütun (Grafikler ve Analizler) ---
+            dbc.Col([
+                visualization_tabs,
+                html.Br(),
+                dbc.Row([
+                    dbc.Col(analysis_card, md=8),
+                    dbc.Col(estimation_card, md=4)
+                ]),
+                dbc.Row([
+                    dbc.Col([
+                        dbc.Card([
+                            dbc.CardHeader("Akıllı Yorumlama (Yapay Zeka)", className="bg-info text-white"),
+                            dbc.CardBody(
+                                dcc.Loading(
+                                    id="loading-ai-comment",
+                                    type="default",
+                                    children=[
+                                        html.Div(id='ai-yorum-sonucu', children=[
+                                            html.P("Yorum almak için yukarıdan bir AI yapılandırması seçin."),
+                                        ], className="text-center mt-2"),
+                                        html.Div(id='ai-image', className="text-center mt-3")
+                                    ]
+                                )
+                            )
+                        ], className="mt-3")
+                    ], md=12)
+                ], className="mt-3")
+            ], md=8)
+        ]),
+
+        # --- Sayfa Altı Bileşenler (Görünmez) ---
+        dcc.Store(id='clustered-data-store'),
+
+        dbc.Modal(
+            [dbc.ModalHeader(dbc.ModalTitle(id="modal-title")), dbc.ModalBody(id="modal-body")],
+            id="cluster-info-modal",
+            is_open=False,
+            centered=True
+        ),  # <-- Düzeltilen virgül burada
+
+        dcc.Interval(id='interval-component-main', interval=2500, n_intervals=0),
+
+        dcc.Interval(id='interval-component-system', interval=3000, n_intervals=0)
+    ]
+)
 
 # --- CALLBACK FONKSİYONLARI ---
 @app.callback(Output('scan-parameters-wrapper', 'style'), Input('mode-selection-radios', 'value'))

@@ -13,7 +13,7 @@ import numpy as np
 from scipy.spatial import ConvexHull
 from sklearn.cluster import DBSCAN
 from sklearn.linear_model import RANSACRegressor
-from google.genai import types
+from google.generativeai import types
 
 import google.generativeai as genai
 

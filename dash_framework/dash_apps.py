@@ -688,7 +688,7 @@ def yorumla_model_secimi(selected_config_id):
     from scanner.models import Scan, ScanPoint, AIModelConfiguration
     from scanner.ai_analyzer import AIAnalyzerService
     import base64
-    from google.genai import types
+    from google.generativeai import types
     import google.generativeai as genai
 
     if not selected_config_id:

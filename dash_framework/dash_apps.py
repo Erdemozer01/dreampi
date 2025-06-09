@@ -16,6 +16,9 @@ from sklearn.linear_model import RANSACRegressor
 from google.genai import types
 
 import google.generativeai as genai
+
+from dash.exceptions import PreventUpdate
+
 # Django modellerini ve AI servisini import etme
 try:
     from django.db.models import Max
@@ -740,132 +743,27 @@ def display_cluster_info(clickData, stored_data_json):
 
 
 @app.callback(
-    [Output('ai-yorum-sonucu', 'children'),
-     Output('ai-image', 'children')],
-    Input('ai-model-dropdown', 'value'),
-    prevent_initial_call=True
+    [Output('ai-model-dropdown', 'options'),
+     Output('ai-model-dropdown', 'disabled'),
+     Output('ai-model-dropdown', 'placeholder')],
+    Input('interval-component-main', 'n_intervals') # Sayfa yüklendiğinde tetiklenir
 )
-def yorumla_model_secimi(selected_config_id):
+def populate_ai_model_dropdown(n):
     """
-    Seçilen AI yapılandırmasına göre ortam yorumlamasını yapar ve
-    özel bir model ile resim oluşturur. Bu fonksiyon, önbelleği kontrol eder,
-    gerekirse yeni analiz yapar ve sonucu veritabanına kaydeder.
+    Uygulama başladığında AI modeli seçeneklerini veritabanından yükler ve menüyü doldurur.
     """
-    # 1. Başlangıç Kontrolleri
-    if not selected_config_id:
-        return [html.P("Yorum için bir AI yapılandırması seçin."), None]
+    # Bu callback'in sadece bir kez, başlangıçta çalışmasını sağlıyoruz.
+    if n > 0:
+        raise PreventUpdate
 
-    if not DJANGO_MODELS_AVAILABLE:
-        return [dbc.Alert("Veritabanı modellerine erişilemiyor. Lütfen sistem yapılandırmasını kontrol edin.",
-                          color="danger"), None]
+    print("AI Modeli seçenekleri veritabanından yükleniyor...")
+    # Bu, daha önce oluşturduğumuz yardımcı fonksiyondur.
+    options = get_ai_model_options()
 
-    scan = get_latest_scan()
-    if not scan:
-        return [dbc.Alert("Analiz edilecek bir tarama bulunamadı.", color="warning"), None]
-
-    try:
-        # 2. Metin Analizi
-        # --------------------------------------------------------------------
-        # Önce AI servisi için yapılandırmayı ve analizciyi hazırla
-        config = AIModelConfiguration.objects.get(id=selected_config_id)
-        analyzer = AIAnalyzerService(config=config)
-
-        analysis_result_text = ""
-        text_component = None
-
-        # Önbelleği kontrol et: Eğer bu tarama için daha önce yapılmış bir yorum varsa, onu kullan.
-        if scan.ai_commentary and scan.ai_commentary.strip():
-            analysis_result_text = scan.ai_commentary
-            text_component = dbc.Alert([
-                html.H4("Önbellekten Yüklendi", className="alert-heading"),
-                html.Hr(),
-                dcc.Markdown(analysis_result_text, dangerously_allow_html=True)
-            ], color="info")
-            print("Metin analizi önbellekten yüklendi.")
-        else:
-            # Önbellekte yoksa yeni analiz yap
-            print("Önbellekte yorum bulunamadı, yeni analiz yapılıyor...")
-            prompt = (
-                "Bu 3D tarama verilerini analiz et. Ortamın genel şekli nedir (oda, koridor vb.)? "
-                "Belirgin nesneler var mı? Varsa, konumları ve olası şekilleri hakkında bilgi ver. "
-                "Özellikle z_cm (yükseklik) verisini dikkate alarak yorum yap."
-            )
-            analysis_result_text = analyzer.analyze_model_data(
-                django_model=ScanPoint, custom_prompt=prompt,
-                fields=['derece', 'dikey_aci', 'mesafe_cm', 'x_cm', 'y_cm', 'z_cm'],
-                scan=scan
-            )
-            # Yeni sonucu veritabanına kaydet
-            if "hata" not in analysis_result_text.lower():
-                scan.ai_commentary = analysis_result_text
-                scan.save(update_fields=['ai_commentary'])
-                print("Yeni metin analizi veritabanına kaydedildi.")
-
-            text_component = dcc.Markdown(analysis_result_text, dangerously_allow_html=True)
-
-        # 3. Resim Oluşturma
-        # --------------------------------------------------------------------
-        image_component = None  # Varsayılan olarak resim çıktısı boş
-
-        # Sadece metin analizi başarılıysa resim oluşturmayı dene
-        if analysis_result_text and "hata" not in analysis_result_text.lower():
-            try:
-                print("🖼️ Resim oluşturma işlemi başlatılıyor...")
-                image_model_name = "gemini-2.0-flash-preview-image-generation"
-                image_model = genai.GenerativeModel(image_model_name)
-
-                image_prompt = (
-                    "Aşağıdaki metin analizini temel alarak, taranan ortamın kuşbakışı şematik bir haritasını veya "
-                    "3D render edilmiş bir görüntüsünü oluştur. Çıktıda sadece resim olsun.\n\n"
-                    f"--- ANALİZ ---\n{analysis_result_text}"
-                )
-
-                generation_config = types.GenerationConfig(
-                    response_mime_types=['image/png']
-                )
-
-                image_response = image_model.generate_content(
-                    contents=image_prompt,
-                    generation_config=generation_config
-                )
-
-                # Yanıtı işle ve resmi bul
-                found_image = False
-                if image_response.parts:
-                    for part in image_response.parts:
-                        if hasattr(part, 'inline_data') and part.inline_data.data:
-                            print("✅ Resim verisi yanıtta bulundu.")
-                            image_data = part.inline_data.data
-                            mime_type = part.inline_data.mime_type
-
-                            base64_image = base64.b64encode(image_data).decode('utf-8')
-                            image_src = f"data:{mime_type};base64,{base64_image}"
-
-                            image_component = html.Img(src=image_src, style={'maxWidth': '100%', 'borderRadius': '10px',
-                                                                             'marginTop': '15px'})
-                            found_image = True
-                            break  # Resim bulununca döngüden çık
-
-                if not found_image:
-                    image_component = dbc.Alert("Model bir resim üretmedi. Modelin yanıtı resim verisi içermiyor.",
-                                                color="warning", className="mt-3")
-                    print(f"⚠️ Yanıt resim içermiyor.")
-
-            except Exception as img_e:
-                print(f"❌ Resim oluşturulurken hata oluştu: {img_e}")
-                image_component = dbc.Alert(f"Resim oluşturulamadı: Model bulunamadı veya API hatası.", color="danger",
-                                            className="mt-3")
-
-        # 4. Sonuçları Döndür
-        # --------------------------------------------------------------------
-        return [text_component, image_component]
-
-    except AIModelConfiguration.DoesNotExist:
-        error_message = f"ID'si {selected_config_id} olan bir AI yapılandırması bulunamadı. Lütfen admin panelini kontrol edin."
-        return [dbc.Alert(error_message, color="danger"), None]
-    except Exception as e:
-        import traceback
-        error_message = f"Analiz sırasında beklenmedik bir genel hata oluştu: {e}"
-        print(f"❌ Callback içinde genel hata: {e}")
-        traceback.print_exc()
-        return [dbc.Alert(error_message, color="danger"), None]
+    # Seçeneklerin başarıyla yüklenip yüklenmediğini kontrol et
+    if options and not options[0].get('disabled'):
+        # Başarılıysa, menüyü doldur, aktif et ve yer tutucuyu güncelle
+        return options, False, "Analiz için bir AI yapılandırması seçin..."
+    else:
+        # Başarısızsa veya model yoksa, menüyü devre dışı bırak ve bilgi ver
+        return [], True, "Aktif AI Modeli Bulunamadı"

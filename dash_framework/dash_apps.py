@@ -131,8 +131,9 @@ control_panel = dbc.Card([
             html.H6("Yapay Zeka Seçimi:", className="mt-3"),
             dcc.Dropdown(
                 id='ai-model-dropdown',
-                options=get_ai_model_options(),
-                placeholder="Analiz için bir AI yapılandırması seçin...",
+                options=[],  # BAŞLANGIÇTA BOŞ LİSTE
+                placeholder="Modeller yükleniyor...",  # GEÇİCİ YER TUTUCU
+                disabled=True,  # BAŞLANGIÇTA DEVRE DIŞI
                 clearable=True,
                 className="mb-3"
             ),

@@ -680,13 +680,14 @@ def display_cluster_info(clickData, stored_data_json):
 )
 def yorumla_model_secimi(selected_config_id):
     """
-    Seçilen AI yapılandırmasına göre ortam yorumlamasını yapar ve
-    özel bir model ile resim oluşturur.
+    Seçilen AI yapılandırmasına göre metin analizi yapar ve resim oluşturmak
+    için sabit olarak 'gemini-2.0-flash-preview-image-generation' modelini kullanır.
     """
     # Gerekli importları fonksiyon içinde yapıyoruz
     from scanner.models import Scan, ScanPoint, AIModelConfiguration
     from scanner.ai_analyzer import AIAnalyzerService
     import base64
+    from google.generativeai import types
     import google.generativeai as genai
 
     if not selected_config_id:
@@ -697,13 +698,13 @@ def yorumla_model_secimi(selected_config_id):
         if not scan:
             return [dbc.Alert("Analiz edilecek bir tarama bulunamadı.", color="warning"), None]
 
+        # Metin analizi için seçilen yapılandırmayı kullan
         config = AIModelConfiguration.objects.get(id=selected_config_id)
         analyzer = AIAnalyzerService(config=config)
 
         analysis_result_text = ""
         text_component = None
 
-        # Önbellek kontrolü ve metin analizi
         if scan.ai_commentary and scan.ai_commentary.strip():
             analysis_result_text = scan.ai_commentary
             text_component = dbc.Alert([
@@ -731,8 +732,11 @@ def yorumla_model_secimi(selected_config_id):
         image_component = None
         if analysis_result_text and "hata" not in analysis_result_text.lower():
             try:
-                print("🖼️ Resim oluşturma işlemi başlatılıyor...")
+                # --- GÜNCELLENMİŞ KISIM ---
+                # Model adı artık veritabanından aranmıyor, doğrudan sabit olarak ayarlanıyor.
                 image_model_name = "gemini-2.0-flash-preview-image-generation"
+                print(f"🖼️ Resim üretimi için sabit model kullanılıyor: '{image_model_name}'")
+
                 image_model = genai.GenerativeModel(image_model_name)
 
                 image_prompt = (
@@ -741,33 +745,24 @@ def yorumla_model_secimi(selected_config_id):
                     f"--- ANALİZ ---\n{analysis_result_text}"
                 )
 
-                # UYUMLULUK NOTU: generation_config parametresi eski kütüphane versiyonlarında
-                # hataya neden olduğu için kaldırılmıştır. Model adı zaten yapılacak işi belirttiği için
-                # API genellikle doğru çıktıyı üretecektir.
                 image_response = image_model.generate_content(contents=image_prompt)
 
-                # --- EKSİK KISIM BURADA TAMAMLANDI ---
-                # API'den gelen yanıtı işleyerek resmi arayüz bileşenine dönüştürme
                 found_image = False
                 if image_response.candidates:
                     for part in image_response.candidates[0].content.parts:
                         if hasattr(part, 'inline_data') and part.inline_data.data:
-                            print("✅ Resim verisi yanıtta bulundu.")
                             image_data = part.inline_data.data
                             mime_type = part.inline_data.mime_type
-
                             base64_image = base64.b64encode(image_data).decode('utf-8')
                             image_src = f"data:{mime_type};base64,{base64_image}"
-
                             image_component = html.Img(src=image_src, style={'maxWidth': '100%', 'borderRadius': '10px',
                                                                              'marginTop': '15px'})
                             found_image = True
-                            break  # Resim bulununca döngüden çık
+                            break
 
                 if not found_image:
                     image_component = dbc.Alert("Model bir resim üretmedi.", color="warning", className="mt-3")
-                    print("⚠️ Modelin yanıtı resim verisi içermiyor.")
-                # --- EKSİK KISMIN SONU ---
+                # --- GÜNCELLEMENİN SONU ---
 
             except Exception as img_e:
                 print(f"❌ Resim oluşturulurken hata oluştu: {img_e}")

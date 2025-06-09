@@ -296,11 +296,11 @@ analysis_card = dbc.Card([dbc.CardHeader("Tarama Analizi (En Son Tarama)", class
                               [dbc.Col([html.H6("Hesaplanan Alan:"), html.H4(id='calculated-area', children="-- cm²")]),
                                dbc.Col(
                                    [html.H6("Çevre Uzunluğu:"), html.H4(id='perimeter-length', children="-- cm")])]),
-                                        dbc.Row([dbc.Col(
-                                            [html.H6("Max Genişlik:"), html.H4(id='max-width', children="-- cm")]),
-                                                 dbc.Col([html.H6("Max Derinlik:"),
-                                                          html.H4(id='max-depth', children="-- cm")])],
-                                                className="mt-2")])])
+                              dbc.Row([dbc.Col(
+                                  [html.H6("Max Genişlik:"), html.H4(id='max-width', children="-- cm")]),
+                                  dbc.Col([html.H6("Max Derinlik:"),
+                                           html.H4(id='max-depth', children="-- cm")])],
+                                  className="mt-2")])])
 estimation_card = dbc.Card([dbc.CardHeader("Akıllı Ortam Analizi", className="bg-success text-white"), dbc.CardBody(
     html.Div("Tahmin: Bekleniyor...", id='environment-estimation-text', className="text-center"))])
 visualization_tabs = dbc.Tabs([dbc.Tab([dbc.Row([dbc.Col(dcc.Dropdown(id='graph-selector-dropdown', options=[
@@ -328,11 +328,9 @@ app.layout = html.Div(style={'padding': '20px'}, children=[navbar, dbc.Row(
                                              html.P("Yorum almak için yukarıdan bir AI yapılandırması seçin.")],
                                                   className="text-center mt-2"),
                                          html.Div(id='ai-image', className="text-center mt-3")]))])],
-                          className="mt-3")], md=12)], className="mt-3")], md=8)]), dcc.Store(
-    id='clustered-data-store'), dbc.Modal(
+                          className="mt-3")], md=12)], className="mt-3")], md=8)]), dcc.Store( id='clustered-data-store'), dbc.Modal(
     [dbc.ModalHeader(dbc.ModalTitle(id="modal-title")), dbc.ModalBody(id="modal-body")], id="cluster-info-modal",
-    is_open=False, centered=True), dcc.Interval(id='interval-component-main', interval=2500,
-                                                n_intervals=0), dcc.Interval(id='interval-component-system',
+    is_open=False, centered=True), dcc.Interval(id='interval-component-main', interval=2500, n_intervals=0), dcc.Interval(id='interval-component-system',
                                                                              interval=3000, n_intervals=0)])
 
 # --- CALLBACK FONKSİYONLARI ---

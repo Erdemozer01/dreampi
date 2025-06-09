@@ -672,7 +672,6 @@ def display_cluster_info(clickData, stored_data_json):
         return True, "Hata", f"Küme bilgisi gösterilemedi: {e}"
 
 
-
 @app.callback(
     [Output('ai-yorum-sonucu', 'children'),
      Output('ai-image', 'children')],
@@ -688,7 +687,6 @@ def yorumla_model_secimi(selected_config_id):
     from scanner.models import Scan, ScanPoint, AIModelConfiguration
     from scanner.ai_analyzer import AIAnalyzerService
     import base64
-    from google.generativeai import types
     import google.generativeai as genai
 
     if not selected_config_id:
@@ -705,6 +703,7 @@ def yorumla_model_secimi(selected_config_id):
         analysis_result_text = ""
         text_component = None
 
+        # Önbellek kontrolü ve metin analizi
         if scan.ai_commentary and scan.ai_commentary.strip():
             analysis_result_text = scan.ai_commentary
             text_component = dbc.Alert([
@@ -712,48 +711,66 @@ def yorumla_model_secimi(selected_config_id):
                 dcc.Markdown(analysis_result_text, dangerously_allow_html=True)
             ], color="info")
         else:
-            # Yapay zekaya sorulacak soruyu burada tanımlıyoruz
             prompt = (
                 "Bu 3D tarama verilerini analiz et. Ortamın genel şekli nedir (oda, koridor vb.)? "
                 "Belirgin nesneler var mı? Varsa, konumları ve olası şekilleri hakkında bilgi ver. "
                 "Özellikle z_cm (yükseklik) verisini dikkate alarak yorum yap."
             )
-
-            # --- DÜZELTİLMİŞ KISIM ---
-            # Fonksiyonu tüm gerekli argümanlarıyla çağırıyoruz.
             analysis_result_text = analyzer.analyze_model_data(
                 django_model=ScanPoint,
                 custom_prompt=prompt,
                 fields=['derece', 'dikey_aci', 'mesafe_cm', 'x_cm', 'y_cm', 'z_cm'],
                 scan=scan
             )
-            # -------------------------
-
             if "hata" not in analysis_result_text.lower():
                 scan.ai_commentary = analysis_result_text
                 scan.save(update_fields=['ai_commentary'])
-
             text_component = dcc.Markdown(analysis_result_text, dangerously_allow_html=True)
 
-        # Resim oluşturma mantığı...
+        # Resim oluşturma mantığı
         image_component = None
         if analysis_result_text and "hata" not in analysis_result_text.lower():
             try:
-                # ... (Resim oluşturma kodunun geri kalanı aynı)
+                print("🖼️ Resim oluşturma işlemi başlatılıyor...")
                 image_model_name = "gemini-2.0-flash-preview-image-generation"
                 image_model = genai.GenerativeModel(image_model_name)
+
                 image_prompt = (
                     "Aşağıdaki metin analizini temel alarak, taranan ortamın kuşbakışı şematik bir haritasını oluştur. "
                     "Sadece resim çıktısı ver.\n\n"
                     f"--- ANALİZ ---\n{analysis_result_text}"
                 )
-                generation_config = types.GenerateContentConfig(response_modalities=['TEXT', 'IMAGE'])
-                image_response = image_model.generate_content(contents=image_prompt,
-                                                              generation_config=generation_config)
 
-                # ... (Gelen yanıtı işleme ve image_component oluşturma)
+                # UYUMLULUK NOTU: generation_config parametresi eski kütüphane versiyonlarında
+                # hataya neden olduğu için kaldırılmıştır. Model adı zaten yapılacak işi belirttiği için
+                # API genellikle doğru çıktıyı üretecektir.
+                image_response = image_model.generate_content(contents=image_prompt)
+
+                # --- EKSİK KISIM BURADA TAMAMLANDI ---
+                # API'den gelen yanıtı işleyerek resmi arayüz bileşenine dönüştürme
+                found_image = False
+                if image_response.candidates:
+                    for part in image_response.candidates[0].content.parts:
+                        if hasattr(part, 'inline_data') and part.inline_data.data:
+                            print("✅ Resim verisi yanıtta bulundu.")
+                            image_data = part.inline_data.data
+                            mime_type = part.inline_data.mime_type
+
+                            base64_image = base64.b64encode(image_data).decode('utf-8')
+                            image_src = f"data:{mime_type};base64,{base64_image}"
+
+                            image_component = html.Img(src=image_src, style={'maxWidth': '100%', 'borderRadius': '10px',
+                                                                             'marginTop': '15px'})
+                            found_image = True
+                            break  # Resim bulununca döngüden çık
+
+                if not found_image:
+                    image_component = dbc.Alert("Model bir resim üretmedi.", color="warning", className="mt-3")
+                    print("⚠️ Modelin yanıtı resim verisi içermiyor.")
+                # --- EKSİK KISMIN SONU ---
 
             except Exception as img_e:
+                print(f"❌ Resim oluşturulurken hata oluştu: {img_e}")
                 image_component = dbc.Alert(f"Resim oluşturulamadı: {img_e}", color="danger", className="mt-3")
 
         return [text_component, image_component]

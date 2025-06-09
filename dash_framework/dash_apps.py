@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 import base64
 
+from certifi import contents
 # Analiz kütüphaneleri
 from scipy.spatial import ConvexHull
 from sklearn.cluster import DBSCAN
@@ -748,6 +749,7 @@ def yorumla_model_secimi(selected_config_id):
 
                 # GÜNCELLENDİ: API çağrısı yeni konfigürasyon ile yapılıyor
                 image_response = image_model.generate_content(
+                    model=image_model_name,
                     contents=image_prompt,
                     generation_config=generation_config
                 )

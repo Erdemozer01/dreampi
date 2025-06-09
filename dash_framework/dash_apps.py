@@ -767,7 +767,7 @@ def yorumla_model_secimi(selected_config_id):
                             base64_image = base64.b64encode(image_data).decode('utf-8')
                             image_src = f"data:{mime_type};base64,{base64_image}"
 
-                            image_component = html.Img(src=BytesIO(part.inline_data.data), style={'maxWidth': '100%', 'borderRadius': '10px',
+                            image_component = html.Img(src=image_src, style={'maxWidth': '100%', 'borderRadius': '10px',
                                                                              'marginTop': '15px'})
                             found_image = True
                             break

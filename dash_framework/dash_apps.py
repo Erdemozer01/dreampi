@@ -45,7 +45,7 @@ DEFAULT_UI_BUZZER_DISTANCE = 10
 DEFAULT_UI_INVERT_MOTOR = False
 DEFAULT_UI_STEPS_PER_REVOLUTION = 4096
 
-app = DjangoDash('RealtimeSensorDashboard', external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = DjangoDash('DreamPi', external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 # --- NAVBAR ---
 navbar = dbc.NavbarSimple(

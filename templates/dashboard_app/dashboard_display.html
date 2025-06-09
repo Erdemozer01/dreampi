@@ -4,7 +4,11 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>Dream Pi - 2D Alan Tarama</title>
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <link rel="icon" href="../../../../favicon.ico">
+
+    <title>Dream Pi</title>
     {% plotly_header %} {# Dash için gerekli CSS ve JS'leri yükler #}
     <style>
         body { font-family: sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; }
@@ -14,6 +18,7 @@
 </head>
 <body>
     {% plotly_direct name="RealtimeSensorDashboard" %}
+
     {% plotly_footer %}
 </body>
 </html>

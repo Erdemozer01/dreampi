@@ -274,7 +274,8 @@ app.layout = html.Div(
                                     children=[
                                         html.Div(id='ai-yorum-sonucu', children=[
                                             html.P("Yorum almak için yukarıdan bir AI yapılandırması seçin."),
-                                        ], className="text-center mt-2")
+                                        ], className="text-center mt-2"),
+                                        html.Div(id='ai-image', className="text-center mt-3")
                                     ]
                                 )
                             )
@@ -370,7 +371,7 @@ def update_time_series_graph(fig, df):
 
 def find_clearest_path(df_valid):
     if df_valid.empty or not all(
-        col in df_valid.columns for col in ['mesafe_cm', 'derece']): return "En açık yol için veri yok."
+            col in df_valid.columns for col in ['mesafe_cm', 'derece']): return "En açık yol için veri yok."
     try:
         cp = df_valid.loc[df_valid['mesafe_cm'].idxmax()]
         return f"En Açık Yol: {cp['derece']:.1f}° yönünde, {cp['mesafe_cm']:.1f} cm."
@@ -873,11 +874,12 @@ def yorumla_model_secimi(selected_config_id):
         traceback.print_exc()
         return [dbc.Alert(error_message, color="danger"), None]
 
+
 @app.callback(
     [Output('ai-model-dropdown', 'options'),
      Output('ai-model-dropdown', 'disabled'),
      Output('ai-model-dropdown', 'placeholder')],
-    Input('interval-component-main', 'n_intervals') # Sayfa yüklendiğinde tetiklenir
+    Input('interval-component-main', 'n_intervals')  # Sayfa yüklendiğinde tetiklenir
 )
 def populate_ai_model_dropdown(n):
     """

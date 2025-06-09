@@ -752,7 +752,7 @@ def yorumla_model_secimi(selected_config_id):
                 # GÜNCELLENDİ: API çağrısı yeni konfigürasyon ile yapılıyor
                 image_response = image_model.generate_content(
                     contents=image_prompt,
-                    generation_config=generation_config
+                    config=generation_config
                 )
 
                 # GÜNCELLENDİ: Yanıt, response.candidates yapısı üzerinden işleniyor

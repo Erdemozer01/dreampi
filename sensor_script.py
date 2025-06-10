@@ -47,27 +47,25 @@ except (IOError, OSError):
 MOTOR_TYPE_DC = True
 MOTOR_BAGLI = True
 
-# DC Motor A için pinler (Örnek pinler, projenize göre ayarlayın)
+# DC Motor A için pinler (L298N)
 IN1_DC_MOTOR_A = 21
-
 IN2_DC_MOTOR_A = 20
-
 ENA_DC_MOTOR_A = 5
 
-# DC Motor B için pinler (L298N'deki IN3, IN4 ve ENB'ye bağlanacak - opsiyonel)
-# Eğer ikinci bir DC motor kullanılacaksa bu pinleri tanımlayın.
+# DC Motor B için pinler (L298N)
 IN3_DC_MOTOR_B = 18
-
 IN4_DC_MOTOR_B = 23
-
 ENB_DC_MOTOR_B = 16
 
-TRIG_PIN, ECHO_PIN = 23, 24
+# Ultrasonik Mesafe Sensörleri
+TRIG_PIN_1, ECHO_PIN_1 = 23, 24   # Birinci ultrasonik sensör
+TRIG_PIN_2, ECHO_PIN_2 = 16, 5   # İkinci ultrasonik sensör için yeni pinler (Lütfen kontrol edin!)
+
 SERVO_PIN = 12
 BUZZER_PIN = 17
-LCD_I2C_ADDRESS, LCD_PORT_EXPANDER, LCD_COLS, LCD_ROWS, I2C_PORT = 0x27, 'PCF8574', 16, 2, 1
+LED_PIN = 27 # LED pini
 
-LED_PIN = 27 # Yeni eklenen LED pini
+LCD_I2C_ADDRESS, LCD_PORT_EXPANDER, LCD_COLS, LCD_ROWS, I2C_PORT = 0x27, 'PCF8574', 16, 2, 1
 
 LOCK_FILE_PATH, PID_FILE_PATH = '/tmp/sensor_scan_script.lock', '/tmp/sensor_scan_script.pid'
 
@@ -82,14 +80,9 @@ DC_MOTOR_SPEED_PWM_DUTY_CYCLE = 0.6
 DC_MOTOR_MOVE_DURATION = 0.5
 LOOP_TARGET_INTERVAL_S = 0.2
 
-# Servo'nun başlangıç açısını kaydırmak için yeni sabit
-# Bu değer, servo'nun fiziksel 0 derecesine karşılık gelen mantıksal açıyı belirtir.
-# Eğer bu kodda kullanılmıyorsa ve görselleştirmede ofset bekleniyorsa, Dash tarafında yönetilmelidir.
-# SERVO_VERTICAL_OFFSET_DEG = -30.0 # Eğer kullanılacaksa aktif edin
-
 # --- GLOBAL DEĞİŞKENLER ---
 lock_file_handle, current_scan_object_global = None, None
-sensor, servo, buzzer, lcd, led = None, None, None, None, None # led eklendi
+sensor_1, sensor_2, servo, buzzer, lcd, led = None, None, None, None, None, None # İki sensör objesi tanımlandı
 # Motor A değişkenleri
 in1_dev_A, in2_dev_A, ena_dev_A = None, None, None
 # Motor B değişkenleri (opsiyonel)
@@ -142,10 +135,10 @@ def release_resources_on_exit():
             lcd.clear()
         except Exception as e:
             print(f"LCD temizlenemedi: {e}")
-    if led and led.is_active: led.off() # LED'i kapatma eklendi
+    if led and led.is_active: led.off() # LED'i kapatma
 
-    for dev in [sensor, servo, buzzer, lcd, led, in1_dev_A, in2_dev_A, ena_dev_A, # Diğer motor pinleri de eklenebilir
-                getattr(sys.modules[__name__], 'in3_dev_B', None), # Eğer varlarsa
+    for dev in [sensor_1, sensor_2, servo, buzzer, lcd, led, in1_dev_A, in2_dev_A, ena_dev_A,
+                getattr(sys.modules[__name__], 'in3_dev_B', None),
                 getattr(sys.modules[__name__], 'in4_dev_B', None),
                 getattr(sys.modules[__name__], 'enb_dev_B', None)]:
         if dev and hasattr(dev, 'close'):
@@ -170,7 +163,7 @@ def release_resources_on_exit():
 
 
 def init_hardware():
-    global sensor, servo, buzzer, lcd, led # led değişkeni eklendi
+    global sensor_1, sensor_2, servo, buzzer, lcd, led # Yeni sensör objesi eklendi
     # Motor A değişkenleri
     global in1_dev_A, in2_dev_A, ena_dev_A
     # Motor B değişkenleri (opsiyonel)
@@ -188,8 +181,9 @@ def init_hardware():
             # in4_dev_B = OutputDevice(IN4_DC_MOTOR_B)
             # enb_dev_B = PWMOutputDevice(ENB_DC_MOTOR_B)
 
-        # Ultrasonik mesafe sensörü
-        sensor = DistanceSensor(echo=ECHO_PIN, trigger=TRIG_PIN, max_distance=3.0)
+        # Ultrasonik mesafe sensörleri
+        sensor_1 = DistanceSensor(echo=ECHO_PIN_1, trigger=TRIG_PIN_1, max_distance=3.0)
+        sensor_2 = DistanceSensor(echo=ECHO_PIN_2, trigger=TRIG_PIN_2, max_distance=3.0) # İkinci sensör başlatıldı
 
         # Servo motor: Darbe genişlikleri ile başlatılıyor
         MIN_PULSE = 0.0005
@@ -286,10 +280,6 @@ if __name__ == "__main__":
     parser.add_argument("--h-angle", type=float, default=DEFAULT_HORIZONTAL_SCAN_ANGLE)
     parser.add_argument("--h-step", type=float, default=DEFAULT_HORIZONTAL_STEP_ANGLE)
     parser.add_argument("--buzzer-distance", type=int, default=DEFAULT_BUZZER_DISTANCE)
-    # DC motorlarda bu argümanlara gerek kalmadığı için kaldırıldı/yorum satırı yapıldı
-    # parser.add_argument("--invert-motor-direction", type=lambda x: str(x).lower() == 'true',
-    #                     default=DEFAULT_INVERT_MOTOR_DIRECTION) # Bu satırı kaldırın veya yorum satırı yapın
-    # parser.add_argument("--steps-per-rev", type=int, default=DEFAULT_STEPS_PER_REVOLUTION) # Bu satırı kaldırın veya yorum satırı yapın
     args = parser.parse_args()
 
     atexit.register(release_resources_on_exit)  # Çıkışta kaynakları serbest bırakma fonksiyonunu kaydet
@@ -328,15 +318,21 @@ if __name__ == "__main__":
                 servo.value = degree_to_servo_value(target_v_angle)
                 time.sleep(LOOP_TARGET_INTERVAL_S) # Ölçüm için bekleme
 
-                dist_cm = sensor.distance * 100
-                print(f"  -> Dikey: {target_v_angle:.1f}°, Mesafe: {dist_cm:.1f} cm")
+                # İki sensörden de mesafe oku
+                dist_cm_1 = sensor_1.distance * 100
+                dist_cm_2 = sensor_2.distance * 100
+
+                # En yakın mesafeyi seç (isterseniz bu mantığı değiştirebilirsiniz)
+                dist_cm = min(dist_cm_1, dist_cm_2)
+
+                print(f"  -> Dikey: {target_v_angle:.1f}°, Mesafe1: {dist_cm_1:.1f} cm, Mesafe2: {dist_cm_2:.1f} cm, Seçilen Mesafe: {dist_cm:.1f} cm")
 
                 if lcd:
                     try:
                         lcd.cursor_pos = (0, 0);
                         lcd.write_string(f"Y:{target_h_angle_rel:<4.0f} V:{target_v_angle:<4.0f}  ")
                         lcd.cursor_pos = (1, 0);
-                        lcd.write_string(f"Mesafe: {dist_cm:<5.1f}cm ")
+                        lcd.write_string(f"M1:{dist_cm_1:<4.0f} M2:{dist_cm_2:<4.0f} ") # LCD'ye iki mesafeyi de yaz
                     except OSError as e:
                         print(f"LCD YAZMA HATASI: {e}")
 

@@ -429,9 +429,11 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
                 print(f"Eski dosya silinemedi ({fp}): {e_rm}")
     cmd = []
     if selected_mode == 'scan_and_map':
-        cmd = [sys.executable, SENSOR_SCRIPT_PATH, "--h-angle", str(duration), "--h-step", str(step),
-               "--buzzer-distance", str(buzzer_dist), "--invert-motor-direction", str(invert), "--steps-per-rev",
-               str(steps_rev)]
+        # DÜZELTİLMİŞ DOĞRU KOD
+        cmd = [sys.executable, SENSOR_SCRIPT_PATH,
+               "--h-angle", str(duration),
+               "--h-step", str(step),
+               "--buzzer-distance", str(buzzer_dist)]
     elif selected_mode == 'free_movement':
         cmd = [sys.executable, FREE_MOVEMENT_SCRIPT_PATH]
     else:

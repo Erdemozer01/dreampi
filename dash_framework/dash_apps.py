@@ -1,3 +1,5 @@
+# DreamPi Dash App (dashboard.py or similar)
+
 # Standart ve Django'ya bağımlı olmayan kütüphaneler
 import logging
 import os
@@ -10,8 +12,8 @@ import psutil
 import pandas as pd
 import numpy as np
 import base64
+import json  # YENİ
 
-from certifi import contents
 # Analiz kütüphaneleri
 from scipy.spatial import ConvexHull
 from sklearn.cluster import DBSCAN
@@ -25,15 +27,15 @@ import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 
-# Google AI kütüphaneleri (fonksiyonlar içinde de import edilebilir ama burada durması genel kullanım için uygundur)
+# Google AI kütüphaneleri
 import google.generativeai as genai
 from google.generativeai import types
-
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # --- SABİTLER VE UYGULAMA BAŞLATMA ---
+# ... (Bu bölüm değişmedi)
 SENSOR_SCRIPT_FILENAME = 'sensor_script.py'
 FREE_MOVEMENT_SCRIPT_FILENAME = 'free_movement_script.py'
 SENSOR_SCRIPT_PATH = os.path.join(os.getcwd(), SENSOR_SCRIPT_FILENAME)
@@ -49,29 +51,18 @@ DEFAULT_UI_STEPS_PER_REVOLUTION = 4096
 app = DjangoDash('DreamPi', external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 # --- NAVBAR ---
+# ... (Bu bölüm değişmedi)
 navbar = dbc.NavbarSimple(
-    children=[
-        dbc.NavItem(dbc.NavLink("Admin Paneli", href="/admin/", external_link=True, target="_blank")),
-    ],
-    brand="Dream Pi",
-    brand_href="/",
-    color="primary",
-    dark=True,
-    sticky="top",
-    fluid=True,
-    className="mb-4"
+    children=[dbc.NavItem(dbc.NavLink("Admin Paneli", href="/admin/", external_link=True, target="_blank"))],
+    brand="Dream Pi", brand_href="/", color="primary", dark=True, sticky="top", fluid=True, className="mb-4"
 )
 
 
 # --- YARDIMCI FONKSİYONLAR ---
-# Not: Django modellerini kullanan yardımcı fonksiyonlar kendi import'larını içermelidir.
+# ... (Bu bölümdeki fonksiyonlar büyük ölçüde değişmedi, sadece çağıran yerler değişti)
 def get_ai_model_options():
     try:
         from scanner.models import AIModelConfiguration
-    except ImportError:
-        return [{'label': 'Modeller Yüklenemedi (Import Hatası)', 'value': '', 'disabled': True}]
-
-    try:
         configs = AIModelConfiguration.objects.filter(is_active=True).order_by('name')
         if not configs.exists():
             return [{'label': 'Aktif AI Modeli Yok', 'value': '', 'disabled': True}]
@@ -84,19 +75,11 @@ def get_ai_model_options():
 def get_latest_scan():
     try:
         from scanner.models import Scan
-        # Scan modelindeki Status enum'ını doğru kullanmak için import edelim
-        # veya string karşılıklarını kullanalım. String daha güvenli.
-    except ImportError:
-        print("Hata: scanner.models.Scan import edilemedi.")
-        return None
-
-    try:
         running_scan = Scan.objects.filter(status='RUN').order_by('-start_time').first()
-        if running_scan:
-            return running_scan
+        if running_scan: return running_scan
         return Scan.objects.order_by('-start_time').first()
     except Exception as e:
-        print(f"DB Hatası (get_latest_scan): {e}")
+        print(f"DB Hatası (get_latest_scan): {e}");
         return None
 
 
@@ -133,24 +116,18 @@ def add_sensor_position(fig):
 
 
 def update_polar_graph(fig, df):
-    if df.empty or not all(col in df.columns for col in ['mesafe_cm', 'derece']): return
+    if df.empty: return
     fig.add_trace(go.Scatterpolar(r=df['mesafe_cm'], theta=df['derece'], mode='lines+markers', name='Mesafe'))
     fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 400]),
                                  angularaxis=dict(direction="clockwise", period=360, thetaunit="degrees")))
 
 
 def update_time_series_graph(fig, df):
-    if df.empty or 'timestamp' not in df.columns or 'mesafe_cm' not in df.columns: return
-    try:
-        df_s = df.copy()
-        df_s['timestamp'] = pd.to_datetime(df_s['timestamp'], errors='coerce').dropna()
-        if len(df_s) < 2: return
-        df_s = df_s.sort_values(by='timestamp')
-        fig.add_trace(go.Scatter(x=df_s['timestamp'], y=df_s['mesafe_cm'], mode='lines+markers', name='Mesafe'))
-        fig.update_layout(xaxis_title="Zaman", yaxis_title="Mesafe (cm)", xaxis_tickformat='%H:%M:%S',
-                          xaxis_rangeslider_visible=True)
-    except Exception as e:
-        logging.error(f"Zaman serisi grafiği hatası: {e}")
+    if df.empty or len(df) < 2: return
+    df_s = df.copy().sort_values(by='timestamp')
+    fig.add_trace(go.Scatter(x=df_s['timestamp'], y=df_s['mesafe_cm'], mode='lines+markers', name='Mesafe'))
+    fig.update_layout(xaxis_title="Zaman", yaxis_title="Mesafe (cm)", xaxis_tickformat='%H:%M:%S',
+                      xaxis_rangeslider_visible=True)
 
 
 def find_clearest_path(df_valid):
@@ -227,48 +204,55 @@ def estimate_geometric_shape(df_input):
 
 
 # --- ARAYÜZ BİLEŞENLERİ (LAYOUT) ---
+# ... (Bu bölümdeki bileşen tanımları değişmedi)
 title_card = dbc.Row([dbc.Col(html.H1("Kullanıcı Paneli", className="text-center my-3 mb-5"), width=12), html.Hr()])
-control_panel = dbc.Card([
-    dbc.CardHeader("Kontrol ve Ayarlar", className="bg-primary text-white"),
-    dbc.CardBody([
-        html.H6("Çalışma Modu:", className="mt-1"),
-        dbc.RadioItems(id='mode-selection-radios', options=[{'label': '3D Haritalama', 'value': 'scan_and_map'},
-                                                            {'label': 'Serbest Hareket (Gözcü)',
-                                                             'value': 'free_movement'}], value='scan_and_map',
-                       inline=False, className="mb-3"),
-        html.Hr(),
-        dbc.Row([dbc.Col(
-            html.Button('Başlat', id='start-scan-button', n_clicks=0, className="btn btn-success btn-lg w-100 mb-2"),
-            width=6), dbc.Col(
-            html.Button('Durdur', id='stop-scan-button', n_clicks=0, className="btn btn-danger btn-lg w-100 mb-2"),
-            width=6)]),
-        html.Div(id='scan-status-message', style={'marginTop': '10px', 'minHeight': '40px', 'textAlign': 'center'},
-                 className="mb-3"),
-        html.Hr(),
-        html.Div(id='scan-parameters-wrapper', children=[
-            html.H6("Yapay Zeka Seçimi:", className="mt-3"),
-            dcc.Dropdown(id='ai-model-dropdown', options=[], placeholder="Modeller yükleniyor...", disabled=True,
-                         clearable=True, className="mb-3"),
-            html.Hr(),
-            html.H6("Tarama Parametreleri:", className="mt-2"),
-            dbc.InputGroup([dbc.InputGroupText("Yatay Tarama Açısı (°)", style={"width": "180px"}),
-                            dbc.Input(id="scan-duration-angle-input", type="number",
-                                      value=DEFAULT_UI_SCAN_DURATION_ANGLE, min=10, max=720, step=1)],
-                           className="mb-2"),
-            dbc.InputGroup([dbc.InputGroupText("Yatay Adım Açısı (°)", style={"width": "180px"}),
-                            dbc.Input(id="step-angle-input", type="number", value=DEFAULT_UI_SCAN_STEP_ANGLE, min=0.1,
-                                      max=45, step=0.1)], className="mb-2"),
-            dbc.InputGroup([dbc.InputGroupText("Uyarı Mes. (cm)", style={"width": "180px"}),
-                            dbc.Input(id="buzzer-distance-input", type="number", value=DEFAULT_UI_BUZZER_DISTANCE,
-                                      min=0, max=200, step=1)], className="mb-2"),
-            dbc.InputGroup([dbc.InputGroupText("Motor Adım/Tur", style={"width": "180px"}),
-                            dbc.Input(id="steps-per-rev-input", type="number", value=DEFAULT_UI_STEPS_PER_REVOLUTION,
-                                      min=500, max=10000, step=1)], className="mb-2"),
-            dbc.Checkbox(id="invert-motor-checkbox", label="Motor Yönünü Ters Çevir", value=DEFAULT_UI_INVERT_MOTOR,
-                         className="mt-2 mb-2"),
-        ])
-    ])
-])
+control_panel = dbc.Card([dbc.CardHeader("Kontrol ve Ayarlar", className="bg-primary text-white"), dbc.CardBody(
+    [html.H6("Çalışma Modu:", className="mt-1"), dbc.RadioItems(id='mode-selection-radios', options=[
+        {'label': '3D Haritalama', 'value': 'scan_and_map'},
+        {'label': 'Serbest Hareket (Gözcü)', 'value': 'free_movement'}], value='scan_and_map', inline=False,
+                                                                className="mb-3"), html.Hr(), dbc.Row([dbc.Col(
+        html.Button('Başlat', id='start-scan-button', n_clicks=0, className="btn btn-success btn-lg w-100 mb-2"),
+        width=6), dbc.Col(
+        html.Button('Durdur', id='stop-scan-button', n_clicks=0, className="btn btn-danger btn-lg w-100 mb-2"),
+        width=6)]),
+     html.Div(id='scan-status-message', style={'marginTop': '10px', 'minHeight': '40px', 'textAlign': 'center'},
+              className="mb-3"), html.Hr(), html.Div(id='scan-parameters-wrapper',
+                                                     children=[html.H6("Yapay Zeka Seçimi:", className="mt-3"),
+                                                               dcc.Dropdown(id='ai-model-dropdown', options=[],
+                                                                            placeholder="Modeller yükleniyor...",
+                                                                            disabled=True, clearable=True,
+                                                                            className="mb-3"), html.Hr(),
+                                                               html.H6("Tarama Parametreleri:", className="mt-2"),
+                                                               dbc.InputGroup(
+                                                                   [dbc.InputGroupText("Yatay Tarama Açısı (°)",
+                                                                                       style={"width": "180px"}),
+                                                                    dbc.Input(id="scan-duration-angle-input",
+                                                                              type="number",
+                                                                              value=DEFAULT_UI_SCAN_DURATION_ANGLE,
+                                                                              min=10, max=720, step=1)],
+                                                                   className="mb-2"), dbc.InputGroup(
+                                                             [dbc.InputGroupText("Yatay Adım Açısı (°)",
+                                                                                 style={"width": "180px"}),
+                                                              dbc.Input(id="step-angle-input", type="number",
+                                                                        value=DEFAULT_UI_SCAN_STEP_ANGLE, min=0.1,
+                                                                        max=45, step=0.1)], className="mb-2"),
+                                                               dbc.InputGroup([dbc.InputGroupText("Uyarı Mes. (cm)",
+                                                                                                  style={
+                                                                                                      "width": "180px"}),
+                                                                               dbc.Input(id="buzzer-distance-input",
+                                                                                         type="number",
+                                                                                         value=DEFAULT_UI_BUZZER_DISTANCE,
+                                                                                         min=0, max=200, step=1)],
+                                                                              className="mb-2"), dbc.InputGroup(
+                                                             [dbc.InputGroupText("Motor Adım/Tur",
+                                                                                 style={"width": "180px"}),
+                                                              dbc.Input(id="steps-per-rev-input", type="number",
+                                                                        value=DEFAULT_UI_STEPS_PER_REVOLUTION, min=500,
+                                                                        max=10000, step=1)], className="mb-2"),
+                                                               dbc.Checkbox(id="invert-motor-checkbox",
+                                                                            label="Motor Yönünü Ters Çevir",
+                                                                            value=DEFAULT_UI_INVERT_MOTOR,
+                                                                            className="mt-2 mb-2"), ])])])
 stats_panel = dbc.Card([dbc.CardHeader("Anlık Sensör Değerleri", className="bg-info text-white"), dbc.CardBody(dbc.Row(
     [dbc.Col(html.Div([html.H6("Mevcut Açı:"), html.H4(id='current-angle', children="--°")]), width=3,
              className="text-center border-end"),
@@ -297,11 +281,11 @@ analysis_card = dbc.Card([dbc.CardHeader("Tarama Analizi (En Son Tarama)", class
                               [dbc.Col([html.H6("Hesaplanan Alan:"), html.H4(id='calculated-area', children="-- cm²")]),
                                dbc.Col(
                                    [html.H6("Çevre Uzunluğu:"), html.H4(id='perimeter-length', children="-- cm")])]),
-                              dbc.Row([dbc.Col(
-                                  [html.H6("Max Genişlik:"), html.H4(id='max-width', children="-- cm")]),
-                                  dbc.Col([html.H6("Max Derinlik:"),
-                                           html.H4(id='max-depth', children="-- cm")])],
-                                  className="mt-2")])])
+                                        dbc.Row([dbc.Col(
+                                            [html.H6("Max Genişlik:"), html.H4(id='max-width', children="-- cm")]),
+                                                 dbc.Col([html.H6("Max Derinlik:"),
+                                                          html.H4(id='max-depth', children="-- cm")])],
+                                                className="mt-2")])])
 estimation_card = dbc.Card([dbc.CardHeader("Akıllı Ortam Analizi", className="bg-success text-white"), dbc.CardBody(
     html.Div("Tahmin: Bekleniyor...", id='environment-estimation-text', className="text-center"))])
 visualization_tabs = dbc.Tabs([dbc.Tab([dbc.Row([dbc.Col(dcc.Dropdown(id='graph-selector-dropdown', options=[
@@ -319,74 +303,75 @@ visualization_tabs = dbc.Tabs([dbc.Tab([dbc.Row([dbc.Col(dcc.Dropdown(id='graph-
     tab_id="tab-datatable")], id="visualization-tabs-main", active_tab="tab-graphics")
 
 # --- ANA UYGULAMA YERLEŞİMİ (LAYOUT) ---
-
 app.layout = html.Div(
     style={'padding': '20px'},
     children=[
-        # En üstteki navigasyon çubuğu
         navbar,
-
-        # Ana içerik alanı (iki sütunlu yapı)
         dbc.Row([
-
-            # --- Sol Sütun (Kontroller ve Bilgi Kartları) ---
+            dbc.Col([control_panel, html.Br(), stats_panel, html.Br(), system_card, html.Br(), export_card], md=4,
+                    className="mb-3"),
             dbc.Col([
-                control_panel,
-                html.Br(),
-                stats_panel,
-                html.Br(),
-                system_card,
-                html.Br(),
-                export_card
-            ], md=4, className="mb-3"),
-
-            # --- Sağ Sütun (Grafikler ve Analizler) ---
-            dbc.Col([
-                visualization_tabs,
-                html.Br(),
-                dbc.Row([
-                    dbc.Col(analysis_card, md=8),
-                    dbc.Col(estimation_card, md=4)
-                ]),
-                dbc.Row([
-                    dbc.Col([
-                        dbc.Card([
-                            dbc.CardHeader("Akıllı Yorumlama (Yapay Zeka)", className="bg-info text-white"),
-                            dbc.CardBody(
-                                dcc.Loading(
-                                    id="loading-ai-comment",
-                                    type="default",
-                                    children=[
-                                        html.Div(id='ai-yorum-sonucu', children=[
-                                            html.P("Yorum almak için yukarıdan bir AI yapılandırması seçin."),
-                                        ], className="text-center mt-2"),
-                                        html.Div(id='ai-image', className="text-center mt-3")
-                                    ]
-                                )
-                            )
-                        ], className="mt-3")
-                    ], md=12)
-                ], className="mt-3")
+                visualization_tabs, html.Br(),
+                dbc.Row([dbc.Col(analysis_card, md=8), dbc.Col(estimation_card, md=4)]),
+                dbc.Row([dbc.Col([dbc.Card(
+                    [dbc.CardHeader("Akıllı Yorumlama (Yapay Zeka)", className="bg-info text-white"), dbc.CardBody(
+                        dcc.Loading(id="loading-ai-comment", type="default", children=[html.Div(id='ai-yorum-sonucu',
+                                                                                                children=[html.P(
+                                                                                                    "Yorum almak için yukarıdan bir AI yapılandırması seçin."), ],
+                                                                                                className="text-center mt-2"),
+                                                                                       html.Div(id='ai-image',
+                                                                                                className="text-center mt-3")]))],
+                    className="mt-3")], md=12)], className="mt-3")
             ], md=8)
         ]),
 
-        # --- Sayfa Altı Bileşenler (Görünmez) ---
-        dcc.Store(id='clustered-data-store'),
+        # --- YENİ & GÜNCELLENMİŞ: PERFORMANS İÇİN MERKEZİ VERİ DEPOLARI ---
+        dcc.Store(id='latest-scan-object-store'),  # Sadece en son tarama nesnesinin bilgilerini tutar (JSON)
+        dcc.Store(id='latest-scan-points-store'),  # Sadece en son taramanın nokta verilerini tutar (DataFrame JSON)
+        dcc.Store(id='clustered-data-store'),  # Kümelenmiş veriyi tutar
 
-        dbc.Modal(
-            [dbc.ModalHeader(dbc.ModalTitle(id="modal-title")), dbc.ModalBody(id="modal-body")],
-            id="cluster-info-modal",
-            is_open=False,
-            centered=True
-        ),  # <-- Düzeltilen virgül burada
-
+        dbc.Modal([dbc.ModalHeader(dbc.ModalTitle(id="modal-title")), dbc.ModalBody(id="modal-body")],
+                  id="cluster-info-modal", is_open=False, centered=True),
         dcc.Interval(id='interval-component-main', interval=2500, n_intervals=0),
-
         dcc.Interval(id='interval-component-system', interval=3000, n_intervals=0)
     ]
 )
 
+
 # --- CALLBACK FONKSİYONLARI ---
+
+# YENİ: MERKEZİ VERİ ÇEKME CALLBACK'İ
+# Bu callback, periyodik olarak veritabanından en son tarama bilgilerini ve noktalarını çeker
+# ve bunları diğer callback'lerin kullanması için Store bileşenlerine yazar.
+@app.callback(
+    [Output('latest-scan-object-store', 'data'),
+     Output('latest-scan-points-store', 'data')],
+    Input('interval-component-main', 'n_intervals')
+)
+def update_data_stores(n):
+    scan = get_latest_scan()
+    if not scan:
+        return None, None
+
+    # Scan nesnesini (noktalar hariç) JSON'a çevir
+    from django.forms.models import model_to_dict
+    scan_dict = model_to_dict(scan)
+    scan_json = json.dumps(scan_dict, default=str)  # datetime gibi tipler için default=str
+
+    # ScanPoint verilerini çek ve DataFrame olarak JSON'a çevir
+    points_qs = scan.points.all().values('id', 'x_cm', 'y_cm', 'z_cm', 'derece', 'dikey_aci', 'mesafe_cm', 'hiz_cm_s',
+                                         'timestamp')
+    if not points_qs.exists():
+        return scan_json, None
+
+    df_pts = pd.DataFrame(list(points_qs))
+    # Zaman damgalarını string'e dönüştürerek JSON uyumluluğunu sağla
+    df_pts['timestamp'] = pd.to_datetime(df_pts['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+    points_json = df_pts.to_json(orient='split')
+
+    return scan_json, points_json
+
+
 @app.callback(Output('scan-parameters-wrapper', 'style'), Input('mode-selection-radios', 'value'))
 def toggle_parameter_visibility(selected_mode):
     return {'display': 'block'} if selected_mode == 'scan_and_map' else {'display': 'none'}
@@ -395,49 +380,67 @@ def toggle_parameter_visibility(selected_mode):
 @app.callback(
     [Output('ai-model-dropdown', 'options'), Output('ai-model-dropdown', 'disabled'),
      Output('ai-model-dropdown', 'placeholder')],
-    Input('interval-component-main', 'n_intervals')
+    Input('interval-component-main', 'n_intervals')  # Sadece ilk başta çalışsın
 )
 def populate_ai_model_dropdown(n):
     if n > 0: raise PreventUpdate
-    print("AI Modeli seçenekleri veritabanından yükleniyor...")
     options = get_ai_model_options()
     if options and not options[0].get('disabled'):
         return options, False, "Analiz için bir AI yapılandırması seçin..."
     return [], True, "Aktif AI Modeli Bulunamadı"
 
 
-@app.callback(Output('scan-status-message', 'children'), [Input('start-scan-button', 'n_clicks')],
-              [State('mode-selection-radios', 'value'), State('scan-duration-angle-input', 'value'),
-               State('step-angle-input', 'value'), State('buzzer-distance-input', 'value'),
-               State('invert-motor-checkbox', 'value'), State('steps-per-rev-input', 'value')],
-              prevent_initial_call=True)
-def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dist, invert, steps_rev):
+# GÜNCELLENDİ: GÜVENLİK KONTROLÜ EKLENDİ
+@app.callback(
+    Output('scan-status-message', 'children'),
+    Input('start-scan-button', 'n_clicks'),
+    [State('mode-selection-radios', 'value'), State('scan-duration-angle-input', 'value'),
+     State('step-angle-input', 'value'), State('buzzer-distance-input', 'value')],
+    prevent_initial_call=True
+)
+def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dist):
     if n_clicks == 0: return no_update
+
+    # PID dosyasını kontrol et
     if os.path.exists(SENSOR_SCRIPT_PID_FILE):
         try:
             with open(SENSOR_SCRIPT_PID_FILE, 'r') as pf:
                 pid = int(pf.read().strip())
-            if is_process_running(pid): return dbc.Alert(f"Bir betik zaten çalışıyor (PID:{pid}). Önce durdurun.",
-                                                         color="warning")
+            if is_process_running(pid):
+                return dbc.Alert(f"Bir betik zaten çalışıyor (PID:{pid}). Önce durdurun.", color="warning")
         except:
             pass
+
+    # Eski kilit dosyalarını temizle
     for fp in [SENSOR_SCRIPT_LOCK_FILE, SENSOR_SCRIPT_PID_FILE]:
         if os.path.exists(fp):
             try:
                 os.remove(fp)
             except OSError as e_rm:
                 print(f"Eski dosya silinemedi ({fp}): {e_rm}")
+
+    # Komut oluşturma
     cmd = []
     if selected_mode == 'scan_and_map':
-        # DÜZELTİLMİŞ DOĞRU KOD
-        cmd = [sys.executable, SENSOR_SCRIPT_PATH,
-               "--h-angle", str(duration),
-               "--h-step", str(step),
-               "--buzzer-distance", str(buzzer_dist)]
+        # --- GÜVENLİK GÜNCELLEMESİ BAŞLANGICI ---
+        try:
+            h_angle = float(duration)
+            h_step = float(step)
+            buzz_dist = int(buzzer_dist)
+            if not (10 <= h_angle <= 720 and 0.1 <= h_step <= 45 and 0 <= buzz_dist <= 200):
+                return dbc.Alert("Parametreler beklenen aralıkların dışında!", color="danger")
+        except (ValueError, TypeError):
+            return dbc.Alert("Lütfen tüm parametreler için geçerli sayılar girin.", color="danger")
+        # --- GÜVENLİK GÜNCELLEMESİ SONU ---
+
+        cmd = [sys.executable, SENSOR_SCRIPT_PATH, "--h-angle", str(h_angle), "--h-step", str(h_step),
+               "--buzzer-distance", str(buzz_dist)]
+
     elif selected_mode == 'free_movement':
         cmd = [sys.executable, FREE_MOVEMENT_SCRIPT_PATH]
     else:
         return dbc.Alert("Geçersiz mod seçildi!", color="danger")
+
     try:
         if not os.path.exists(cmd[1]): return dbc.Alert(f"HATA: Betik dosyası bulunamadı: {cmd[1]}", color="danger")
         subprocess.Popen(cmd, start_new_session=True)
@@ -448,7 +451,8 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
         return dbc.Alert(f"Betik başlatma hatası: {e}", color="danger")
 
 
-@app.callback(Output('scan-status-message', 'children', allow_duplicate=True), [Input('stop-scan-button', 'n_clicks')],
+# ... (handle_stop_scan_script ve update_system_card aynı kaldı)
+@app.callback(Output('scan-status-message', 'children', allow_duplicate=True), Input('stop-scan-button', 'n_clicks'),
               prevent_initial_call=True)
 def handle_stop_scan_script(n_clicks):
     if n_clicks == 0: return no_update
@@ -480,7 +484,7 @@ def handle_stop_scan_script(n_clicks):
 
 @app.callback([Output('script-status', 'children'), Output('script-status', 'className'), Output('cpu-usage', 'value'),
                Output('cpu-usage', 'label'), Output('ram-usage', 'value'), Output('ram-usage', 'label')],
-              [Input('interval-component-system', 'n_intervals')])
+              Input('interval-component-system', 'n_intervals'))
 def update_system_card(n):
     pid_val = None
     if os.path.exists(SENSOR_SCRIPT_PID_FILE):
@@ -495,41 +499,57 @@ def update_system_card(n):
     return status, s_class, cpu, f"{cpu:.1f}%", ram, f"{ram:.1f}%"
 
 
+# GÜNCELLENDİ: Artık veritabanı yerine store'dan okuyor
 @app.callback(
     [Output('current-angle', 'children'), Output('current-distance', 'children'), Output('current-speed', 'children'),
      Output('current-distance-col', 'style'), Output('max-detected-distance', 'children')],
-    [Input('interval-component-main', 'n_intervals')])
-def update_realtime_values(n):
-    from django.db.models import Max
-    scan = get_latest_scan()
+    [Input('latest-scan-object-store', 'data'),
+     Input('latest-scan-points-store', 'data')]
+)
+def update_realtime_values(scan_json, points_json):
     style = {'padding': '10px', 'transition': 'background-color 0.5s ease', 'borderRadius': '5px'}
-    if not scan: return "--°", "-- cm", "-- cm/s", style, "-- cm"
-    point = scan.points.order_by('-timestamp').first()
-    if not point: return "--°", "-- cm", "-- cm/s", style, "-- cm"
-    angle = f"{point.derece:.1f}°" if pd.notnull(point.derece) else "--°"
-    dist = f"{point.mesafe_cm:.1f} cm" if pd.notnull(point.mesafe_cm) else "-- cm"
-    speed = f"{point.hiz_cm_s:.1f} cm/s" if pd.notnull(point.hiz_cm_s) else "-- cm/s"
-    if scan.buzzer_distance_setting is not None and pd.notnull(
-            point.mesafe_cm) and 0 < point.mesafe_cm <= scan.buzzer_distance_setting:
+    if not scan_json or not points_json:
+        return "--°", "-- cm", "-- cm/s", style, "-- cm"
+
+    scan = json.loads(scan_json)
+    df = pd.read_json(points_json, orient='split')
+
+    if df.empty:
+        return "--°", "-- cm", "-- cm/s", style, "-- cm"
+
+    point = df.sort_values(by='id', ascending=False).iloc[0]
+    angle = f"{point.get('derece', 0.0):.1f}°"
+    dist = f"{point.get('mesafe_cm', 0.0):.1f} cm"
+    speed = f"{point.get('hiz_cm_s', 0.0):.1f} cm/s"
+
+    buzzer_dist = scan.get('buzzer_distance_setting')
+    if buzzer_dist is not None and 0 < point['mesafe_cm'] <= buzzer_dist:
         style.update({'backgroundColor': '#d9534f', 'color': 'white'})
-    max_dist_agg = scan.points.filter(mesafe_cm__lt=2500, mesafe_cm__gt=0).aggregate(max_dist_val=Max('mesafe_cm'))
-    max_dist = f"{max_dist_agg['max_dist_val']:.1f} cm" if max_dist_agg.get('max_dist_val') is not None else "-- cm"
+
+    df_valid = df[(df['mesafe_cm'] < 2500) & (df['mesafe_cm'] > 0)]
+    max_dist_val = df_valid['mesafe_cm'].max() if not df_valid.empty else None
+    max_dist = f"{max_dist_val:.1f} cm" if pd.notnull(max_dist_val) else "-- cm"
+
     return angle, dist, speed, style, max_dist
 
 
+# GÜNCELLENDİ: Artık veritabanı yerine store'dan okuyor
 @app.callback(
     [Output('calculated-area', 'children'), Output('perimeter-length', 'children'), Output('max-width', 'children'),
-     Output('max-depth', 'children')], [Input('interval-component-main', 'n_intervals')])
-def update_analysis_panel(n):
-    scan = get_latest_scan()
-    if not scan: return "-- cm²", "-- cm", "-- cm", "-- cm"
-    area = f"{scan.calculated_area_cm2:.2f} cm²" if pd.notnull(scan.calculated_area_cm2) else "N/A"
-    perim = f"{scan.perimeter_cm:.2f} cm" if pd.notnull(scan.perimeter_cm) else "N/A"
-    width = f"{scan.max_width_cm:.2f} cm" if pd.notnull(scan.max_width_cm) else "N/A"
-    depth = f"{scan.max_depth_cm:.2f} cm" if pd.notnull(scan.max_depth_cm) else "N/A"
+     Output('max-depth', 'children')],
+    Input('latest-scan-object-store', 'data')
+)
+def update_analysis_panel(scan_json):
+    if not scan_json: return "-- cm²", "-- cm", "-- cm", "-- cm"
+    scan = json.loads(scan_json)
+    area = f"{scan.get('calculated_area_cm2', 0.0):.2f} cm²" if scan.get('calculated_area_cm2') is not None else "N/A"
+    perim = f"{scan.get('perimeter_cm', 0.0):.2f} cm" if scan.get('perimeter_cm') is not None else "N/A"
+    width = f"{scan.get('max_width_cm', 0.0):.2f} cm" if scan.get('max_width_cm') is not None else "N/A"
+    depth = f"{scan.get('max_depth_cm', 0.0):.2f} cm" if scan.get('max_depth_cm') is not None else "N/A"
     return area, perim, width, depth
 
 
+# ... (Export callback'leri aynı kalabilir, çünkü butona basılınca anlık veri çekerler, bu normal)
 @app.callback(Output('download-csv', 'data'), Input('export-csv-button', 'n_clicks'), prevent_initial_call=True)
 def export_csv_callback(n_clicks):
     scan = get_latest_scan()
@@ -559,46 +579,54 @@ def export_excel_callback(n_clicks):
     return dcc.send_bytes(buf.getvalue(), f"tarama_detaylari_id_{scan.id}.xlsx")
 
 
-@app.callback(Output('tab-content-datatable', 'children'),
-              [Input('visualization-tabs-main', 'active_tab'), Input('interval-component-main', 'n_intervals')])
-def render_and_update_data_table(active_tab, n):
-    if active_tab != "tab-datatable": return None
-    scan = get_latest_scan()
-    if not (scan and scan.points.exists()): return html.P("Görüntülenecek veri yok.")
-    df = pd.DataFrame(list(
-        scan.points.order_by('-id').values('id', 'derece', 'dikey_aci', 'mesafe_cm', 'hiz_cm_s', 'x_cm', 'y_cm', 'z_cm',
-                                           'timestamp')))
-    df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+# GÜNCELLENDİ: Artık veritabanı yerine store'dan okuyor
+@app.callback(
+    Output('tab-content-datatable', 'children'),
+    [Input('visualization-tabs-main', 'active_tab'),
+     Input('latest-scan-points-store', 'data')]
+)
+def render_and_update_data_table(active_tab, points_json):
+    if active_tab != "tab-datatable" or not points_json:
+        return html.P("Görüntülenecek veri yok.") if active_tab == "tab-datatable" else None
+
+    df = pd.read_json(points_json, orient='split')
+    df = df[['id', 'derece', 'dikey_aci', 'mesafe_cm', 'hiz_cm_s', 'x_cm', 'y_cm', 'z_cm', 'timestamp']]
+
     return dash_table.DataTable(data=df.to_dict('records'),
                                 columns=[{"name": i.replace("_", " ").title(), "id": i} for i in df.columns],
                                 page_size=50, sort_action="native", filter_action="native", virtualization=True,
                                 fixed_rows={'headers': True}, style_table={'minHeight': '70vh', 'overflowY': 'auto'})
 
 
-@app.callback([Output('scan-map-graph-3d', 'figure'), Output('scan-map-graph', 'figure'),
-               Output('polar-regression-graph', 'figure'), Output('polar-graph', 'figure'),
-               Output('time-series-graph', 'figure'), Output('environment-estimation-text', 'children'),
-               Output('clustered-data-store', 'data')], Input('interval-component-main', 'n_intervals'))
-def update_all_graphs(n):
-    from scanner.models import ScanPoint
-    scan = get_latest_scan()
+# GÜNCELLENDİ: Artık veritabanı yerine store'dan okuyor
+@app.callback(
+    [Output('scan-map-graph-3d', 'figure'), Output('scan-map-graph', 'figure'),
+     Output('polar-regression-graph', 'figure'), Output('polar-graph', 'figure'),
+     Output('time-series-graph', 'figure'), Output('environment-estimation-text', 'children'),
+     Output('clustered-data-store', 'data')],
+    [Input('latest-scan-object-store', 'data'),
+     Input('latest-scan-points-store', 'data')]
+)
+def update_all_graphs(scan_json, points_json):
     empty_fig = go.Figure(layout={'title': 'Veri Bekleniyor...'})
-    if not scan: return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, "Tarama başlatın...", None
+    if not scan_json or not points_json:
+        return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, "Tarama başlatın...", None
 
+    scan = json.loads(scan_json)
+    df_pts = pd.read_json(points_json, orient='split')
     figs = [go.Figure() for _ in range(5)]
-    scan_id_for_revision = str(scan.id)
-    points_qs = scan.points.all().values('x_cm', 'y_cm', 'z_cm', 'derece', 'mesafe_cm', 'timestamp')
-    if not points_qs.exists():
-        no_data_fig = go.Figure(layout={'title': f'Tarama #{scan.id} için nokta verisi yok'})
+    scan_id_for_revision = str(scan.get('id'))
+
+    no_data_fig = go.Figure(layout={'title': f'Tarama #{scan_id_for_revision} için nokta verisi yok'})
+    if df_pts.empty:
         return no_data_fig, no_data_fig, no_data_fig, no_data_fig, no_data_fig, "Nokta verisi bulunamadı.", None
 
-    df_pts = pd.DataFrame(list(points_qs))
     df_val = df_pts[(df_pts['mesafe_cm'] > 0.1) & (df_pts['mesafe_cm'] < 400.0)].copy()
 
-    if not df_val.empty: figs[0].add_trace(
-        go.Scatter3d(x=df_val['y_cm'], y=df_val['x_cm'], z=df_val['z_cm'], mode='markers',
-                     marker=dict(size=2, color=df_val['z_cm'], colorscale='Viridis', showscale=True,
-                                 colorbar_title='Yükseklik (cm)')))
+    if not df_val.empty:
+        figs[0].add_trace(go.Scatter3d(x=df_val['y_cm'], y=df_val['x_cm'], z=df_val['z_cm'], mode='markers',
+                                       marker=dict(size=2, color=df_val['z_cm'], colorscale='Viridis', showscale=True,
+                                                   colorbar_title='Yükseklik (cm)')))
 
     est_text, store_data = "Analiz için yetersiz veri.", None
     if len(df_val) >= 10:
@@ -606,13 +634,12 @@ def update_all_graphs(n):
         store_data = df_clus.to_json(orient='split')
         add_scan_rays(figs[1], df_val);
         add_sector_area(figs[1], df_val)
-
         line_data, est_polar = analyze_polar_regression(df_val)
         figs[2].add_trace(go.Scatter(x=df_val['derece'], y=df_val['mesafe_cm'], mode='markers', name='Noktalar'))
         if line_data: figs[2].add_trace(go.Scatter(x=line_data['x'], y=line_data['y'], mode='lines', name='Regresyon',
                                                    line=dict(color='red', width=3)))
-
-        update_polar_graph(figs[3], df_val);
+        update_polar_graph(figs[3], df_val)
+        df_val['timestamp'] = pd.to_datetime(df_val['timestamp'])  # Zaman serisi için tip dönüşümü
         update_time_series_graph(figs[4], df_val)
         est_text = html.Div([html.P(estimate_geometric_shape(df_val), className="fw-bold"), html.Hr(),
                              html.P(find_clearest_path(df_val), className="fw-bold text-primary"), html.Hr(),
@@ -620,7 +647,6 @@ def update_all_graphs(n):
 
     for i in range(5): add_sensor_position(figs[i]) if i != 0 else figs[i].add_trace(
         go.Scatter3d(x=[0], y=[0], z=[0], mode='markers', marker=dict(size=5, color='red'), name='Sensör'))
-
     titles = ['Ortamın 3D Haritası', '2D Harita (Üstten Görünüm)', 'Açıya Göre Mesafe Regresyonu', 'Polar Grafik',
               'Zaman Serisi - Mesafe']
     for i, fig in enumerate(figs): fig.update_layout(title_text=titles[i], uirevision=scan_id_for_revision,
@@ -637,23 +663,28 @@ def update_all_graphs(n):
     return figs[0], figs[1], figs[2], figs[3], figs[4], est_text, store_data
 
 
-@app.callback([Output('container-map-graph-3d', 'style'), Output('container-map-graph', 'style'),
-               Output('container-regression-graph', 'style'), Output('container-polar-graph', 'style'),
-               Output('container-time-series-graph', 'style')], Input('graph-selector-dropdown', 'value'))
+# ... (Diğer callback'ler - graph_visibility, cluster_info, ai_yorum - aynı kalabilir)
+# Bu callback'lerin çoğu zaten store'ları veya anlık olayları dinlediği için büyük değişiklik gerektirmez.
+@app.callback(
+    [Output('container-map-graph-3d', 'style'), Output('container-map-graph', 'style'),
+     Output('container-regression-graph', 'style'), Output('container-polar-graph', 'style'),
+     Output('container-time-series-graph', 'style')],
+    Input('graph-selector-dropdown', 'value')
+)
 def update_graph_visibility(selected_graph):
-    styles = {'3d_map': {'display': 'block'}, 'map': {'display': 'none'}, 'regression': {'display': 'none'},
-              'polar': {'display': 'none'}, 'time': {'display': 'none'}}
-    if selected_graph in styles:
-        # Create a new dictionary to avoid modifying the original
-        active_styles = {k: {'display': 'none'} for k in styles}
-        active_styles[selected_graph] = {'display': 'block'}
-        return list(active_styles.values())
-    return [{'display': 'none'}] * 5
+    styles = {'display': 'none'}
+    if selected_graph == '3d_map': return {'display': 'block'}, styles, styles, styles, styles
+    if selected_graph == 'map': return styles, {'display': 'block'}, styles, styles, styles
+    if selected_graph == 'regression': return styles, styles, {'display': 'block'}, styles, styles
+    if selected_graph == 'polar': return styles, styles, styles, {'display': 'block'}, styles
+    if selected_graph == 'time': return styles, styles, styles, styles, {'display': 'block'}
+    return [styles] * 5
 
 
 @app.callback(
     [Output("cluster-info-modal", "is_open"), Output("modal-title", "children"), Output("modal-body", "children")],
-    [Input("scan-map-graph", "clickData")], [State("clustered-data-store", "data")], prevent_initial_call=True)
+    Input("scan-map-graph", "clickData"), State("clustered-data-store", "data"), prevent_initial_call=True
+)
 def display_cluster_info(clickData, stored_data_json):
     if not clickData or not stored_data_json: return False, no_update, no_update
     try:
@@ -676,22 +707,13 @@ def display_cluster_info(clickData, stored_data_json):
 
 
 @app.callback(
-    [Output('ai-yorum-sonucu', 'children'),
-     Output('ai-image', 'children')],
+    [Output('ai-yorum-sonucu', 'children'), Output('ai-image', 'children')],
     Input('ai-model-dropdown', 'value'),
     prevent_initial_call=True
 )
 def yorumla_model_secimi(selected_config_id):
-    """
-    Seçilen AI yapılandırmasına göre metin analizi yapar ve gönderilen
-    örnek koda tam uyumlu şekilde resim oluşturur.
-    """
-    # Gerekli importları fonksiyon içinde yapıyoruz
     from scanner.models import Scan, ScanPoint, AIModelConfiguration
     from scanner.ai_analyzer import AIAnalyzerService
-    import base64
-    from google.generativeai import types
-    import google.generativeai as genai
 
     if not selected_config_id:
         return [html.P("Yorum için bir AI yapılandırması seçin."), None]
@@ -701,86 +723,47 @@ def yorumla_model_secimi(selected_config_id):
         if not scan:
             return [dbc.Alert("Analiz edilecek bir tarama bulunamadı.", color="warning"), None]
 
-        # Metin analizi için seçilen yapılandırmayı kullan
         config = AIModelConfiguration.objects.get(id=selected_config_id)
         analyzer = AIAnalyzerService(config=config)
 
-        # Metin Analizi (Önbellek kontrolü dahil)
+        # Metin Analizi
         analysis_result_text, text_component = "", None
         if scan.ai_commentary and scan.ai_commentary.strip():
             analysis_result_text = scan.ai_commentary
-            text_component = dbc.Alert([
-                html.H4("Önbellekten Yüklendi", className="alert-heading"), html.Hr(),
-                dcc.Markdown(analysis_result_text, dangerously_allow_html=True)
-            ], color="info")
+            text_component = dbc.Alert([html.H4("Önbellekten Yüklendi", className="alert-heading"), html.Hr(),
+                                        dcc.Markdown(analysis_result_text, dangerously_allow_html=True)], color="info")
         else:
             prompt = (
-                "Bu 3D tarama verilerini analiz et. Ortamın genel şekli nedir (oda, koridor vb.)? "
-                "Belirgin nesneler var mı? Varsa, konumları ve olası şekilleri hakkında bilgi ver. "
-                "Özellikle z_cm (yükseklik) verisini dikkate alarak yorum yap."
-            )
-            analysis_result_text = analyzer.analyze_model_data(
-                django_model=ScanPoint,
-                custom_prompt=prompt,
-                fields=['derece', 'dikey_aci', 'mesafe_cm', 'x_cm', 'y_cm', 'z_cm'],
-                scan=scan
-            )
+                "Bu 3D tarama verilerini analiz et. Ortamın genel şekli nedir (oda, koridor vb.)? Belirgin nesneler var mı? Varsa, konumları ve olası şekilleri hakkında bilgi ver. Özellikle z_cm (yükseklik) verisini dikkate alarak yorum yap.")
+            analysis_result_text = analyzer.analyze_model_data(django_model=ScanPoint, custom_prompt=prompt,
+                                                               fields=['derece', 'dikey_aci', 'mesafe_cm', 'x_cm',
+                                                                       'y_cm', 'z_cm'], scan=scan)
             if "hata" not in analysis_result_text.lower():
-                scan.ai_commentary = analysis_result_text
+                scan.ai_commentary = analysis_result_text;
                 scan.save(update_fields=['ai_commentary'])
             text_component = dcc.Markdown(analysis_result_text, dangerously_allow_html=True)
 
-        # Resim Oluşturma (Örnek Koda Tam Uyumlu)
+        # Resim Oluşturma
         image_component = None
         if analysis_result_text and "hata" not in analysis_result_text.lower():
             try:
-
-
-                print("🖼️ Örnek koda göre resim oluşturma işlemi başlatılıyor...")
-                image_model_name = "gemini-2.0-flash-preview-image-generation"
-                image_model = genai.GenerativeModel(image_model_name)
-
+                image_model = genai.GenerativeModel("gemini-1.5-flash-latest")  # Model adı güncel tutulabilir
                 image_prompt = (
-                    "Aşağıdaki metin analizini temel alarak, taranan ortamın 3D render edilmiş bir görüntüsünü oluştur. "
-                    "Çıktıda sadece resim olsun.\n\n"
-                    f"--- ANALİZ ---\n{analysis_result_text}"
-                )
+                    f"Aşağıdaki 3D tarama analizini temel alarak, taranan ortamın fotogerçekçi bir 3D render görüntüsünü oluştur: {analysis_result_text}")
+                image_response = image_model.generate_content(image_prompt,
+                                                              generation_config={"response_mime_type": "image/png"})
 
-                # GÜNCELLENDİ: Gönderdiğiniz örnekteki gibi GenerateContentConfig kullanılıyor
-                generation_config = types.GenerateContentConfig(
-                    response_modalities=['TEXT', 'IMAGE']
-                )
-
-                # GÜNCELLENDİ: API çağrısı yeni konfigürasyon ile yapılıyor
-                image_response = image_model.generate_content(
-                    contents=image_prompt,
-                    config=generation_config
-                )
-
-                # GÜNCELLENDİ: Yanıt, response.candidates yapısı üzerinden işleniyor
-                found_image = False
-                if image_response.candidates:
-                    for part in image_response.candidates[0].content.parts:
-                        if hasattr(part, 'inline_data') and part.inline_data.data:
-                            print("✅ Resim verisi yanıtta bulundu.")
-                            image_data = part.inline_data.data
-                            mime_type = part.inline_data.mime_type
-                            from io import BytesIO
-
-                            base64_image = base64.b64encode(image_data).decode('utf-8')
-                            image_src = f"data:{mime_type};base64,{base64_image}"
-
-                            image_component = html.Img(src=image_src, style={'maxWidth': '100%', 'borderRadius': '10px',
-                                                                             'marginTop': '15px'})
-                            found_image = True
-                            break
-
-                if not found_image:
+                if image_response.parts:
+                    part = image_response.parts[0]
+                    image_data = part.inline_data.data
+                    mime_type = part.inline_data.mime_type
+                    base64_image = base64.b64encode(image_data).decode('utf-8')
+                    image_src = f"data:{mime_type};base64,{base64_image}"
+                    image_component = html.Img(src=image_src,
+                                               style={'maxWidth': '100%', 'borderRadius': '10px', 'marginTop': '15px'})
+                else:
                     image_component = dbc.Alert("Model bir resim üretmedi.", color="warning", className="mt-3")
-                    print("⚠️ Modelin yanıtı resim verisi içermiyor.")
-
             except Exception as img_e:
-                print(f"❌ Resim oluşturulurken hata oluştu: {img_e}")
                 image_component = dbc.Alert(f"Resim oluşturulamadı: {img_e}", color="danger", className="mt-3")
 
         return [text_component, image_component]
@@ -788,6 +771,5 @@ def yorumla_model_secimi(selected_config_id):
     except AIModelConfiguration.DoesNotExist:
         return [dbc.Alert(f"ID'si {selected_config_id} olan AI yapılandırması bulunamadı.", color="danger"), None]
     except Exception as e:
-        import traceback
         traceback.print_exc()
         return [dbc.Alert(f"Analiz sırasında genel hata: {e}", color="danger"), None]

@@ -24,7 +24,7 @@ except Exception as e:
 
 # --- DONANIM KÜTÜPHANELERİ ---
 try:
-    from gpiozero import DistanceSensor, LED, Buzzer, OutputDevice, Servo, PWMOutputDevice
+    from gpiozero import DistanceSensor, LED, Buzzer, OutputDevice, Servo
     from RPLCD.i2c import CharLCD
     from gpiozero.pins.pigpio import PiGPIOFactory
     from gpiozero import Device
@@ -44,22 +44,19 @@ except (IOError, OSError):
     pass
 
 # --- SABİTLER VE PINLER ---
-MOTOR_TYPE_DC = True
+# DC motorlar kaldırıldığı için bu kısım artık gereksiz.
+# MOTOR_BAGLI hala donanım bağlı olup olmadığını belirtir.
 MOTOR_BAGLI = True
 
-# DC Motor A için pinler (L298N)
-IN1_DC_MOTOR_A = 21
-IN2_DC_MOTOR_A = 20
-ENA_DC_MOTOR_A = 5
-
-# DC Motor B için pinler (L298N)
-IN3_DC_MOTOR_B = 18
-IN4_DC_MOTOR_B = 23
-ENB_DC_MOTOR_B = 16
+# Step Motor için L298N pinleri (Lütfen bu pinleri kendi bağlantılarınıza göre kontrol edin ve ayarlayın!)
+STEP_MOTOR_IN1 = 6
+STEP_MOTOR_IN2 = 13
+STEP_MOTOR_IN3 = 19
+STEP_MOTOR_IN4 = 26
 
 # Ultrasonik Mesafe Sensörleri
-TRIG_PIN_1, ECHO_PIN_1 = 23, 24   # Birinci ultrasonik sensör
-TRIG_PIN_2, ECHO_PIN_2 = 16, 5   # İkinci ultrasonik sensör için yeni pinler (Lütfen kontrol edin!)
+TRIG_PIN_1, ECHO_PIN_1 = 23, 24   # Birinci ultrasonik sensör (Step motor üzerinde)
+TRIG_PIN_2, ECHO_PIN_2 = 16, 5    # İkinci ultrasonik sensör (Servo üzerinde)
 
 SERVO_PIN = 12
 BUZZER_PIN = 17
@@ -76,20 +73,25 @@ DEFAULT_VERTICAL_SCAN_ANGLE = 180.0
 DEFAULT_VERTICAL_STEP_ANGLE = 15.0
 DEFAULT_BUZZER_DISTANCE = 10
 
-DC_MOTOR_SPEED_PWM_DUTY_CYCLE = 0.6
-DC_MOTOR_MOVE_DURATION = 0.5
-LOOP_TARGET_INTERVAL_S = 0.2
+# Step Motor Gecikmeleri ve Ayarları
+DEFAULT_STEPS_PER_REVOLUTION = 4096 # Motorunuzun bir turdaki adım sayısı (örn: 28BYJ-48 için 2048 veya 4096)
+STEP_MOTOR_INTER_STEP_DELAY = 0.0015 # Adımlar arası gecikme (motor hızını etkiler)
+STEP_MOTOR_SETTLE_TIME = 0.05 # Motorun konumuna geldikten sonra bekleme süresi
+
+LOOP_TARGET_INTERVAL_S = 0.2 # Sensör okumaları arası genel bekleme süresi (Motor ve servo hareketini de içerir)
 
 # --- GLOBAL DEĞİŞKENLER ---
 lock_file_handle, current_scan_object_global = None, None
-sensor_1, sensor_2, servo, buzzer, lcd, led = None, None, None, None, None, None # İki sensör objesi tanımlandı
-# Motor A değişkenleri
-in1_dev_A, in2_dev_A, ena_dev_A = None, None, None
-# Motor B değişkenleri (opsiyonel)
-in3_dev_B, in4_dev_B, enb_dev_B = None, None, None
+sensor_1, sensor_2, servo, buzzer, lcd, led = None, None, None, None, None, None
+
+# Step motor pin objeleri
+in1_dev_step, in2_dev_step, in3_dev_step, in4_dev_step = None, None, None, None
 
 script_exit_status_global = Scan.Status.ERROR
-current_motor_angle_global = 0.0 # DC motorlar için tahmini yatay açı takibi
+current_motor_angle_global = 0.0 # Step motor için yatay açı takibi
+current_step_sequence_index = 0 # Step motor adım sırası takip
+step_sequence = [[1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 0], [0, 0, 1, 1], [0, 0, 0, 1],
+                 [1, 0, 0, 1]] # Tam adım veya yarım adım dizisi (L298N için)
 
 
 # --- SÜREÇ YÖNETİMİ VE KAYNAK KONTROLÜ ---
@@ -105,16 +107,12 @@ def acquire_lock_and_pid():
         print("Kilit dosyası oluşturulamadı. Başka bir script çalışıyor olabilir.")
         return False
 
-def _stop_all_dc_motors():
-    """Tüm DC motorları durdurur."""
-    if 'ena_dev_A' in globals() and ena_dev_A: ena_dev_A.off()
-    if 'in1_dev_A' in globals() and in1_dev_A: in1_dev_A.off()
-    if 'in2_dev_A' in globals() and in2_dev_A: in2_dev_A.off()
-
-    # Eğer Motor B kullanılıyorsa
-    if 'enb_dev_B' in globals() and enb_dev_B: enb_dev_B.off()
-    if 'in3_dev_B' in globals() and in3_dev_B: in3_dev_B.off()
-    if 'in4_dev_B' in globals() and in4_dev_B: in4_dev_B.off()
+def _stop_step_motor_pins():
+    """Step motor pinlerini sıfırlar."""
+    if in1_dev_step: in1_dev_step.off()
+    if in2_dev_step: in2_dev_step.off()
+    if in3_dev_step: in3_dev_step.off()
+    if in4_dev_step: in4_dev_step.off()
 
 def release_resources_on_exit():
     pid = os.getpid()
@@ -128,7 +126,7 @@ def release_resources_on_exit():
         except Exception as e:
             print(f"DB çıkış hatası: {e}")
 
-    _stop_all_dc_motors() # Tüm DC motorları durdur
+    _stop_step_motor_pins() # Step motor pinlerini sıfırla
     if buzzer and buzzer.is_active: buzzer.off()
     if lcd:
         try:
@@ -137,10 +135,8 @@ def release_resources_on_exit():
             print(f"LCD temizlenemedi: {e}")
     if led and led.is_active: led.off() # LED'i kapatma
 
-    for dev in [sensor_1, sensor_2, servo, buzzer, lcd, led, in1_dev_A, in2_dev_A, ena_dev_A,
-                getattr(sys.modules[__name__], 'in3_dev_B', None),
-                getattr(sys.modules[__name__], 'in4_dev_B', None),
-                getattr(sys.modules[__name__], 'enb_dev_B', None)]:
+    for dev in [sensor_1, sensor_2, servo, buzzer, lcd, led,
+                in1_dev_step, in2_dev_step, in3_dev_step, in4_dev_step]:
         if dev and hasattr(dev, 'close'):
             try:
                 dev.close()
@@ -163,27 +159,20 @@ def release_resources_on_exit():
 
 
 def init_hardware():
-    global sensor_1, sensor_2, servo, buzzer, lcd, led # Yeni sensör objesi eklendi
-    # Motor A değişkenleri
-    global in1_dev_A, in2_dev_A, ena_dev_A
-    # Motor B değişkenleri (opsiyonel)
-    global in3_dev_B, in4_dev_B, enb_dev_B
+    global sensor_1, sensor_2, servo, buzzer, lcd, led
+    global in1_dev_step, in2_dev_step, in3_dev_step, in4_dev_step
 
     try:
-        if MOTOR_BAGLI and MOTOR_TYPE_DC:
-            # DC Motor A için pinler
-            in1_dev_A = OutputDevice(IN1_DC_MOTOR_A)
-            in2_dev_A = OutputDevice(IN2_DC_MOTOR_A)
-            ena_dev_A = PWMOutputDevice(ENA_DC_MOTOR_A)
-
-            # DC Motor B için pinler (Eğer kullanılacaksa yorum satırını kaldırın)
-            # in3_dev_B = OutputDevice(IN3_DC_MOTOR_B)
-            # in4_dev_B = OutputDevice(IN4_DC_MOTOR_B)
-            # enb_dev_B = PWMOutputDevice(ENB_DC_MOTOR_B)
+        if MOTOR_BAGLI: # Step motor kullanılıyorsa
+            # Step motor pinleri
+            in1_dev_step = OutputDevice(STEP_MOTOR_IN1)
+            in2_dev_step = OutputDevice(STEP_MOTOR_IN2)
+            in3_dev_step = OutputDevice(STEP_MOTOR_IN3)
+            in4_dev_step = OutputDevice(STEP_MOTOR_IN4)
 
         # Ultrasonik mesafe sensörleri
         sensor_1 = DistanceSensor(echo=ECHO_PIN_1, trigger=TRIG_PIN_1, max_distance=3.0)
-        sensor_2 = DistanceSensor(echo=ECHO_PIN_2, trigger=TRIG_PIN_2, max_distance=3.0) # İkinci sensör başlatıldı
+        sensor_2 = DistanceSensor(echo=ECHO_PIN_2, trigger=TRIG_PIN_2, max_distance=3.0)
 
         # Servo motor: Darbe genişlikleri ile başlatılıyor
         MIN_PULSE = 0.0005
@@ -194,7 +183,7 @@ def init_hardware():
         buzzer = Buzzer(BUZZER_PIN)
 
         # LED başlatma
-        led = LED(LED_PIN) # LED objesi oluşturuldu
+        led = LED(LED_PIN)
 
         # LCD Ekran (isteğe bağlı, hata durumunda script durmaz)
         try:
@@ -212,55 +201,57 @@ def init_hardware():
         return False
 
 
-def _move_dc_motor(motor_id, duration, direction_positive, speed_pwm_duty_cycle):
-    """
-    Belirli bir DC motoru belirli bir yönde belirli bir süre döndürür.
-    :param motor_id: 'A' veya 'B' motorunu seçmek için.
-    :param duration: Motorun döneceği süre (saniye).
-    :param direction_positive: True ise bir yöne, False ise ters yöne döner.
-    :param speed_pwm_duty_cycle: Motor hızı (0.0 - 1.0 arası PWM değeri).
-    """
-    in_pin1, in_pin2, ena_pin = None, None, None
+def _set_step_motor_pins(s1, s2, s3, s4):
+    """Step motor pinlerine değerleri ayarlar."""
+    if in1_dev_step: in1_dev_step.value = bool(s1)
+    if in2_dev_step: in2_dev_step.value = bool(s2)
+    if in3_dev_step: in3_dev_step.value = bool(s3)
+    if in4_dev_step: in4_dev_step.value = bool(s4)
 
-    if motor_id == 'A' and 'in1_dev_A' in globals() and in1_dev_A:
-        in_pin1, in_pin2, ena_pin = in1_dev_A, in2_dev_A, ena_dev_A
-    elif motor_id == 'B' and 'in3_dev_B' in globals() and in3_dev_B:
-        in_pin1, in_pin2, ena_pin = in3_dev_B, in4_dev_B, enb_dev_B
-    else:
-        print(f"Hata: Motor ID '{motor_id}' için pinler başlatılmamış veya geçersiz.")
+def _step_motor_4in(num_steps, direction_positive):
+    """
+    4 pinli step motoru belirli sayıda adım döndürür.
+    :param num_steps: Atılacak adım sayısı.
+    :param direction_positive: True ise ileri, False ise geri.
+    """
+    global current_step_sequence_index
+    for _ in range(int(num_steps)):
+        step_increment = 1 if direction_positive else -1
+        current_step_sequence_index = (current_step_sequence_index + step_increment) % len(step_sequence)
+        _set_step_motor_pins(*step_sequence[current_step_sequence_index])
+        time.sleep(STEP_MOTOR_INTER_STEP_DELAY)
+
+def move_step_motor_to_angle(target_angle_deg, total_steps_per_rev):
+    """
+    Step motoru belirli bir mutlak açıya döndürür.
+    :param target_angle_deg: Gidilecek hedef açı (derece).
+    :param total_steps_per_rev: Motorun bir turdaki toplam adım sayısı.
+    """
+    global current_motor_angle_global
+    if not MOTOR_BAGLI or total_steps_per_rev <= 0: return
+
+    DEG_PER_STEP = 360.0 / total_steps_per_rev
+    angle_diff = target_angle_deg - current_motor_angle_global
+
+    # Eğer açı farkı çok küçükse veya zaten hedefe ulaşıldıysa hareket etme
+    if abs(angle_diff) < DEG_PER_STEP / 2: # Yarım adımdan küçükse hareket etme
         return
 
-    if not (in_pin1 and in_pin2 and ena_pin): return
+    num_steps = round(abs(angle_diff) / DEG_PER_STEP)
+    direction_positive = (angle_diff > 0) # Pozitif açı farkı için ileri
 
-    # Yön pinlerini ayarla
-    if direction_positive:
-        in_pin1.on()
-        in_pin2.off()
-    else:
-        in_pin1.off()
-        in_pin2.on()
+    _step_motor_4in(num_steps, direction_positive)
+    current_motor_angle_global = target_angle_deg # Hedef açıyı mevcut açı olarak ayarla
+    time.sleep(STEP_MOTOR_SETTLE_TIME) # Motorun yerine oturması için bekleme
 
-    # Motoru belirtilen hızda etkinleştir
-    ena_pin.value = speed_pwm_duty_cycle
-
-    time.sleep(duration) # Motoru belirtilen süre döndür
-
-    # Motoru durdur
-    in_pin1.off()
-    in_pin2.off()
-    ena_pin.off()
-    time.sleep(0.05) # Motorun tamamen durması için kısa bir bekleme
-
-
-def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist, invert_dir, steps_rev):
+def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist):
     global current_scan_object_global
     try:
-        # Daha önceki RUNNING durumdaki taramaları ERROR olarak güncelle
         Scan.objects.filter(status=Scan.Status.RUNNING).update(status=Scan.Status.ERROR, end_time=timezone.now())
-        # Yeni bir tarama girişi oluştur
         current_scan_object_global = Scan.objects.create(
             start_angle_setting=h_angle, step_angle_setting=h_step, end_angle_setting=v_angle,
-            buzzer_distance_setting=buzzer_dist, invert_motor_direction_setting=invert_dir,
+            buzzer_distance_setting=buzzer_dist,
+            invert_motor_direction_setting=False, # Step motor için bu ayar doğrudan kullanılmaz
             status=Scan.Status.RUNNING)
         return True
     except Exception as e:
@@ -286,31 +277,34 @@ if __name__ == "__main__":
     if not acquire_lock_and_pid() or not init_hardware(): sys.exit(1)  # Kilit al ve donanımı başlat
 
     TOTAL_H_ANGLE, H_STEP, BUZZER_DISTANCE = args.h_angle, args.h_step, args.buzzer_distance
-    # create_scan_entry çağrısında invert_dir ve steps_rev için varsayılan değerler kullanıldı
-    if not create_scan_entry(TOTAL_H_ANGLE, H_STEP, DEFAULT_VERTICAL_SCAN_ANGLE, BUZZER_DISTANCE, False, 0): sys.exit(1)
+    if not create_scan_entry(TOTAL_H_ANGLE, H_STEP, DEFAULT_VERTICAL_SCAN_ANGLE, BUZZER_DISTANCE): sys.exit(1)
 
     try:
-        print("Motor başlangıç pozisyonuna ayarlanıyor (manuel veya sensör ile ayarlamanız gerekebilir)...")
+        # Step motor başlangıç pozisyonuna ayarlanıyor: Tarama açısının yarısı kadar geriye dön
+        # Bu, motoru taramanın en sol başlangıç noktasına getirir (örn: 270 derece tarama için -135 dereceye)
+        initial_horizontal_angle = - (TOTAL_H_ANGLE / 2.0)
+        print(f"Step motor başlangıç pozisyonuna gidiliyor: {initial_horizontal_angle:.1f}°...")
+        move_step_motor_to_angle(initial_horizontal_angle, DEFAULT_STEPS_PER_REVOLUTION)
+        _stop_step_motor_pins() # Hareket bitince motor pinlerini sıfırla
 
         # Servo başlangıç pozisyonu: Fiziksel 0 dereceye getir
         servo.value = degree_to_servo_value(0)
         time.sleep(1.5) # Motorların yerine oturması için bekleme süresi
 
-        num_horizontal_steps = int(TOTAL_H_ANGLE / H_STEP)
-        # current_motor_angle_global: Mantıksal olarak 0'dan başlayıp tarama açısına doğru ilerleyen yatay açı.
-        # Bu, DC motorun gerçek fiziksel açısını takip etmez, sadece tarama mantığını sürdürür.
-        current_motor_angle_global = 0.0
+        # current_motor_angle_global zaten initial_horizontal_angle olarak ayarlandı
 
-        # Yatay tarama döngüsü: Her adımda DC motoru döndür
+        # Yatay tarama döngüsü (step motor ile)
+        num_horizontal_steps = int(TOTAL_H_ANGLE / H_STEP)
         for i in range(num_horizontal_steps + 1):
+            # Hedef yatay açı: Başlangıçtan itibaren H_STEP artışlarla ilerle
+            target_h_angle_abs = initial_horizontal_angle + (i * H_STEP)
             target_h_angle_rel = i * H_STEP # Göreceli tarama açısı (0'dan itibaren)
 
-            # DC motoru H_STEP açısı kadar döndürmek için (tahmini)
-            _move_dc_motor('A', DC_MOTOR_MOVE_DURATION, True, DC_MOTOR_SPEED_PWM_DUTY_CYCLE)
-            current_motor_angle_global = target_h_angle_rel # Göreceli açıyı doğrudan ata
+            move_step_motor_to_angle(target_h_angle_abs, DEFAULT_STEPS_PER_REVOLUTION)
+            _stop_step_motor_pins() # Her hareket sonrası motor pinlerini sıfırla
+            print(f"\nYatay Açı: {target_h_angle_rel:.1f}° (Mutlak: {target_h_angle_abs:.1f}°)")
 
-            print(f"\nYatay Açı: {target_h_angle_rel:.1f}°")
-
+            # Dikey tarama döngüsü (servo ile)
             num_vertical_steps = int(DEFAULT_VERTICAL_SCAN_ANGLE / DEFAULT_VERTICAL_STEP_ANGLE)
             for j in range(num_vertical_steps + 1):
                 target_v_angle = j * DEFAULT_VERTICAL_STEP_ANGLE # Servo'ya gönderilecek fiziksel açı
@@ -318,62 +312,66 @@ if __name__ == "__main__":
                 servo.value = degree_to_servo_value(target_v_angle)
                 time.sleep(LOOP_TARGET_INTERVAL_S) # Ölçüm için bekleme
 
-                # İki sensörden de mesafe oku
-                dist_cm_1 = sensor_1.distance * 100
-                dist_cm_2 = sensor_2.distance * 100
+                # Sensör okumaları
+                dist_cm_1 = sensor_1.distance * 100 # Step motor üzerindeki sensör
+                dist_cm_2 = sensor_2.distance * 100 # Servo üzerindeki sensör
 
-                # En yakın mesafeyi seç (isterseniz bu mantığı değiştirebilirsiniz)
-                dist_cm = min(dist_cm_1, dist_cm_2)
+                # Koordinat hesaplamaları ve kaydı için servo üzerindeki sensörün mesafesini kullan
+                # Buzzer ve LED için her iki sensörden gelen en yakın mesafeyi kullan
+                dist_for_xyz = dist_cm_2 # 3D koordinatlar için servo sensörünün mesafesi
+                dist_for_alert = min(dist_cm_1, dist_cm_2) # Uyarılar için en yakın mesafe
 
-                print(f"  -> Dikey: {target_v_angle:.1f}°, Mesafe1: {dist_cm_1:.1f} cm, Mesafe2: {dist_cm_2:.1f} cm, Seçilen Mesafe: {dist_cm:.1f} cm")
+
+                print(f"  -> Dikey: {target_v_angle:.1f}°, S1 Mesafe: {dist_cm_1:.1f} cm, S2 Mesafe: {dist_cm_2:.1f} cm, XYZ İçin: {dist_for_xyz:.1f} cm")
 
                 if lcd:
                     try:
                         lcd.cursor_pos = (0, 0);
                         lcd.write_string(f"Y:{target_h_angle_rel:<4.0f} V:{target_v_angle:<4.0f}  ")
                         lcd.cursor_pos = (1, 0);
-                        lcd.write_string(f"M1:{dist_cm_1:<4.0f} M2:{dist_cm_2:<4.0f} ") # LCD'ye iki mesafeyi de yaz
+                        lcd.write_string(f"S1:{dist_cm_1:<4.0f} S2:{dist_cm_2:<4.0f} ") # LCD'ye iki mesafeyi de yaz
                     except OSError as e:
                         print(f"LCD YAZMA HATASI: {e}")
 
-                if buzzer.is_active != (0 < dist_cm < BUZZER_DISTANCE): buzzer.toggle()
+                if buzzer.is_active != (0 < dist_for_alert < BUZZER_DISTANCE): buzzer.toggle()
 
-                # *** LED KONTROL MANTIĞI BAŞLANGICI ***
-                if led: # Eğer LED objesi başarılı bir şekilde oluşturulduysa
-                    if 0 < dist_cm < BUZZER_DISTANCE: # Eğer mesafe yakınsa (buzzer mesafesinden küçükse)
-                        if not led.is_active: # Zaten yanmıyorsa yak
+                # *** LED KONTROL MANTIĞI ***
+                if led:
+                    if 0 < dist_for_alert < BUZZER_DISTANCE:
+                        if not led.is_active:
                             led.on()
-                    else: # Mesafe uzaksa veya okuma yoksa
-                        if led.is_active: # Zaten yanıyorsa söndür
+                    else:
+                        if led.is_active:
                             led.off()
-
-                        # Normal tarama durumunda kısa yanıp sönme
                         led.on()
-                        time.sleep(0.05) # Kısa bir yanıp sönme
+                        time.sleep(0.05)
                         led.off()
                 # *** LED KONTROL MANTIĞI SONU ***
 
 
-                # Koordinat hesaplamaları: Burada current_motor_angle_global (tahmini mutlak yatay açı)
-                # ve target_v_angle (dikey açı) kullanılacak.
-                angle_pan_rad, angle_tilt_rad = math.radians(current_motor_angle_global), math.radians(target_v_angle)
-                h_radius = dist_cm * math.cos(angle_tilt_rad)
-                z, x, y = dist_cm * math.sin(angle_tilt_rad), h_radius * math.cos(angle_pan_rad), h_radius * math.sin(
+                # Koordinat hesaplamaları: Burada step motorun mutlak yatay açısı
+                # ve servo üzerindeki sensörün dikey açısı ve mesafesi kullanılacak.
+                angle_pan_rad, angle_tilt_rad = math.radians(target_h_angle_abs), math.radians(target_v_angle)
+                h_radius = dist_for_xyz * math.cos(angle_tilt_rad)
+                z, x, y = dist_for_xyz * math.sin(angle_tilt_rad), h_radius * math.cos(angle_pan_rad), h_radius * math.sin(
                     angle_pan_rad)
 
                 ScanPoint.objects.create(scan=current_scan_object_global, derece=target_h_angle_rel,
-                                         dikey_aci=target_v_angle, mesafe_cm=dist_cm, x_cm=x, y_cm=y, z_cm=z,
+                                         dikey_aci=target_v_angle, mesafe_cm=dist_for_xyz, x_cm=x, y_cm=y, z_cm=z,
                                          timestamp=timezone.now())
 
-        script_exit_status_global = Scan.Status.COMPLETED  # Tarama başarılı tamamlandı
+        script_exit_status_global = Scan.Status.COMPLETED
     except KeyboardInterrupt:
-        script_exit_status_global = Scan.Status.INTERRUPTED  # Kullanıcı tarafından durduruldu
+        script_exit_status_global = Scan.Status.INTERRUPTED
         print("\nKullanıcı tarafından durduruldu.")
     except Exception as e:
-        script_exit_status_global = Scan.Status.ERROR  # Genel bir hata oluştu
+        script_exit_status_global = Scan.Status.ERROR
         print(f"KRİTİK HATA: {e}");
-        traceback.print_exc()  # Hata detaylarını yazdır
+        traceback.print_exc()
     finally:
         print("İşlem sonlanıyor. Motorlar durduruluyor ve servo merkeze getiriliyor...")
-        _stop_all_dc_motors() # Tüm DC motorları durdur
+        # Step motoru tarama başlangıç pozisyonuna geri getir
+        move_step_motor_to_angle(initial_horizontal_angle, DEFAULT_STEPS_PER_REVOLUTION)
+        _stop_step_motor_pins() # Pinleri kapat
+
         if servo: servo.value = degree_to_servo_value(90) # Servo motoru merkeze getir (fiziksel 90 derece)

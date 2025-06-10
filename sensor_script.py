@@ -44,8 +44,6 @@ except (IOError, OSError):
     pass
 
 # --- SABİTLER VE PINLER ---
-# DC motorlar kaldırıldığı için bu kısım artık gereksiz.
-# MOTOR_BAGLI hala donanım bağlı olup olmadığını belirtir.
 MOTOR_BAGLI = True
 
 # Step Motor için L298N pinleri (Lütfen bu pinleri kendi bağlantılarınıza göre kontrol edin ve ayarlayın!)
@@ -56,7 +54,7 @@ STEP_MOTOR_IN4 = 26
 
 # Ultrasonik Mesafe Sensörleri
 TRIG_PIN_1, ECHO_PIN_1 = 23, 24   # Birinci ultrasonik sensör (Step motor üzerinde)
-TRIG_PIN_2, ECHO_PIN_2 = 16, 5    # İkinci ultrasonik sensör (Servo üzerinde)
+TRIG_PIN_2, ECHO_PIN_2 = 16, 20   # İkinci ultrasonik sensör (Servo üzerinde) - GPIO5 yerine GPIO20 kullanıldı!
 
 SERVO_PIN = 12
 BUZZER_PIN = 17

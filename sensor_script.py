@@ -48,14 +48,18 @@ MOTOR_TYPE_DC = True
 MOTOR_BAGLI = True
 
 # DC Motor A için pinler (Örnek pinler, projenize göre ayarlayın)
-IN1_DC_MOTOR_A = 6
-IN2_DC_MOTOR_A = 20 # GPIO 13 yerine 20 kullanıldı
-ENA_DC_MOTOR_A = 19 # PWM için uygun bir GPIO pini
+IN1_DC_MOTOR_A = 21
+
+IN2_DC_MOTOR_A = 20
+
+ENA_DC_MOTOR_A = 5
 
 # DC Motor B için pinler (L298N'deki IN3, IN4 ve ENB'ye bağlanacak - opsiyonel)
 # Eğer ikinci bir DC motor kullanılacaksa bu pinleri tanımlayın.
-IN3_DC_MOTOR_B = 26
-IN4_DC_MOTOR_B = 21
+IN3_DC_MOTOR_B = 18
+
+IN4_DC_MOTOR_B = 23
+
 ENB_DC_MOTOR_B = 16
 
 TRIG_PIN, ECHO_PIN = 23, 24

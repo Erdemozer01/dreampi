@@ -286,10 +286,10 @@ if __name__ == "__main__":
     parser.add_argument("--h-angle", type=float, default=DEFAULT_HORIZONTAL_SCAN_ANGLE)
     parser.add_argument("--h-step", type=float, default=DEFAULT_HORIZONTAL_STEP_ANGLE)
     parser.add_argument("--buzzer-distance", type=int, default=DEFAULT_BUZZER_DISTANCE)
-    # DC motorlarda 'invert-motor-direction' ve 'steps-per-rev' doğrudan kullanılmaz.
-    # parser.add_argument("--invert-motor-direction", type=lambda x: str(x).lower() == 'true', default=False)
-    # parser.add_argument("--steps-per-rev", type=int, default=0) # değeri 0 olarak ayarla
-
+    # DC motorlarda bu argümanlara gerek kalmadığı için kaldırıldı/yorum satırı yapıldı
+    # parser.add_argument("--invert-motor-direction", type=lambda x: str(x).lower() == 'true',
+    #                     default=DEFAULT_INVERT_MOTOR_DIRECTION) # Bu satırı kaldırın veya yorum satırı yapın
+    # parser.add_argument("--steps-per-rev", type=int, default=DEFAULT_STEPS_PER_REVOLUTION) # Bu satırı kaldırın veya yorum satırı yapın
     args = parser.parse_args()
 
     atexit.register(release_resources_on_exit)  # Çıkışta kaynakları serbest bırakma fonksiyonunu kaydet

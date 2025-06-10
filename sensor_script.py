@@ -26,7 +26,7 @@ except Exception as e:
 try:
     from gpiozero import DistanceSensor, LED, Buzzer, OutputDevice, Servo
     from RPLCD.i2c import CharLCD
-    from gpiozero.pins.pigpio import PiGPIOFactory
+    # from gpiozero.pins.pigpio import PiGPIOFactory # Bu satır kaldırıldı
     from gpiozero import Device
 
     print("SensorScript: Donanım kütüphaneleri başarıyla import edildi.")
@@ -35,12 +35,12 @@ except ImportError as e:
     sys.exit(1)
 
 # --- PIGPIO KURULUMU (DAHA İYİ PERFORMANS İÇİN) ---
+# pigpio factory ayarı kaldırıldı, gpiozero varsayılan pin factory'yi kullanacak.
 try:
-    Device.pin_factory = PiGPIOFactory()
-    print("SensorScript: pigpio pin factory başarıyla ayarlandı.")
+    # Device.pin_factory = PiGPIOFactory() # Bu satır kaldırıldı
+    print("SensorScript: pigpio pin factory ayarı devre dışı, varsayılan kullanılıyor.")
 except (IOError, OSError):
-    print("UYARI: pigpio daemon'a bağlanılamadı. Servo ve PWM daha az kararlı çalışabilir.")
-    print("Çözüm için terminale 'sudo systemctl start pigpiod' yazmayı deneyin.")
+    print("UYARI: pigpio daemon'a bağlanılamadı. Servo ve PWM daha az kararlı çalışabilir. Varsayılan pin factory kullanılıyor.")
     pass
 
 # --- SABİTLER VE PINLER ---
@@ -52,9 +52,9 @@ STEP_MOTOR_IN2 = 13
 STEP_MOTOR_IN3 = 19
 STEP_MOTOR_IN4 = 26
 
-# Ultrasonik Mesafe Sensörleri
+# Ultrasonik Mesafe Sensörleri (GPIO20 kullanıldı)
 TRIG_PIN_1, ECHO_PIN_1 = 23, 24   # Birinci ultrasonik sensör (Step motor üzerinde)
-TRIG_PIN_2, ECHO_PIN_2 = 16, 5   # İkinci ultrasonik sensör (Servo üzerinde) - GPIO5 yerine GPIO20 kullanıldı!
+TRIG_PIN_2, ECHO_PIN_2 = 16, 5   # İkinci ultrasonik sensör (Servo üzerinde)
 
 SERVO_PIN = 12
 BUZZER_PIN = 17
@@ -135,11 +135,17 @@ def release_resources_on_exit():
 
     for dev in [sensor_1, sensor_2, servo, buzzer, lcd, led,
                 in1_dev_step, in2_dev_step, in3_dev_step, in4_dev_step]:
-        if dev and hasattr(dev, 'close'):
+        if dev and hasattr(dev, 'pin') and dev.pin: # 'pin' özniteliği ve varlığı kontrolü
             try:
                 dev.close()
             except:
                 pass
+        elif dev and hasattr(dev, 'close'): # Sadece 'close' özniteliği olanlar için (örn: lcd)
+            try:
+                dev.close()
+            except:
+                pass
+
 
     if lock_file_handle:
         try:
@@ -169,8 +175,9 @@ def init_hardware():
             in4_dev_step = OutputDevice(STEP_MOTOR_IN4)
 
         # Ultrasonik mesafe sensörleri
-        sensor_1 = DistanceSensor(echo=ECHO_PIN_1, trigger=TRIG_PIN_1, max_distance=3.0)
-        sensor_2 = DistanceSensor(echo=ECHO_PIN_2, trigger=TRIG_PIN_2, max_distance=3.0)
+        # queue_len parametresi eklendi
+        sensor_1 = DistanceSensor(echo=ECHO_PIN_1, trigger=TRIG_PIN_1, max_distance=3.0, queue_len=5)
+        sensor_2 = DistanceSensor(echo=ECHO_PIN_2, trigger=TRIG_PIN_2, max_distance=3.0, queue_len=5)
 
         # Servo motor: Darbe genişlikleri ile başlatılıyor
         MIN_PULSE = 0.0005

@@ -54,7 +54,7 @@ STEP_MOTOR_IN4 = 26
 
 # Ultrasonik Mesafe Sensörleri
 TRIG_PIN_1, ECHO_PIN_1 = 23, 24   # Birinci ultrasonik sensör (Step motor üzerinde)
-TRIG_PIN_2, ECHO_PIN_2 = 16, 20   # İkinci ultrasonik sensör (Servo üzerinde) - GPIO5 yerine GPIO20 kullanıldı!
+TRIG_PIN_2, ECHO_PIN_2 = 16, 5   # İkinci ultrasonik sensör (Servo üzerinde) - GPIO5 yerine GPIO20 kullanıldı!
 
 SERVO_PIN = 12
 BUZZER_PIN = 17

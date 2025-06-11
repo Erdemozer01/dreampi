@@ -8,6 +8,8 @@ import subprocess
 import time
 import io
 import signal
+import traceback
+
 import psutil
 import pandas as pd
 import numpy as np

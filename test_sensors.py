@@ -2,8 +2,8 @@ import time
 from gpiozero import DistanceSensor
 
 # LÜTFEN KENDİ BAĞLANTINIZA GÖRE BU PIN NUMARALARINI DOĞRULAYIN
-TRIG_PIN = 17
-ECHO_PIN = 18
+TRIG_PIN = 23
+ECHO_PIN = 24
 
 print("Ultrasonik sensör testi başlatılıyor...")
 print(f"TRIG pini: {TRIG_PIN}, ECHO pini: {ECHO_PIN}")

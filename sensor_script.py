@@ -45,11 +45,19 @@ except (IOError, OSError):
 # --- SABİTLER VE PINLER ---
 MOTOR_BAGLI = True
 
-STEP_MOTOR_IN1, STEP_MOTOR_IN2, STEP_MOTOR_IN3, STEP_MOTOR_IN4 = 6, 13, 19, 26
-TRIG_PIN_1, ECHO_PIN_1 = 23, 24
-TRIG_PIN_2, ECHO_PIN_2 = 16, 20
-SERVO_PIN, BUZZER_PIN, LED_PIN = 12, 17, 27
+# Step Motor Pinleri (Kullanıcının isteğine göre güncellendi)
+STEP_MOTOR_IN1, STEP_MOTOR_IN2, STEP_MOTOR_IN3, STEP_MOTOR_IN4 = 26, 19, 13, 6
 
+# Ultrasonik Sensör 1 Pinleri (Kullanıcının isteğine göre güncellendi)
+TRIG_PIN_1, ECHO_PIN_1 = 24, 23
+
+# Ultrasonik Sensör 2 Pinleri (Kullanıcının isteğine göre güncellendi)
+TRIG_PIN_2, ECHO_PIN_2 = 17, 18
+
+# Diğer Çevre Birimi Pinleri (Kullanıcının isteğine göre güncellendi)
+SERVO_PIN, BUZZER_PIN, LED_PIN = 4, 25, 27
+
+# Diğer Sabitler (Değiştirilmedi)
 LCD_I2C_ADDRESS, LCD_PORT_EXPANDER, LCD_COLS, LCD_ROWS, I2C_PORT = 0x27, 'PCF8574', 16, 2, 1
 LOCK_FILE_PATH, PID_FILE_PATH = '/tmp/sensor_scan_script.lock', '/tmp/sensor_scan_script.pid'
 

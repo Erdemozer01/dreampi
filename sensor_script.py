@@ -24,22 +24,17 @@ except Exception as e:
     print(f"SensorScript: Django entegrasyonu BAŞARISIZ: {e}")
     sys.exit(1)
 
-# --- DONANIM KÜTÜPHANELERİ ---
-try:
-    from gpiozero import DistanceSensor, LED, Buzzer, OutputDevice, Servo
-    from RPLCD.i2c import CharLCD
-    from gpiozero import Device
-
-    print("SensorScript: Donanım kütüphaneleri başarıyla import edildi.")
-except ImportError as e:
-    print(f"SensorScript: Gerekli donanım kütüphanesi bulunamadı: {e}")
-    sys.exit(1)
-
 # --- PIGPIO KURULUMU (DAHA İYİ PERFORMANS İÇİN) ---
 try:
-    print("SensorScript: pigpio pin factory ayarı devre dışı, varsayılan kullanılıyor.")
-except (IOError, OSError):
-    print("UYARI: pigpio daemon'a bağlanılamadı. Servo ve PWM daha az kararlı çalışabilir. Varsayılan pin factory kullanılıyor.")
+    # pigpio pin factory'sini import et ve gpiozero için ayarla
+    from gpiozero.pins.pigpio import PiGPIOFactory
+    from gpiozero import Device
+    Device.pin_factory = PiGPIOFactory()
+    print("SensorScript: pigpio pin factory başarıyla ayarlandı.")
+except (IOError, OSError, ImportError):
+    # Eğer pigpio kütüphanesi veya servisi bulunamazsa uyarı ver
+    print("UYARI: pigpio daemon'a bağlanılamadı. Servo ve PWM daha az kararlı çalışabilir.")
+    print("Çözüm için: 'sudo systemctl start pigpiod' komutunu çalıştırdığınızdan emin olun.")
     pass
 
 # --- SABİTLER VE PINLER ---

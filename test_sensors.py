@@ -4,15 +4,13 @@ import time
 
 # gpiozero'nun pin kontrolü için RPi.GPIO yerine pigpio'yu kullanmasını sağlar.
 # Bu satır, kodun daha stabil çalışmasını sağlayan modern bir yaklaşımdır.
-from gpiozero.pins.pigpio import PiGPIOFactory
+
 from gpiozero import Device, DistanceSensor
 
 # LCD kontrolü için uzman ve pratik kütüphane
 from RPLCD.i2c import CharLCD
 
-# --- Cihaz Pin Fabrikasını Ayarla (Kodun En Başına Eklenmeli) ---
-# Bu tek satır, tüm gpiozero cihazlarının pigpio altyapısını kullanmasını sağlar.
-Device.pin_factory = PiGPIOFactory(host="192.168.229.27:8000")
+
 
 # --- Donanım Ayarları ---
 # Lütfen pin ve adres bilgilerini kendi bağlantınıza göre doğrulayın.

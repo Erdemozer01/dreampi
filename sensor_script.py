@@ -37,9 +37,11 @@ except ImportError as e:
 
 # --- PIGPIO KURULUMU (DAHA İYİ PERFORMANS İÇİN) ---
 try:
-    print("SensorScript: pigpio pin factory ayarı devre dışı, varsayılan kullanılıyor.")
-except (IOError, OSError):
-    print("UYARI: pigpio daemon'a bağlanılamadı. Servo ve PWM daha az kararlı çalışabilir. Varsayılan pin factory kullanılıyor.")
+    from gpiozero.pins.pigpio import PiGPIOFactory
+    Device.pin_factory = PiGPIOFactory()
+    print("SensorScript: pigpio pin factory başarıyla ayarlandı.")
+except (IOError, OSError, ImportError):
+    print("UYARI: pigpio daemon'a bağlanılamadı veya kütüphane bulunamadı. Servo ve PWM daha az kararlı çalışabilir. Varsayılan pin factory kullanılıyor.")
     pass
 
 # --- SABİTLER VE PINLER ---
@@ -155,10 +157,11 @@ def init_hardware():
         print(f"KRİTİK HATA: Donanım başlatılamadı: {e}"); traceback.print_exc(); return False
 
 def _set_step_motor_pins(s1, s2, s3, s4):
-    if in1_dev_step: in1_dev_step.value = bool(s1)
-    if in2_dev_step: in2_dev_step.value = bool(s2)
-    if in3_dev_step: in3_dev_step.value = bool(s3)
-    if in4_dev_step: in4_dev_step.value = bool(s4)
+    """Step motor pinlerini verilen duruma göre ayarlar."""
+    if in1_dev_step: in1_dev_step.value = s1
+    if in2_dev_step: in2_dev_step.value = s2
+    if in3_dev_step: in3_dev_step.value = s3
+    if in4_dev_step: in4_dev_step.value = s4
 
 def _step_motor_4in(num_steps, direction_positive):
     global current_step_sequence_index

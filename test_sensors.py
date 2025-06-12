@@ -12,7 +12,7 @@ from RPLCD.i2c import CharLCD
 
 # --- Cihaz Pin Fabrikasını Ayarla (Kodun En Başına Eklenmeli) ---
 # Bu tek satır, tüm gpiozero cihazlarının pigpio altyapısını kullanmasını sağlar.
-Device.pin_factory = PiGPIOFactory()
+Device.pin_factory = PiGPIOFactory(host="192.168.229.27")
 
 # --- Donanım Ayarları ---
 # Lütfen pin ve adres bilgilerini kendi bağlantınıza göre doğrulayın.

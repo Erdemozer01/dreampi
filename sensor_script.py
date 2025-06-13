@@ -160,7 +160,10 @@ def release_resources_on_exit():
     if lock_file_handle:
         try:
             # Bu satırda noktalı virgül var, Python'da gereksiz
-            fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN)  # ; kaldırılmalı
+            # DÜZELTME ÖNCESİ:
+            # fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN);
+            # DÜZELTME SONRASI:
+            fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN)
             lock_file_handle.close()
         except:
             pass
@@ -250,17 +253,16 @@ def move_step_motor_to_angle(target_angle_deg, total_steps_per_rev):
     if not MOTOR_BAGLI or total_steps_per_rev <= 0: 
         return
     
-    DEG_PER_STEP = 360.0 / total_steps_per_rev
+    deg_per_step = 360.0 / total_steps_per_rev  # Lokal değişken olarak tanımla
     angle_diff = target_angle_deg - current_motor_angle_global
-    if abs(angle_diff) < DEG_PER_STEP / 2: 
+    if abs(angle_diff) < deg_per_step / 2: 
         return
     
-    num_steps = round(abs(angle_diff) / DEG_PER_STEP)
+    num_steps = round(abs(angle_diff) / deg_per_step)
     _step_motor_4in(num_steps, (angle_diff > 0))
     current_motor_angle_global = target_angle_deg
     time.sleep(STEP_MOTOR_SETTLE_TIME)
     
-    # ÖNEMLİ: Motor hareketi bitince pinleri temizle
     _stop_step_motor_pins()
 
 
@@ -332,7 +334,6 @@ if __name__ == "__main__":
         initial_horizontal_angle = - (TOTAL_H_ANGLE / 2.0)
         print(f"Step motor başlangıç pozisyonuna gidiliyor: {initial_horizontal_angle:.1f}°...")
         move_step_motor_to_angle(initial_horizontal_angle, STEPS_PER_REVOLUTION)
-        _stop_step_motor_pins()
 
         # SG90 servo başlangıç pozisyonu
         print("SG90 servo başlangıç pozisyonuna ayarlanıyor...")

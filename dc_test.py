@@ -5,13 +5,13 @@ from time import sleep
 # --- DC MOTOR PIN TANIMLARI (YENİ VE AÇIKLAYICI) ---
 # ==============================================================================
 # Sol Motor Pinleri
-DC_MOTOR_SOL_ILERI = 4  # L298N IN1 pini (Daha önce 17 doluydu, 4 yapmıştık)
-DC_MOTOR_SOL_GERI = 5  # L298N IN2 pini
+DC_MOTOR_SOL_ILERI = 21  # L298N IN1 pini (Daha önce 17 doluydu, 4 yapmıştık)
+DC_MOTOR_SOL_GERI = 20  # L298N IN2 pini
 DC_MOTOR_SOL_HIZ = 16  # L298N ENA pini (Hız kontrolü)
 
 # Sağ Motor Pinleri
-DC_MOTOR_SAG_ILERI = 22  # L298N IN3 pini
-DC_MOTOR_SAG_GERI = 25  # L298N IN4 pini
+DC_MOTOR_SAG_ILERI = 16  # L298N IN3 pini
+DC_MOTOR_SAG_GERI = 12  # L298N IN4 pini
 DC_MOTOR_SAG_HIZ = 8  # L298N ENB pini (Hız kontrolü)
 
 # ==============================================================================

@@ -388,12 +388,17 @@ def populate_ai_model_dropdown(n):
 @app.callback(
     Output('scan-status-message', 'children'),
     Input('start-scan-button', 'n_clicks'),
-    [State('mode-selection-radios', 'value'), State('scan-duration-angle-input', 'value'),
-     State('step-angle-input', 'value'), State('buzzer-distance-input', 'value')],
+    [State('mode-selection-radios', 'value'),
+     State('scan-duration-angle-input', 'value'),
+     State('step-angle-input', 'value'),
+     State('buzzer-distance-input', 'value'),
+     State('steps-per-rev-input', 'value'),
+     State('invert-motor-checkbox', 'value')],
     prevent_initial_call=True
 )
-def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dist):
-    if n_clicks == 0: return no_update
+def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dist, steps_per_rev, invert_motor):
+    if n_clicks == 0:
+        return no_update
 
     if os.path.exists(SENSOR_SCRIPT_PID_FILE):
         try:
@@ -417,13 +422,25 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
             h_angle = float(duration)
             h_step = float(step)
             buzz_dist = int(buzzer_dist)
+            steps = int(steps_per_rev)
+
             if not (10 <= h_angle <= 720 and 0.1 <= h_step <= 45 and 0 <= buzz_dist <= 200):
-                return dbc.Alert("Parametreler beklenen aralıkların dışında!", color="danger")
+                return dbc.Alert("Tarama parametreleri beklenen aralıkların dışında!", color="danger")
+
+            if not (500 <= steps <= 10000):
+                return dbc.Alert("Motor Adım/Tur değeri beklenen aralıkların dışında!", color="danger")
+
         except (ValueError, TypeError):
             return dbc.Alert("Lütfen tüm parametreler için geçerli sayılar girin.", color="danger")
 
-        cmd = [sys.executable, SENSOR_SCRIPT_PATH, "--h-angle", str(h_angle), "--h-step", str(h_step),
-               "--buzzer-distance", str(buzz_dist)]
+        cmd = [sys.executable, SENSOR_SCRIPT_PATH,
+               "--h-angle", str(h_angle),
+               "--h-step", str(h_step),
+               "--buzzer-distance", str(buzz_dist),
+               "--steps-per-rev", str(steps)]
+
+        if invert_motor:
+            cmd.append("--invert-motor")
 
     elif selected_mode == 'free_movement':
         cmd = [sys.executable, FREE_MOVEMENT_SCRIPT_PATH]
@@ -431,8 +448,11 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
         return dbc.Alert("Geçersiz mod seçildi!", color="danger")
 
     try:
-        if not os.path.exists(cmd[1]): return dbc.Alert(f"HATA: Betik dosyası bulunamadı: {cmd[1]}", color="danger")
+        if not os.path.exists(cmd[1]):
+            return dbc.Alert(f"HATA: Betik dosyası bulunamadı: {cmd[1]}", color="danger")
+
         subprocess.Popen(cmd, start_new_session=True)
+
         return dbc.Alert(
             f"{'3D Haritalama' if selected_mode == 'scan_and_map' else 'Serbest Hareket'} modu başlatıldı.",
             color="success")

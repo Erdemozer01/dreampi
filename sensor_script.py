@@ -73,7 +73,7 @@ current_motor_angle_global = 0.0
 current_step_sequence_index = 0
 step_sequence = [[1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 0], [0, 0, 1, 1], [0, 0, 0, 1],
                  [1, 0, 0, 1]]
-INVERT_MOTOR_DIRECTION = False  # Değişken global olarak tanımlanıyor
+INVERT_MOTOR_DIRECTION = False
 
 
 # --- SÜREÇ YÖNETİMİ VE KAYNAK KONTROLÜ ---
@@ -174,7 +174,6 @@ def _set_step_motor_pins(s1, s2, s3, s4):
     if in4_dev_step: in4_dev_step.value = s4
 
 
-# GÜNCELLENDİ: Motor yönünü ters çevirme mantığı eklendi
 def _step_motor_4in(num_steps, direction_positive):
     global current_step_sequence_index
 
@@ -206,10 +205,12 @@ def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist, steps_per_rev, inve
     try:
         Scan.objects.filter(status=Scan.Status.RUNNING).update(status=Scan.Status.ERROR, end_time=timezone.now())
         current_scan_object_global = Scan.objects.create(
-            start_angle_setting=h_angle, step_angle_setting=h_step, end_angle_setting=v_angle,
+            start_angle_setting=h_angle,
+            step_angle_setting=h_step,
+            end_angle_setting=v_angle,
             buzzer_distance_setting=buzzer_dist,
-            steps_per_revolution_setting=steps_per_rev,  # Veritabanına kaydet
-            invert_motor_direction_setting=invert_motor,  # Veritabanına kaydet
+            steps_per_revolution_setting=steps_per_rev,
+            invert_motor_direction_setting=invert_motor,
             status=Scan.Status.RUNNING)
         return True
     except Exception as e:
@@ -224,7 +225,6 @@ def degree_to_servo_value(angle):
 
 # --- ANA ÇALIŞMA BLOĞU ---
 if __name__ == "__main__":
-    # GÜNCELLENDİ: Arayüzden gelen tüm ayarlar için argümanlar eklendi
     parser = argparse.ArgumentParser(description="Gelişmiş 3D Haritalama Scripti")
     parser.add_argument("--h-angle", type=float, default=DEFAULT_HORIZONTAL_SCAN_ANGLE)
     parser.add_argument("--h-step", type=float, default=DEFAULT_HORIZONTAL_STEP_ANGLE)
@@ -236,7 +236,6 @@ if __name__ == "__main__":
     atexit.register(release_resources_on_exit)
     if not acquire_lock_and_pid() or not init_hardware(): sys.exit(1)
 
-    # GÜNCELLENDİ: Argümanlar değişkenlere atanıyor
     TOTAL_H_ANGLE = args.h_angle
     H_STEP = args.h_step
     BUZZER_DISTANCE = args.buzzer_distance
@@ -250,7 +249,6 @@ if __name__ == "__main__":
     try:
         initial_horizontal_angle = - (TOTAL_H_ANGLE / 2.0)
         print(f"Step motor başlangıç pozisyonuna gidiliyor: {initial_horizontal_angle:.1f}°...")
-        # GÜNCELLENDİ: Ayarlanabilir adım sayısı kullanılıyor
         move_step_motor_to_angle(initial_horizontal_angle, STEPS_PER_REVOLUTION)
         _stop_step_motor_pins()
 
@@ -272,7 +270,6 @@ if __name__ == "__main__":
                 servo.value = degree_to_servo_value(target_v_angle)
                 time.sleep(LOOP_TARGET_INTERVAL_S)
 
-                # GÜNCELLENDİ: Sensör okuma hatasına karşı daha güvenli
                 raw_dist_1 = sensor_1.distance
                 raw_dist_2 = sensor_2.distance
                 dist_cm_1 = (raw_dist_1 * 100) if raw_dist_1 is not None else sensor_1.max_distance * 100

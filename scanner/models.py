@@ -63,7 +63,7 @@ class Scan(models.Model):
     end_angle_setting = models.FloatField(default=0.0)
     step_angle_setting = models.FloatField(default=10.0)
     buzzer_distance_setting = models.IntegerField(default=10)
-    invert_motor_direction_setting = models.BooleanField(default=False)
+
 
     # Zaman ve Durum
     start_time = models.DateTimeField(auto_now_add=True)
@@ -76,6 +76,18 @@ class Scan(models.Model):
     max_width_cm = models.FloatField(null=True, blank=True)
     max_depth_cm = models.FloatField(null=True, blank=True)
     ai_commentary = models.TextField(blank=True, null=True)
+
+    steps_per_revolution_setting = models.IntegerField(
+        default=4096,
+        null=True,
+        blank=True,
+        verbose_name="Motor Adım/Tur Ayarı"
+    )
+    invert_motor_direction_setting = models.BooleanField(
+        default=False,
+        blank=True,
+        verbose_name="Motor Yönü Ters Çevirme Ayarı"
+    )
 
     def __str__(self):
         return f"Tarama #{self.id} ({self.get_status_display()}) - {self.start_time.strftime('%Y-%m-%d %H:%M')}"

@@ -180,16 +180,35 @@ def init_hardware():
         if MOTOR_BAGLI:
             in1_dev_step, in2_dev_step, in3_dev_step, in4_dev_step = OutputDevice(STEP_MOTOR_IN1), OutputDevice(
                 STEP_MOTOR_IN2), OutputDevice(STEP_MOTOR_IN3), OutputDevice(STEP_MOTOR_IN4)
+        
         sensor_1 = DistanceSensor(echo=ECHO_PIN_1, trigger=TRIG_PIN_1, max_distance=3.0, queue_len=5)
         sensor_2 = DistanceSensor(echo=ECHO_PIN_2, trigger=TRIG_PIN_2, max_distance=3.0, queue_len=5)
-        servo = Servo(SERVO_PIN, min_pulse_width=0.0005, max_pulse_width=0.0027)
+        
+        # SG90 Mini Servo özel konfigürasyonu
+        servo = Servo(SERVO_PIN, 
+                     min_pulse_width=0.0005,    # 0.5ms - SG90 minimum
+                     max_pulse_width=0.0025,    # 2.5ms - SG90 maksimum  
+                     frame_width=0.02)          # 20ms - SG90 frame
+        
         buzzer = Buzzer(BUZZER_PIN)
         led = LED(LED_PIN)
+        
+        # Servo başlangıç testi - SG90 için
+        print("SG90 Servo test başlıyor...")
+        servo.value = 0.0  # Orta pozisyon (90°)
+        time.sleep(1)
+        servo.value = -1.0  # Sol uç (0°)
+        time.sleep(1) 
+        servo.value = 1.0   # Sağ uç (180°)
+        time.sleep(1)
+        servo.value = 0.0   # Tekrar orta
+        time.sleep(1)
+        print("✓ SG90 Servo test tamamlandı")
+        
         try:
-            # Bu da noktalı virgül içeriyor
             lcd = CharLCD(i2c_expander=LCD_PORT_EXPANDER, address=LCD_I2C_ADDRESS, port=I2C_PORT, cols=LCD_COLS,
                           rows=LCD_ROWS, auto_linebreaks=True)
-            lcd.clear()  # ; kaldırılmalı
+            lcd.clear()
             lcd.write_string("Haritalama Modu")
         except Exception as e:
             print(f"UYARI: LCD başlatılamadı, LCD olmadan devam edilecek. Hata: {e}")
@@ -266,11 +285,24 @@ def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist, steps_per_rev, inve
 
 # MEVCUT SORUN:
 def degree_to_servo_value(angle):
-    """0-180 derece aralığını -1.0 ile 1.0 arasına dönüştürür"""
-    # 0° = -1.0, 90° = 0.0, 180° = 1.0
+    """SG90 için 0-180 derece aralığını -1.0 ile 1.0 arasına dönüştürür"""
+    # SG90: 0° = -1.0, 90° = 0.0, 180° = 1.0
     angle = max(0, min(180, angle))  # 0-180 aralığında sınırla
     return (angle / 90.0) - 1.0
 
+def set_servo_angle(angle, delay=0.5):
+    """SG90 servo açısını güvenli şekilde ayarlar"""
+    if servo is None:
+        print("HATA: Servo tanımlanmamış!")
+        return
+    
+    try:
+        servo_value = degree_to_servo_value(angle)
+        print(f"Servo: {angle}° → {servo_value:.3f}")
+        servo.value = servo_value
+        time.sleep(delay)  # SG90'ın pozisyona ulaşması için bekleme
+    except Exception as e:
+        print(f"Servo hareket hatası: {e}")
 
 # --- ANA ÇALIŞMA BLOĞU ---
 if __name__ == "__main__":
@@ -283,7 +315,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     atexit.register(release_resources_on_exit)
-    if not acquire_lock_and_pid() or not init_hardware(): sys.exit(1)
+    if not acquire_lock_and_pid() or not init_hardware(): 
+        sys.exit(1)
 
     TOTAL_H_ANGLE = args.h_angle
     H_STEP = args.h_step
@@ -301,8 +334,9 @@ if __name__ == "__main__":
         move_step_motor_to_angle(initial_horizontal_angle, STEPS_PER_REVOLUTION)
         _stop_step_motor_pins()
 
-        servo.value = degree_to_servo_value(0)
-        time.sleep(1.5)
+        # SG90 servo başlangıç pozisyonu
+        print("SG90 servo başlangıç pozisyonuna ayarlanıyor...")
+        set_servo_angle(0, delay=1.5)  # 0° pozisyonu, 1.5s bekle
 
         num_horizontal_steps = int(TOTAL_H_ANGLE / H_STEP)
         for i in range(num_horizontal_steps + 1):
@@ -317,13 +351,10 @@ if __name__ == "__main__":
             for j in range(num_vertical_steps + 1):
                 target_v_angle = j * DEFAULT_VERTICAL_STEP_ANGLE
                 
-                # Servo hareketi
-                servo.value = degree_to_servo_value(target_v_angle)
+                # SG90 servo hareketi - güvenli şekilde
+                set_servo_angle(target_v_angle, delay=0.4)  # SG90 için 400ms yeterli
                 
-                # Servo pozisyona ulaşması için yeterli bekleme
-                time.sleep(max(LOOP_TARGET_INTERVAL_S, 0.3))  # En az 300ms bekle
-                
-                # Ölçüm ve diğer işlemler...
+                # Ölçüm işlemleri...
                 raw_dist_1 = sensor_1.distance
                 raw_dist_2 = sensor_2.distance
                 dist_cm_1 = (raw_dist_1 * 100) if raw_dist_1 is not None else sensor_1.max_distance * 100
@@ -332,22 +363,22 @@ if __name__ == "__main__":
                 dist_for_xyz = dist_cm_2
                 dist_for_alert = min(dist_cm_1, dist_cm_2)
 
-                print(
-                    f"  -> Dikey: {target_v_angle:.1f}°, S1 Mesafe: {dist_cm_1:.1f} cm, S2 Mesafe: {dist_cm_2:.1f} cm, XYZ İçin: {dist_for_xyz:.1f} cm")
+                print(f"  -> Dikey: {target_v_angle:.1f}°, S1: {dist_cm_1:.1f}cm, S2: {dist_cm_2:.1f}cm")
 
-                # LCD yazma kısmındaki hatalar da düzeltilmeli
+                # LCD ve buzzer işlemleri...
                 if lcd:
                     try:
-                        # Bu satırlarda da noktalı virgül var
-                        lcd.cursor_pos = (0, 0)  # ; kaldırılmalı
+                        lcd.cursor_pos = (0, 0)
                         lcd.write_string(f"Y:{target_h_angle_rel:<4.0f} V:{target_v_angle:<4.0f}  ")
-                        lcd.cursor_pos = (1, 0)  # ; kaldırılmalı
+                        lcd.cursor_pos = (1, 0)
                         lcd.write_string(f"S1:{dist_cm_1:<4.0f} S2:{dist_cm_2:<4.0f} ")
                     except OSError as e:
                         print(f"LCD YAZMA HATASI: {e}")
 
-                if buzzer.is_active != (0 < dist_for_alert < BUZZER_DISTANCE): buzzer.toggle()
+                if buzzer.is_active != (0 < dist_for_alert < BUZZER_DISTANCE): 
+                    buzzer.toggle()
 
+                # LED kontrolü...
                 if led:
                     if 0 < dist_for_alert < BUZZER_DISTANCE:
                         if not led.is_active:
@@ -359,37 +390,34 @@ if __name__ == "__main__":
                         time.sleep(0.05)
                         led.off()
 
+                # 3D koordinat hesaplama...
                 angle_pan_rad, angle_tilt_rad = math.radians(target_h_angle_abs), math.radians(target_v_angle)
                 h_radius = dist_for_xyz * math.cos(angle_tilt_rad)
                 z = dist_for_xyz * math.sin(angle_tilt_rad)
                 x = h_radius * math.cos(angle_pan_rad)
                 y = h_radius * math.sin(angle_pan_rad)
 
-                # Database bulk operations
-                scan_points = []
-                scan_points.append(ScanPoint(
+                # Database kayıt
+                ScanPoint.objects.create(
                     scan=current_scan_object_global,
                     derece=target_h_angle_rel,
                     dikey_aci=target_v_angle,
                     mesafe_cm=dist_for_xyz,
                     x_cm=x, y_cm=y, z_cm=z,
                     timestamp=timezone.now()
-                ))
-
-                # Toplu insert
-                ScanPoint.objects.bulk_create(scan_points, batch_size=100)
+                )
 
         script_exit_status_global = Scan.Status.COMPLETED
+        
     except KeyboardInterrupt:
         script_exit_status_global = Scan.Status.INTERRUPTED
         print("\nKullanıcı tarafından durduruldu.")
     except Exception as e:
         script_exit_status_global = Scan.Status.ERROR
-        print(f"KRİTİK HATA: {e}");
+        print(f"KRİTİK HATA: {e}")
         traceback.print_exc()
     finally:
         print("İşlem sonlanıyor. Motorlar durduruluyor ve servo merkeze getiriliyor...")
-        _stop_step_motor_pins()  # Step motor pinlerini temizle
+        _stop_step_motor_pins()
         if servo: 
-            servo.value = degree_to_servo_value(90)
-            time.sleep(0.5)  # Servo pozisyona ulaşması için bekle
+            set_servo_angle(90, delay=1.0)  # Orta pozisyon (90°)

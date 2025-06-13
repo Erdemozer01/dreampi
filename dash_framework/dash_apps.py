@@ -14,7 +14,7 @@ import psutil
 import pandas as pd
 import numpy as np
 import base64
-import json  # YENİ
+import json
 
 # Analiz kütüphaneleri
 from scipy.spatial import ConvexHull
@@ -37,7 +37,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- SABİTLER VE UYGULAMA BAŞLATMA ---
-# ... (Bu bölüm değişmedi)
 SENSOR_SCRIPT_FILENAME = 'sensor_script.py'
 FREE_MOVEMENT_SCRIPT_FILENAME = 'free_movement_script.py'
 SENSOR_SCRIPT_PATH = os.path.join(os.getcwd(), SENSOR_SCRIPT_FILENAME)
@@ -53,15 +52,12 @@ DEFAULT_UI_STEPS_PER_REVOLUTION = 4096
 app = DjangoDash('DreamPi', external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 # --- NAVBAR ---
-# ... (Bu bölüm değişmedi)
 navbar = dbc.NavbarSimple(
     children=[dbc.NavItem(dbc.NavLink("Admin Paneli", href="/admin/", external_link=True, target="_blank"))],
     brand="Dream Pi", brand_href="/", color="primary", dark=True, sticky="top", fluid=True, className="mb-4"
 )
 
-
 # --- YARDIMCI FONKSİYONLAR ---
-# ... (Bu bölümdeki fonksiyonlar büyük ölçüde değişmedi, sadece çağıran yerler değişti)
 def get_ai_model_options():
     try:
         from scanner.models import AIModelConfiguration
@@ -206,8 +202,6 @@ def estimate_geometric_shape(df_input):
 
 
 # --- ARAYÜZ BİLEŞENLERİ (LAYOUT) ---
-# ... (Bu bölümdeki bileşen tanımları değişmedi)
-title_card = dbc.Row([dbc.Col(html.H1("Kullanıcı Paneli", className="text-center my-3 mb-5"), width=12), html.Hr()])
 control_panel = dbc.Card([dbc.CardHeader("Kontrol ve Ayarlar", className="bg-primary text-white"), dbc.CardBody(
     [html.H6("Çalışma Modu:", className="mt-1"), dbc.RadioItems(id='mode-selection-radios', options=[
         {'label': '3D Haritalama', 'value': 'scan_and_map'},
@@ -327,10 +321,10 @@ app.layout = html.Div(
             ], md=8)
         ]),
 
-        # --- YENİ & GÜNCELLENMİŞ: PERFORMANS İÇİN MERKEZİ VERİ DEPOLARI ---
-        dcc.Store(id='latest-scan-object-store'),  # Sadece en son tarama nesnesinin bilgilerini tutar (JSON)
-        dcc.Store(id='latest-scan-points-store'),  # Sadece en son taramanın nokta verilerini tutar (DataFrame JSON)
-        dcc.Store(id='clustered-data-store'),  # Kümelenmiş veriyi tutar
+        # --- MERKEZİ VERİ DEPOLARI ---
+        dcc.Store(id='latest-scan-object-store'),
+        dcc.Store(id='latest-scan-points-store'),
+        dcc.Store(id='clustered-data-store'),
 
         dbc.Modal([dbc.ModalHeader(dbc.ModalTitle(id="modal-title")), dbc.ModalBody(id="modal-body")],
                   id="cluster-info-modal", is_open=False, centered=True),
@@ -342,36 +336,35 @@ app.layout = html.Div(
 
 # --- CALLBACK FONKSİYONLARI ---
 
-# YENİ: MERKEZİ VERİ ÇEKME CALLBACK'İ
-# Bu callback, periyodik olarak veritabanından en son tarama bilgilerini ve noktalarını çeker
-# ve bunları diğer callback'lerin kullanması için Store bileşenlerine yazar.
+# GÜNCELLENDİ: MERKEZİ VERİ ÇEKME CALLBACK'İ (HATA YÖNETİMİ EKLENDİ)
 @app.callback(
     [Output('latest-scan-object-store', 'data'),
      Output('latest-scan-points-store', 'data')],
     Input('interval-component-main', 'n_intervals')
 )
 def update_data_stores(n):
-    scan = get_latest_scan()
-    if not scan:
+    try:
+        scan = get_latest_scan()
+        if not scan:
+            return None, None
+
+        from django.forms.models import model_to_dict
+        scan_dict = model_to_dict(scan)
+        scan_json = json.dumps(scan_dict, default=str)
+
+        points_qs = scan.points.all().values('id', 'x_cm', 'y_cm', 'z_cm', 'derece', 'dikey_aci', 'mesafe_cm',
+                                             'hiz_cm_s', 'timestamp')
+        if not points_qs.exists():
+            return scan_json, None
+
+        df_pts = pd.DataFrame(list(points_qs))
+        df_pts['timestamp'] = pd.to_datetime(df_pts['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+        points_json = df_pts.to_json(orient='split')
+
+        return scan_json, points_json
+    except Exception as e:
+        print(f"HATA: Merkezi veri deposu güncellenemedi: {e}")
         return None, None
-
-    # Scan nesnesini (noktalar hariç) JSON'a çevir
-    from django.forms.models import model_to_dict
-    scan_dict = model_to_dict(scan)
-    scan_json = json.dumps(scan_dict, default=str)  # datetime gibi tipler için default=str
-
-    # ScanPoint verilerini çek ve DataFrame olarak JSON'a çevir
-    points_qs = scan.points.all().values('id', 'x_cm', 'y_cm', 'z_cm', 'derece', 'dikey_aci', 'mesafe_cm', 'hiz_cm_s',
-                                         'timestamp')
-    if not points_qs.exists():
-        return scan_json, None
-
-    df_pts = pd.DataFrame(list(points_qs))
-    # Zaman damgalarını string'e dönüştürerek JSON uyumluluğunu sağla
-    df_pts['timestamp'] = pd.to_datetime(df_pts['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
-    points_json = df_pts.to_json(orient='split')
-
-    return scan_json, points_json
 
 
 @app.callback(Output('scan-parameters-wrapper', 'style'), Input('mode-selection-radios', 'value'))
@@ -382,7 +375,7 @@ def toggle_parameter_visibility(selected_mode):
 @app.callback(
     [Output('ai-model-dropdown', 'options'), Output('ai-model-dropdown', 'disabled'),
      Output('ai-model-dropdown', 'placeholder')],
-    Input('interval-component-main', 'n_intervals')  # Sadece ilk başta çalışsın
+    Input('interval-component-main', 'n_intervals')
 )
 def populate_ai_model_dropdown(n):
     if n > 0: raise PreventUpdate
@@ -392,7 +385,6 @@ def populate_ai_model_dropdown(n):
     return [], True, "Aktif AI Modeli Bulunamadı"
 
 
-# GÜNCELLENDİ: GÜVENLİK KONTROLÜ EKLENDİ
 @app.callback(
     Output('scan-status-message', 'children'),
     Input('start-scan-button', 'n_clicks'),
@@ -403,7 +395,6 @@ def populate_ai_model_dropdown(n):
 def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dist):
     if n_clicks == 0: return no_update
 
-    # PID dosyasını kontrol et
     if os.path.exists(SENSOR_SCRIPT_PID_FILE):
         try:
             with open(SENSOR_SCRIPT_PID_FILE, 'r') as pf:
@@ -413,7 +404,6 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
         except:
             pass
 
-    # Eski kilit dosyalarını temizle
     for fp in [SENSOR_SCRIPT_LOCK_FILE, SENSOR_SCRIPT_PID_FILE]:
         if os.path.exists(fp):
             try:
@@ -421,10 +411,8 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
             except OSError as e_rm:
                 print(f"Eski dosya silinemedi ({fp}): {e_rm}")
 
-    # Komut oluşturma
     cmd = []
     if selected_mode == 'scan_and_map':
-        # --- GÜVENLİK GÜNCELLEMESİ BAŞLANGICI ---
         try:
             h_angle = float(duration)
             h_step = float(step)
@@ -433,7 +421,6 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
                 return dbc.Alert("Parametreler beklenen aralıkların dışında!", color="danger")
         except (ValueError, TypeError):
             return dbc.Alert("Lütfen tüm parametreler için geçerli sayılar girin.", color="danger")
-        # --- GÜVENLİK GÜNCELLEMESİ SONU ---
 
         cmd = [sys.executable, SENSOR_SCRIPT_PATH, "--h-angle", str(h_angle), "--h-step", str(h_step),
                "--buzzer-distance", str(buzz_dist)]
@@ -453,7 +440,6 @@ def handle_start_scan_script(n_clicks, selected_mode, duration, step, buzzer_dis
         return dbc.Alert(f"Betik başlatma hatası: {e}", color="danger")
 
 
-# ... (handle_stop_scan_script ve update_system_card aynı kaldı)
 @app.callback(Output('scan-status-message', 'children', allow_duplicate=True), Input('stop-scan-button', 'n_clicks'),
               prevent_initial_call=True)
 def handle_stop_scan_script(n_clicks):
@@ -501,7 +487,6 @@ def update_system_card(n):
     return status, s_class, cpu, f"{cpu:.1f}%", ram, f"{ram:.1f}%"
 
 
-# GÜNCELLENDİ: Artık veritabanı yerine store'dan okuyor
 @app.callback(
     [Output('current-angle', 'children'), Output('current-distance', 'children'), Output('current-speed', 'children'),
      Output('current-distance-col', 'style'), Output('max-detected-distance', 'children')],
@@ -535,7 +520,6 @@ def update_realtime_values(scan_json, points_json):
     return angle, dist, speed, style, max_dist
 
 
-# GÜNCELLENDİ: Artık veritabanı yerine store'dan okuyor
 @app.callback(
     [Output('calculated-area', 'children'), Output('perimeter-length', 'children'), Output('max-width', 'children'),
      Output('max-depth', 'children')],
@@ -551,7 +535,6 @@ def update_analysis_panel(scan_json):
     return area, perim, width, depth
 
 
-# ... (Export callback'leri aynı kalabilir, çünkü butona basılınca anlık veri çekerler, bu normal)
 @app.callback(Output('download-csv', 'data'), Input('export-csv-button', 'n_clicks'), prevent_initial_call=True)
 def export_csv_callback(n_clicks):
     scan = get_latest_scan()
@@ -561,27 +544,49 @@ def export_csv_callback(n_clicks):
     return dcc.send_data_frame(df.to_csv, f"tarama_id_{scan.id}.csv", index=False)
 
 
+# GÜNCELLENDİ: EXCEL AKTARIMI DAHA OKUNAKLI HALE GETİRİLDİ
 @app.callback(Output('download-excel', 'data'), Input('export-excel-button', 'n_clicks'), prevent_initial_call=True)
 def export_excel_callback(n_clicks):
     from scanner.models import Scan
     scan = get_latest_scan()
-    if not scan: return dcc.send_bytes(b"", "tarama_yok.xlsx")
+    if not scan:
+        return dcc.send_bytes(b"", "tarama_yok.xlsx")
     buf = io.BytesIO()
     try:
         scan_info_df = pd.DataFrame([Scan.objects.filter(id=scan.id).values().first()])
         points_df = pd.DataFrame(list(scan.points.all().values()))
+
         with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+            # Sayfa 1: Tarama Bilgileri
             scan_info_df.to_excel(writer, sheet_name=f'Scan_{scan.id}_Info', index=False)
-            if not points_df.empty: points_df.to_excel(writer, sheet_name=f'Scan_{scan.id}_Points', index=False)
+            info_sheet = writer.sheets[f'Scan_{scan.id}_Info']
+            info_sheet.autofit()
+
+            # Sayfa 2: Nokta Verileri (varsa)
+            if not points_df.empty:
+                points_df.to_excel(writer, sheet_name=f'Scan_{scan.id}_Points', index=False)
+                # Biçimlendirme
+                workbook = writer.book
+                points_sheet = writer.sheets[f'Scan_{scan.id}_Points']
+                header_format = workbook.add_format({
+                    'bold': True, 'text_wrap': False, 'valign': 'vcenter',
+                    'fg_color': '#4F81BD', 'font_color': 'white', 'border': 1
+                })
+                # Başlıkları formatla yazdır
+                for col_num, value in enumerate(points_df.columns.values):
+                    points_sheet.write(0, col_num, value, header_format)
+                # Sütunları otomatik ayarla
+                points_sheet.autofit()
+
     except Exception as e:
         buf.seek(0);
         buf.truncate();
         pd.DataFrame([{"Hata": str(e)}]).to_excel(buf, sheet_name='Hata', index=False)
+
     buf.seek(0)
     return dcc.send_bytes(buf.getvalue(), f"tarama_detaylari_id_{scan.id}.xlsx")
 
 
-# GÜNCELLENDİ: Artık veritabanı yerine store'dan okuyor
 @app.callback(
     Output('tab-content-datatable', 'children'),
     [Input('visualization-tabs-main', 'active_tab'),
@@ -600,7 +605,6 @@ def render_and_update_data_table(active_tab, points_json):
                                 fixed_rows={'headers': True}, style_table={'minHeight': '70vh', 'overflowY': 'auto'})
 
 
-# GÜNCELLENDİ: Artık veritabanı yerine store'dan okuyor
 @app.callback(
     [Output('scan-map-graph-3d', 'figure'), Output('scan-map-graph', 'figure'),
      Output('polar-regression-graph', 'figure'), Output('polar-graph', 'figure'),
@@ -641,7 +645,7 @@ def update_all_graphs(scan_json, points_json):
         if line_data: figs[2].add_trace(go.Scatter(x=line_data['x'], y=line_data['y'], mode='lines', name='Regresyon',
                                                    line=dict(color='red', width=3)))
         update_polar_graph(figs[3], df_val)
-        df_val['timestamp'] = pd.to_datetime(df_val['timestamp'])  # Zaman serisi için tip dönüşümü
+        df_val['timestamp'] = pd.to_datetime(df_val['timestamp'])
         update_time_series_graph(figs[4], df_val)
         est_text = html.Div([html.P(estimate_geometric_shape(df_val), className="fw-bold"), html.Hr(),
                              html.P(find_clearest_path(df_val), className="fw-bold text-primary"), html.Hr(),
@@ -665,8 +669,6 @@ def update_all_graphs(scan_json, points_json):
     return figs[0], figs[1], figs[2], figs[3], figs[4], est_text, store_data
 
 
-# ... (Diğer callback'ler - graph_visibility, cluster_info, ai_yorum - aynı kalabilir)
-# Bu callback'lerin çoğu zaten store'ları veya anlık olayları dinlediği için büyük değişiklik gerektirmez.
 @app.callback(
     [Output('container-map-graph-3d', 'style'), Output('container-map-graph', 'style'),
      Output('container-regression-graph', 'style'), Output('container-polar-graph', 'style'),
@@ -708,6 +710,7 @@ def display_cluster_info(clickData, stored_data_json):
         return True, "Hata", f"Küme bilgisi gösterilemedi: {e}"
 
 
+# GÜNCELLENDİ: AI PROMPT'U DAHA DETAYLI HALE GETİRİLDİ
 @app.callback(
     [Output('ai-yorum-sonucu', 'children'), Output('ai-image', 'children')],
     Input('ai-model-dropdown', 'value'),
@@ -749,9 +752,14 @@ def yorumla_model_secimi(selected_config_id):
         image_component = None
         if analysis_result_text and "hata" not in analysis_result_text.lower():
             try:
-                image_model = genai.GenerativeModel("gemini-1.5-flash-latest")  # Model adı güncel tutulabilir
+                image_model = genai.GenerativeModel("gemini-1.5-flash-latest")
+                # Daha detaylı prompt ile daha iyi sonuçlar hedefleniyor
                 image_prompt = (
-                    f"Aşağıdaki 3D tarama analizini temel alarak, taranan ortamın fotogerçekçi bir 3D render görüntüsünü oluştur: {analysis_result_text}")
+                    f"Aşağıdaki 3D tarama analizini temel alarak, taranan ortamın birinci şahıs bakış açısıyla (FPS view), "
+                    f"sinematik ışıklandırmaya sahip, fotogerçekçi bir 3D render görüntüsünü oluştur. "
+                    f"Görüntüde insanlar veya hareketli nesneler yer almasın. Ortamın dokularını ve geometrisini vurgula. "
+                    f"Analiz metni: {analysis_result_text}"
+                )
                 image_response = image_model.generate_content(image_prompt,
                                                               generation_config={"response_mime_type": "image/png"})
 

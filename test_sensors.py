@@ -10,12 +10,12 @@ from gpiozero.exc import DistanceSensorNoEcho
 # Test etmek istediğiniz sensörün TRIG ve ECHO pinlerini buraya girin.
 #
 # Sensör 1 için pinler (orijinal kodunuza göre):
-TRIG_PIN = 23
-ECHO_PIN = 24
+#TRIG_PIN = 23
+#ECHO_PIN = 24
 #
 # Sensör 2'yi test etmek isterseniz, bu satırları kullanın:
-# TRIG_PIN = 17
-# ECHO_PIN = 18
+TRIG_PIN = 17
+ECHO_PIN = 18
 # -----------------
 
 print(f"Ultrasonik Sensör Test Script'i Başlatıldı.")

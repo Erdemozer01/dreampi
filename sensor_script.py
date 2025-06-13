@@ -68,13 +68,12 @@ except ImportError as e:
 # --- PIGPIO KURULUMU (DAHA İYİ PERFORMANS İÇİN) ---
 try:
     from gpiozero.pins.pigpio import PiGPIOFactory
-
     Device.pin_factory = PiGPIOFactory()
-    print("SensorScript: pigpio pin factory başarıyla ayarlandı.")
-except (IOError, OSError, ImportError):
-    print(
-        "UYARI: pigpio daemon'a bağlanılamadı veya kütüphane bulunamadı. Servo ve PWM daha az kararlı çalışabilir. Varsayılan pin factory kullanılıyor.")
-    pass
+    print("✓ pigpio pin factory başarıyla ayarlandı.")
+except Exception as e:
+    print(f"UYARI: pigpio kullanılamadı: {e}")
+    print("Varsayılan pin factory kullanılıyor...")
+    # pigpio olmadan da servo çalışabilir
 
 # --- SABİTLER VE PINLER ---
 MOTOR_BAGLI = True
@@ -183,7 +182,7 @@ def init_hardware():
                 STEP_MOTOR_IN2), OutputDevice(STEP_MOTOR_IN3), OutputDevice(STEP_MOTOR_IN4)
         sensor_1 = DistanceSensor(echo=ECHO_PIN_1, trigger=TRIG_PIN_1, max_distance=3.0, queue_len=5)
         sensor_2 = DistanceSensor(echo=ECHO_PIN_2, trigger=TRIG_PIN_2, max_distance=3.0, queue_len=5)
-        servo = Servo(SERVO_PIN, min_pulse_width=0.0005, max_pulse_width=0.0025)
+        servo = Servo(SERVO_PIN, min_pulse_width=0.0005, max_pulse_width=0.0027)
         buzzer = Buzzer(BUZZER_PIN)
         led = LED(LED_PIN)
         try:
@@ -265,8 +264,12 @@ def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist, steps_per_rev, inve
         return False
 
 
+# MEVCUT SORUN:
 def degree_to_servo_value(angle):
-    return max(-1.0, min(1.0, (angle / 90.0) - 1.0))
+    """0-180 derece aralığını -1.0 ile 1.0 arasına dönüştürür"""
+    # 0° = -1.0, 90° = 0.0, 180° = 1.0
+    angle = max(0, min(180, angle))  # 0-180 aralığında sınırla
+    return (angle / 90.0) - 1.0
 
 
 # --- ANA ÇALIŞMA BLOĞU ---

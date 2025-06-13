@@ -135,23 +135,35 @@ def release_resources_on_exit():
 def init_hardware():
     global sensor, servo, buzzer, lcd, in1_dev, in2_dev, in3_dev, in4_dev
     try:
-        if MOTOR_BAGLI: in1_dev, in2_dev, in3_dev, in4_dev = OutputDevice(IN1_GPIO_PIN), OutputDevice(
-            IN2_GPIO_PIN), OutputDevice(IN3_GPIO_PIN), OutputDevice(IN4_GPIO_PIN)
+        if MOTOR_BAGLI: 
+            in1_dev, in2_dev, in3_dev, in4_dev = OutputDevice(IN1_GPIO_PIN), OutputDevice(
+                IN2_GPIO_PIN), OutputDevice(IN3_GPIO_PIN), OutputDevice(IN4_GPIO_PIN)
+        
         sensor = DistanceSensor(echo=ECHO_PIN, trigger=TRIG_PIN, max_distance=3.0)
-        servo = Servo(SERVO_PIN)
+        
+        # Servo konfigürasyonu iyileştirildi
+        servo = Servo(SERVO_PIN, min_pulse_width=0.0005, max_pulse_width=0.0025)
+        
         buzzer = Buzzer(BUZZER_PIN)
+        
+        # Servo test
+        print("Servo test ediliyor...")
+        servo.value = 0.0  # Orta pozisyon
+        time.sleep(1)
+        print(f"Servo pozisyonu: {servo.value}")
+        
         try:
             lcd = CharLCD(i2c_expander=LCD_PORT_EXPANDER, address=LCD_I2C_ADDRESS, port=I2C_PORT, cols=LCD_COLS,
                           rows=LCD_ROWS, auto_linebreaks=True)
-            lcd.clear();
+            lcd.clear()
             lcd.write_string("Haritalama Modu")
         except Exception as e:
             print(f"UYARI: LCD başlatılamadı, LCD olmadan devam edilecek. Hata: {e}")
             lcd = None
         return True
     except Exception as e:
-        print(f"KRİTİK HATA: Donanım başlatılamadı: {e}");
-        traceback.print_exc();
+        print(f"KRİTİK HATA: Donanım başlatılamadı: {e}")
+        traceback.print_exc()
         return False
 
 
@@ -213,7 +225,10 @@ def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist, invert_dir, steps_r
         return False
 
 
-def degree_to_servo_value(angle): return max(-1.0, min(1.0, (angle / 90.0) - 1.0))
+def degree_to_servo_value(angle):
+    """0-180 derece aralığını -1.0 ile 1.0 arasına dönüştürür"""
+    angle = max(0, min(180, angle))
+    return (angle / 90.0) - 1.0
 
 
 # --- ANA ÇALIŞMA BLOĞU ---
@@ -240,7 +255,14 @@ if __name__ == "__main__":
         initial_turn_angle = - (TOTAL_H_ANGLE / 2.0)
         print(f"Başlangıç pozisyonuna gidiliyor: {initial_turn_angle:.1f}°...")
         move_motor_to_angle(initial_turn_angle, INVERT_MOTOR)
-        servo.value = degree_to_servo_value(0)
+        
+        # Servo başlangıç testi
+        print("Servo başlangıç testı...")
+        servo.value = degree_to_servo_value(0)   # 0°
+        time.sleep(1)
+        servo.value = degree_to_servo_value(90)  # 90°
+        time.sleep(1)
+        servo.value = degree_to_servo_value(0)   # Tekrar 0°
         time.sleep(1.5)
 
 # Ana döngüde:

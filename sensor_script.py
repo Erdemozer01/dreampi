@@ -8,6 +8,36 @@ import fcntl
 import atexit
 import math
 import traceback
+import logging
+
+# Logger konfigürasyonu
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('sensor_script.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Config dosyası oluşturulması önerilir
+class Config:
+    # Hardware pins
+    MOTOR_PINS = {
+        'IN1': 26, 'IN2': 19, 'IN3': 13, 'IN4': 6
+    }
+    SENSOR_PINS = {
+        'TRIG_1': 23, 'ECHO_1': 24,
+        'TRIG_2': 17, 'ECHO_2': 18
+    }
+    # Scan settings
+    DEFAULT_SCAN_SETTINGS = {
+        'horizontal_angle': 270.0,
+        'horizontal_step': 10.0,
+        'vertical_angle': 180.0,
+        'vertical_step': 15.0
+    }
 
 # --- DJANGO ENTEGRASYONU ---
 try:
@@ -19,9 +49,9 @@ try:
     from django.utils import timezone
     from scanner.models import Scan, ScanPoint
 
-    print("SensorScript: Django entegrasyonu başarılı.")
+    logger.info("SensorScript: Django entegrasyonu başarılı.")
 except Exception as e:
-    print(f"SensorScript: Django entegrasyonu BAŞARISIZ: {e}")
+    logger.error(f"SensorScript: Django entegrasyonu BAŞARISIZ: {e}")
     sys.exit(1)
 
 # --- DONANIM KÜTÜPHANELERİ ---
@@ -91,6 +121,7 @@ def acquire_lock_and_pid():
 
 
 def _stop_step_motor_pins():
+    """Step motor pinlerini tamamen devre dışı bırakır"""
     if in1_dev_step: in1_dev_step.off()
     if in2_dev_step: in2_dev_step.off()
     if in3_dev_step: in3_dev_step.off()
@@ -110,13 +141,15 @@ def release_resources_on_exit():
             print(f"DB çıkış hatası: {e}")
 
     _stop_step_motor_pins()
-    if buzzer and buzzer.is_active: buzzer.off()
+    if buzzer and buzzer.is_active: 
+        buzzer.off()
     if lcd:
         try:
             lcd.clear()
         except Exception:
             pass
-    if led and led.is_active: led.off()
+    if led and led.is_active: 
+        led.off()
 
     for dev in [sensor_1, sensor_2, servo, buzzer, lcd, led, in1_dev_step, in2_dev_step, in3_dev_step, in4_dev_step]:
         if dev and hasattr(dev, 'close'):
@@ -127,7 +160,8 @@ def release_resources_on_exit():
 
     if lock_file_handle:
         try:
-            fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN);
+            # Bu satırda noktalı virgül var, Python'da gereksiz
+            fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN)  # ; kaldırılmalı
             lock_file_handle.close()
         except:
             pass
@@ -153,26 +187,31 @@ def init_hardware():
         buzzer = Buzzer(BUZZER_PIN)
         led = LED(LED_PIN)
         try:
+            # Bu da noktalı virgül içeriyor
             lcd = CharLCD(i2c_expander=LCD_PORT_EXPANDER, address=LCD_I2C_ADDRESS, port=I2C_PORT, cols=LCD_COLS,
                           rows=LCD_ROWS, auto_linebreaks=True)
-            lcd.clear();
+            lcd.clear()  # ; kaldırılmalı
             lcd.write_string("Haritalama Modu")
         except Exception as e:
-            print(f"UYARI: LCD başlatılamadı, LCD olmadan devam edilecek. Hata: {e}");
+            print(f"UYARI: LCD başlatılamadı, LCD olmadan devam edilecek. Hata: {e}")
             lcd = None
         return True
     except Exception as e:
-        print(f"KRİTİK HATA: Donanım başlatılamadı: {e}");
-        traceback.print_exc();
+        print(f"KRİTİK HATA: Donanım başlatılamadı: {e}")
+        traceback.print_exc()
         return False
 
 
 def _set_step_motor_pins(s1, s2, s3, s4):
-    if in1_dev_step: in1_dev_step.value = s1
-    if in2_dev_step: in2_dev_step.value = s2
-    if in3_dev_step: in3_dev_step.value = s3
-    if in4_dev_step: in4_dev_step.value = s4
+    """Step motor pinlerini ayarlar"""
+    if in1_dev_step: in1_dev_step.value = bool(s1)
+    if in2_dev_step: in2_dev_step.value = bool(s2)  
+    if in3_dev_step: in3_dev_step.value = bool(s3)
+    if in4_dev_step: in4_dev_step.value = bool(s4)
 
+def _stop_step_motor_pins():
+    """Step motor pinlerini tamamen kapatır"""
+    _set_step_motor_pins(0, 0, 0, 0)
 
 def _step_motor_4in(num_steps, direction_positive):
     global current_step_sequence_index
@@ -190,14 +229,21 @@ def _step_motor_4in(num_steps, direction_positive):
 
 def move_step_motor_to_angle(target_angle_deg, total_steps_per_rev):
     global current_motor_angle_global
-    if not MOTOR_BAGLI or total_steps_per_rev <= 0: return
+    if not MOTOR_BAGLI or total_steps_per_rev <= 0: 
+        return
+    
     DEG_PER_STEP = 360.0 / total_steps_per_rev
     angle_diff = target_angle_deg - current_motor_angle_global
-    if abs(angle_diff) < DEG_PER_STEP / 2: return
+    if abs(angle_diff) < DEG_PER_STEP / 2: 
+        return
+    
     num_steps = round(abs(angle_diff) / DEG_PER_STEP)
     _step_motor_4in(num_steps, (angle_diff > 0))
     current_motor_angle_global = target_angle_deg
     time.sleep(STEP_MOTOR_SETTLE_TIME)
+    
+    # ÖNEMLİ: Motor hareketi bitince pinleri temizle
+    _stop_step_motor_pins()
 
 
 def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist, steps_per_rev, invert_motor):
@@ -260,16 +306,21 @@ if __name__ == "__main__":
             target_h_angle_abs = initial_horizontal_angle + (i * H_STEP)
             target_h_angle_rel = i * H_STEP
 
+            # Step motor hareketi
             move_step_motor_to_angle(target_h_angle_abs, STEPS_PER_REVOLUTION)
-            _stop_step_motor_pins()
             print(f"\nYatay Açı: {target_h_angle_rel:.1f}° (Mutlak: {target_h_angle_abs:.1f}°)")
 
             num_vertical_steps = int(DEFAULT_VERTICAL_SCAN_ANGLE / DEFAULT_VERTICAL_STEP_ANGLE)
             for j in range(num_vertical_steps + 1):
                 target_v_angle = j * DEFAULT_VERTICAL_STEP_ANGLE
+                
+                # Servo hareketi
                 servo.value = degree_to_servo_value(target_v_angle)
-                time.sleep(LOOP_TARGET_INTERVAL_S)
-
+                
+                # Servo pozisyona ulaşması için yeterli bekleme
+                time.sleep(max(LOOP_TARGET_INTERVAL_S, 0.3))  # En az 300ms bekle
+                
+                # Ölçüm ve diğer işlemler...
                 raw_dist_1 = sensor_1.distance
                 raw_dist_2 = sensor_2.distance
                 dist_cm_1 = (raw_dist_1 * 100) if raw_dist_1 is not None else sensor_1.max_distance * 100
@@ -281,11 +332,13 @@ if __name__ == "__main__":
                 print(
                     f"  -> Dikey: {target_v_angle:.1f}°, S1 Mesafe: {dist_cm_1:.1f} cm, S2 Mesafe: {dist_cm_2:.1f} cm, XYZ İçin: {dist_for_xyz:.1f} cm")
 
+                # LCD yazma kısmındaki hatalar da düzeltilmeli
                 if lcd:
                     try:
-                        lcd.cursor_pos = (0, 0);
+                        # Bu satırlarda da noktalı virgül var
+                        lcd.cursor_pos = (0, 0)  # ; kaldırılmalı
                         lcd.write_string(f"Y:{target_h_angle_rel:<4.0f} V:{target_v_angle:<4.0f}  ")
-                        lcd.cursor_pos = (1, 0);
+                        lcd.cursor_pos = (1, 0)  # ; kaldırılmalı
                         lcd.write_string(f"S1:{dist_cm_1:<4.0f} S2:{dist_cm_2:<4.0f} ")
                     except OSError as e:
                         print(f"LCD YAZMA HATASI: {e}")
@@ -309,9 +362,19 @@ if __name__ == "__main__":
                 x = h_radius * math.cos(angle_pan_rad)
                 y = h_radius * math.sin(angle_pan_rad)
 
-                ScanPoint.objects.create(scan=current_scan_object_global, derece=target_h_angle_rel,
-                                         dikey_aci=target_v_angle, mesafe_cm=dist_for_xyz, x_cm=x, y_cm=y, z_cm=z,
-                                         timestamp=timezone.now())
+                # Database bulk operations
+                scan_points = []
+                scan_points.append(ScanPoint(
+                    scan=current_scan_object_global,
+                    derece=target_h_angle_rel,
+                    dikey_aci=target_v_angle,
+                    mesafe_cm=dist_for_xyz,
+                    x_cm=x, y_cm=y, z_cm=z,
+                    timestamp=timezone.now()
+                ))
+
+                # Toplu insert
+                ScanPoint.objects.bulk_create(scan_points, batch_size=100)
 
         script_exit_status_global = Scan.Status.COMPLETED
     except KeyboardInterrupt:
@@ -323,6 +386,7 @@ if __name__ == "__main__":
         traceback.print_exc()
     finally:
         print("İşlem sonlanıyor. Motorlar durduruluyor ve servo merkeze getiriliyor...")
-        move_step_motor_to_angle(initial_horizontal_angle, STEPS_PER_REVOLUTION)
-        _stop_step_motor_pins()
-        if servo: servo.value = degree_to_servo_value(90)
+        _stop_step_motor_pins()  # Step motor pinlerini temizle
+        if servo: 
+            servo.value = degree_to_servo_value(90)
+            time.sleep(0.5)  # Servo pozisyona ulaşması için bekle

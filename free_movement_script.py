@@ -166,6 +166,9 @@ def _set_step_pins(s1, s2, s3, s4):
     if in3_dev: in3_dev.value = bool(s3)
     if in4_dev: in4_dev.value = bool(s4)
 
+def _stop_step_motor():
+    """Step motor pinlerini tamamen kapatır"""
+    _set_step_pins(0, 0, 0, 0)
 
 def _single_step_motor(direction_positive):
     global current_step_sequence_index, current_motor_angle_global
@@ -174,13 +177,6 @@ def _single_step_motor(direction_positive):
     _set_step_pins(*step_sequence[current_step_sequence_index])
     current_motor_angle_global += (DEG_PER_STEP * (1 if direction_positive else -1))
     time.sleep(STEP_MOTOR_INTER_STEP_DELAY)
-
-
-def _move_motor_steps(num_steps_to_take, direction_positive):
-    global current_step_sequence_index, current_motor_angle_global
-    for _ in range(int(num_steps_to_take)):
-        _single_step_motor(direction_positive)  # Her adımda _single_step_motor çağırarak açıyı güncel tutar
-
 
 def move_motor_to_absolute_angle(target_angle_deg, speed_factor=1.0):
     global current_motor_angle_global
@@ -205,6 +201,9 @@ def move_motor_to_absolute_angle(target_angle_deg, speed_factor=1.0):
 
     current_motor_angle_global = target_angle_deg
     time.sleep(STEP_MOTOR_SETTLE_TIME / speed_factor)
+    
+    # Motor hareketi bitince pinleri temizle
+    _stop_step_motor()
 
 
 def kisa_uyari_bip(bip_suresi):

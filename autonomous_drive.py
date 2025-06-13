@@ -161,27 +161,41 @@ def _set_step_pins(s1, s2, s3, s4):
     if in3_dev: in3_dev.value = bool(s3)
     if in4_dev: in4_dev.value = bool(s4)
 
+def _stop_step_motor():
+    """Step motor pinlerini tamamen kapatır"""
+    _set_step_pins(0, 0, 0, 0)
 
 def _step_motor_4in(num_steps, direction_positive):
     global current_step_sequence_index
+    
+    # INVERT_MOTOR_DIRECTION desteği eklendi
+    if 'INVERT_MOTOR' in globals() and INVERT_MOTOR:
+        direction_positive = not direction_positive
+    
     for _ in range(int(num_steps)):
         step_increment = 1 if direction_positive else -1
         current_step_sequence_index = (current_step_sequence_index + step_increment) % len(step_sequence)
         _set_step_pins(*step_sequence[current_step_sequence_index])
         time.sleep(STEP_MOTOR_INTER_STEP_DELAY)
 
-
 def move_motor_to_angle(target_angle_deg, invert_direction):
     global current_motor_angle_global
-    if not MOTOR_BAGLI or DEG_PER_STEP <= 0: return
+    if not MOTOR_BAGLI or DEG_PER_STEP <= 0: 
+        return
+    
     angle_diff = target_angle_deg - current_motor_angle_global
-    if abs(angle_diff) < DEG_PER_STEP: return
+    if abs(angle_diff) < DEG_PER_STEP: 
+        return
+    
     num_steps = round(abs(angle_diff) / DEG_PER_STEP)
     logical_dir = (angle_diff > 0)
     physical_dir = not logical_dir if invert_direction else logical_dir
     _step_motor_4in(num_steps, physical_dir)
     current_motor_angle_global = target_angle_deg
     time.sleep(STEP_MOTOR_SETTLE_TIME)
+    
+    # Motor hareketi bitince pinleri temizle
+    _stop_step_motor()
 
 
 def create_scan_entry(h_angle, h_step, v_angle, buzzer_dist, invert_dir, steps_rev):
@@ -229,18 +243,27 @@ if __name__ == "__main__":
         servo.value = degree_to_servo_value(0)
         time.sleep(1.5)
 
+# Ana döngüde:
         num_horizontal_steps = int(TOTAL_H_ANGLE / H_STEP)
         for i in range(num_horizontal_steps + 1):
             target_h_angle_abs = initial_turn_angle + (i * H_STEP)
             target_h_angle_rel = i * H_STEP
+            
+            # Step motor hareketi
             move_motor_to_angle(target_h_angle_abs, INVERT_MOTOR)
             print(f"\nYatay Açı: {target_h_angle_rel:.1f}°")
 
             num_vertical_steps = int(DEFAULT_VERTICAL_SCAN_ANGLE / DEFAULT_VERTICAL_STEP_ANGLE)
             for j in range(num_vertical_steps + 1):
                 target_v_angle = j * DEFAULT_VERTICAL_STEP_ANGLE
+                
+                # Servo hareketi
                 servo.value = degree_to_servo_value(target_v_angle)
-                time.sleep(LOOP_TARGET_INTERVAL_S)
+                
+                # Yeterli bekleme süresi
+                time.sleep(max(LOOP_TARGET_INTERVAL_S, 0.3))
+                
+                # Ölçüm işlemleri...
                 dist_cm = sensor.distance * 100
                 print(f"  -> Dikey: {target_v_angle:.1f}°, Mesafe: {dist_cm:.1f} cm")
 
@@ -274,4 +297,7 @@ if __name__ == "__main__":
     finally:
         print("İşlem sonlanıyor. Motor merkez konuma getiriliyor...")
         move_motor_to_angle(0, INVERT_MOTOR)
-        if servo: servo.value = degree_to_servo_value(90)
+        _stop_step_motor()  # Pinleri temizle
+        if servo: 
+            servo.value = degree_to_servo_value(90)
+            time.sleep(0.5)

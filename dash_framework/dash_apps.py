@@ -557,9 +557,36 @@ def start_autonomous_mode(target_distance, speed_level):
 
 
 def start_mapping_mode(h_angle, h_step, buzzer_dist):
-    """Haritalama modunu başlatır (mevcut kod)"""
-    # Mevcut sensor_script başlatma kodunuz
-    pass
+    """Haritalama modunu başlatır"""
+    try:
+        # Önceki işlemleri durdur
+        stop_all_scripts()
+
+        # Parametreleri doğrula
+        if not all(isinstance(i, (int, float)) for i in [h_angle, h_step, buzzer_dist]):
+             print("Haritalama başlatma hatası: Parametreler geçersiz.")
+             return "❌ Parametre Hatası", False, True # Arayüze hata mesajı
+
+        # Komut satırı argümanlarını oluştur
+        cmd = [
+            sys.executable, SENSOR_SCRIPT_PATH,
+            "--h-angle", str(h_angle),
+            "--h-step", str(h_step),
+            "--buzzer-distance", str(buzzer_dist)
+            # Diğer gerekli parametreleri de buraya ekleyebilirsiniz (örn: steps-per-rev)
+        ]
+
+        # Betiği arka planda çalıştır
+        subprocess.Popen(cmd,
+                         stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+
+        return "🔄 Haritalama Çalışıyor...", True, False
+
+    except Exception as e:
+        print(f"Haritalama başlatma hatası: {e}")
+        return "❌ Başlatma Hatası", False, True
 
 
 def start_manual_mode():

@@ -2,51 +2,56 @@ from gpiozero import Motor
 from time import sleep
 
 # ==============================================================================
-# --- DC MOTOR PIN TANIMLARI (YENİ VE AÇIKLAYICI) ---
+# --- DC MOTOR PIN TANIMLARI ---
+# Pin numaraları projenize göre doğrudur, bu kısımda değişiklik yapılmadı.
 # ==============================================================================
 # Sol Motor Pinleri
-DC_MOTOR_SOL_ILERI = 12  # L298N IN1 pini (Daha önce 17 doluydu, 4 yapmıştık)
-DC_MOTOR_SOL_GERI = 16  # L298N IN2 pini
-DC_MOTOR_SOL_HIZ = 5  # L298N ENA pini (Hız kontrolü)
+DC_MOTOR_SOL_ILERI = 12
+DC_MOTOR_SOL_GERI = 16
+DC_MOTOR_SOL_HIZ = 5
 
 # Sağ Motor Pinleri
-DC_MOTOR_SAG_ILERI = 20  # L298N IN3 pini
-DC_MOTOR_SAG_GERI = 21  # L298N IN4 pini
-DC_MOTOR_SAG_HIZ = 22  # L298N ENB pini (Hız kontrolü)
+DC_MOTOR_SAG_ILERI = 20
+DC_MOTOR_SAG_GERI = 21
+DC_MOTOR_SAG_HIZ = 22
 
 # ==============================================================================
-# --- Motorları Yeni Değişkenleri Kullanarak Tanımla ---
+# --- Motorları Tanımlama ---
 # ==============================================================================
+print("Motorlar başlatılıyor...")
 sol_motor = Motor(forward=DC_MOTOR_SOL_ILERI, backward=DC_MOTOR_SOL_GERI, enable=DC_MOTOR_SOL_HIZ)
 sag_motor = Motor(forward=DC_MOTOR_SAG_ILERI, backward=DC_MOTOR_SAG_GERI, enable=DC_MOTOR_SAG_HIZ)
+print("Motorlar hazır. 🚀")
 
 
 # ==============================================================================
-# --- Hareket Fonksiyonları (Bu kısımda değişiklik yok) ---
+# --- MAKSİMUM GÜÇLÜ HAREKET FONKSİYONLARI ---
+# Not: Tüm fonksiyonlardaki varsayılan 'hiz' parametresi 1.0 (yani %100)
+# olarak ayarlandı.
 # ==============================================================================
-def ileri(hiz=0.2):
-    """Araç ileri hareket eder. hiz 0.0 ile 1.0 arasında bir değerdir."""
+def ileri(hiz=1.0):
+    """Araç ileri hareket eder. Maksimum güç için hız 1.0 olmalıdır."""
     print(f"İleri hareket, Hız: {hiz * 100}%")
     sol_motor.forward(speed=hiz)
     sag_motor.forward(speed=hiz)
 
 
-def geri(hiz=0.2):
+def geri(hiz=1.0):
     """Araç geri hareket eder."""
     print(f"Geri hareket, Hız: {hiz * 100}%")
     sol_motor.backward(speed=hiz)
     sag_motor.backward(speed=hiz)
 
 
-def sola_don(hiz=0.2):
-    """Araç yerinde sola döner."""
+def sola_don(hiz=1.0):
+    """Araç yerinde maksimum hızla sola döner."""
     print(f"Sola dönüş, Hız: {hiz * 100}%")
     sol_motor.backward(speed=hiz)
     sag_motor.forward(speed=hiz)
 
 
-def saga_don(hiz=0.2):
-    """Araç yerinde sağa döner."""
+def saga_don(hiz=1.0):
+    """Araç yerinde maksimum hızla sağa döner."""
     print(f"Sağa dönüş, Hız: {hiz * 100}%")
     sol_motor.forward(speed=hiz)
     sag_motor.backward(speed=hiz)
@@ -54,39 +59,44 @@ def saga_don(hiz=0.2):
 
 def dur():
     """Araç durur."""
-    print("Dur.")
+    print("DUR 🛑")
     sol_motor.stop()
     sag_motor.stop()
 
 
 # ==============================================================================
-# --- Ana Test Programı (Bu kısımda değişiklik yok) ---
+# --- Ana Test Programı (Tüm hareketler maksimum güçte) ---
 # ==============================================================================
 try:
-    print("Araç hareket testi başlıyor...")
+    print("\nAraç maksimum güç testi başlıyor...")
 
-    ileri(0.2)
+    ileri(1.0)  # Tam hızda ileri
     sleep(2)
 
     dur()
     sleep(1)
 
-    geri(0.2)
+    geri(1.0)  # Tam hızda geri
     sleep(2)
 
     dur()
     sleep(1)
 
-    saga_don()
-    sleep(1.5)
-    sola_don()
+    saga_don(1.0)  # Tam hızda sağa dönüş
     sleep(1.5)
 
-    print("Test tamamlandı.")
+    dur()
+    sleep(1)
+
+    sola_don(1.0)  # Tam hızda sola dönüş
+    sleep(1.5)
+
+    print("\nTest tamamlandı.")
 
 except KeyboardInterrupt:
-    print("Program kullanıcı tarafından durduruldu.")
+    print("\nProgram kullanıcı tarafından durduruldu.")
 
 finally:
-    # Program biterken motorların durduğundan emin ol
+    # Program sonlanırken motorların kesinlikle durmasını sağla
+    print("Güvenlik için motorlar durduruluyor.")
     dur()

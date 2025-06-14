@@ -287,7 +287,7 @@ def estimate_geometric_shape(df_input):
 
 
 # --- ARAYÜZ BİLEŞENLERİ (LAYOUT) ---
-# Kontrol panelinde mod seçimi ekleyin
+
 control_panel = dbc.Card([
     dbc.CardHeader("🎛️ Sistem Kontrolü"),
     dbc.CardBody([

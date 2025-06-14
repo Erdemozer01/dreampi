@@ -42,8 +42,12 @@ SENSOR_SCRIPT_FILENAME = 'sensor_script.py'
 FREE_MOVEMENT_SCRIPT_FILENAME = 'free_movement_script.py'
 SENSOR_SCRIPT_PATH = os.path.join(os.getcwd(), SENSOR_SCRIPT_FILENAME)
 FREE_MOVEMENT_SCRIPT_PATH = os.path.join(os.getcwd(), FREE_MOVEMENT_SCRIPT_FILENAME)
-SENSOR_SCRIPT_LOCK_FILE = '/tmp/sensor_scan_script.lock'
+
 SENSOR_SCRIPT_PID_FILE = '/tmp/sensor_scan_script.pid'
+AUTONOMOUS_SCRIPT_PID_FILE = '/tmp/autonomous_drive_script.pid'
+SENSOR_SCRIPT_LOCK_FILE = '/tmp/sensor_scan_script.lock'
+AUTONOMOUS_SCRIPT_LOCK_FILE = '/tmp/autonomous_drive_script.lock'
+
 DEFAULT_UI_SCAN_DURATION_ANGLE = 270.0
 DEFAULT_UI_SCAN_STEP_ANGLE = 10.0
 DEFAULT_UI_BUZZER_DISTANCE = 10
@@ -63,6 +67,7 @@ navbar = dbc.NavbarSimple(
     children=[dbc.NavItem(dbc.NavLink("Admin Paneli", href="/admin/", external_link=True, target="_blank"))],
     brand="Dream Pi", brand_href="/", color="primary", dark=True, sticky="top", fluid=True, className="mb-4"
 )
+
 
 # --- YARDIMCI FONKSİYONLAR ---
 def get_ai_model_options():
@@ -89,11 +94,84 @@ def get_latest_scan():
 
 
 def is_process_running(pid):
-    if pid is None: return False
-    try:
-        return psutil.pid_exists(pid)
-    except Exception:
+    """Verilen PID'ye sahip bir işlemin çalışıp çalışmadığını kontrol eder."""
+    if pid is None:
         return False
+    try:
+        # psutil.pid_exists() en basit ve hızlı yoldur.
+        return psutil.pid_exists(pid)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return False
+    except Exception as e:
+        print(f"is_process_running içinde beklenmedik hata: {e}")
+        return False
+
+
+def stop_all_scripts():
+    """
+    Bilinen tüm betik PID dosyalarını kontrol eder ve çalışan işlemleri sonlandırır.
+    Ayrıca ilgili .pid ve .lock dosyalarını temizler.
+    """
+    print("Tüm aktif betikler durduruluyor...")
+    # Kontrol edilecek tüm bilinen PID dosyalarını bir listeye koyun
+    all_pid_files = [SENSOR_SCRIPT_PID_FILE, AUTONOMOUS_SCRIPT_PID_FILE]
+
+    for pid_file in all_pid_files:
+        if os.path.exists(pid_file):
+            pid_to_kill = None
+            try:
+                with open(pid_file, 'r') as f:
+                    content = f.read().strip()
+                    if content:  # Dosyanın boş olmadığından emin ol
+                        pid_to_kill = int(content)
+
+                if pid_to_kill and is_process_running(pid_to_kill):
+                    print(f"Çalışan işlem bulundu (PID: {pid_to_kill}). Durdurma sinyali (SIGTERM) gönderiliyor...")
+                    os.kill(pid_to_kill, signal.SIGTERM)
+                else:
+                    print(f"PID dosyasında ({pid_file}) belirtilen işlem (PID: {pid_to_kill}) zaten çalışmıyor.")
+
+            except (IOError, ValueError) as e:
+                print(f"PID dosyası ({pid_file}) okunurken veya işlenirken hata: {e}")
+            except Exception as e:
+                print(f"Bilinmeyen bir hata oluştu (PID: {pid_to_kill}): {e}")
+            finally:
+                # Her durumda PID ve ilişkili LOCK dosyasını silmeyi dene
+                print(f"Temizlik: {pid_file} siliniyor...")
+                try:
+                    os.remove(pid_file)
+                    lock_file = pid_file.replace('.pid', '.lock')
+                    if os.path.exists(lock_file):
+                        print(f"Temizlik: {lock_file} siliniyor...")
+                        os.remove(lock_file)
+                except OSError as e:
+                    print(f"Dosya silme hatası: {e}")
+
+
+def stop_current_operation(mode):
+    """
+    Mevcut işlemi durdurur. Hangi modda olursa olsun, bilinen tüm betikleri
+    durdurarak sistemi temiz ve kararlı bir başlangıç durumuna getirir.
+
+    Args:
+        mode (str): Arayüzden gelen mevcut çalışma modu ('autonomous', 'mapping', vs.).
+                     Bu parametre gelecekteki olası mod-spesifik temizlik işlemleri
+                     için korunur, ancak mevcut mantık tüm modlar için aynıdır.
+
+    Returns:
+        tuple: Dash callback'i için butonların durumunu içeren bir demet.
+               ("▶️ Başlat", False, True) -> Başlat butonu aktif, Durdur butonu pasif.
+    """
+    print(f"'{mode}' modu için durdurma talebi alındı. Genel durdurma prosedürü başlatılıyor.")
+
+    # En güvenli yöntem, hangi modda olunduğuna bakmaksızın tüm betikleri durdurmaktır.
+    # Bu, takılı kalmış veya unutulmuş işlemleri (orphaned processes) önler.
+    stop_all_scripts()
+
+    print("Durdurma işlemi tamamlandı. Arayüz başlangıç durumuna getiriliyor.")
+
+    # Arayüzdeki butonları başlangıç durumuna geri döndür.
+    return "▶️ Başlat", False, True
 
 
 def add_scan_rays(fig, df):
@@ -311,11 +389,11 @@ analysis_card = dbc.Card([dbc.CardHeader("Tarama Analizi (En Son Tarama)", class
                               [dbc.Col([html.H6("Hesaplanan Alan:"), html.H4(id='calculated-area', children="-- cm²")]),
                                dbc.Col(
                                    [html.H6("Çevre Uzunluğu:"), html.H4(id='perimeter-length', children="-- cm")])]),
-                                        dbc.Row([dbc.Col(
-                                            [html.H6("Max Genişlik:"), html.H4(id='max-width', children="-- cm")]),
-                                                 dbc.Col([html.H6("Max Derinlik:"),
-                                                          html.H4(id='max-depth', children="-- cm")])],
-                                                className="mt-2")])])
+                              dbc.Row([dbc.Col(
+                                  [html.H6("Max Genişlik:"), html.H4(id='max-width', children="-- cm")]),
+                                  dbc.Col([html.H6("Max Derinlik:"),
+                                           html.H4(id='max-depth', children="-- cm")])],
+                                  className="mt-2")])])
 estimation_card = dbc.Card([dbc.CardHeader("Akıllı Ortam Analizi", className="bg-success text-white"), dbc.CardBody(
     html.Div("Tahmin: Bekleniyor...", id='environment-estimation-text', className="text-center"))])
 visualization_tabs = dbc.Tabs([dbc.Tab([dbc.Row([dbc.Col(dcc.Dropdown(id='graph-selector-dropdown', options=[
@@ -400,6 +478,7 @@ def update_data_stores(n):
         print(f"HATA: Merkezi veri deposu güncellenemedi: {e}")
         return None, None
 
+
 # Callback fonksiyonları ekleyin
 @app.callback(
     Output('autonomous-parameters', 'style'),
@@ -414,6 +493,7 @@ def toggle_mode_parameters(selected_mode):
     else:  # manual
         return {'display': 'none'}, {'display': 'none'}
 
+
 @app.callback(
     [Output("start-button", "children"),
      Output("start-button", "disabled"),
@@ -423,12 +503,12 @@ def toggle_mode_parameters(selected_mode):
     [State("operation-mode", "value"),
      State("target-distance", "value"),
      State("speed-level", "value"),
-     State("scan-duration-angle-input", "value"),      # Haritalama parametreleri
+     State("scan-duration-angle-input", "value"),  # Haritalama parametreleri
      State("step-angle-input", "value"),
      State("buzzer-distance-input", "value")]
 )
 def handle_start_stop_operations(start_clicks, stop_clicks, mode,
-                                target_dist, speed, h_angle, h_step, buzzer_dist):
+                                 target_dist, speed, h_angle, h_step, buzzer_dist):
     ctx = dash.callback_context
     if not ctx.triggered:
         return "▶️ Başlat", False, True
@@ -448,6 +528,7 @@ def handle_start_stop_operations(start_clicks, stop_clicks, mode,
 
     return "▶️ Başlat", False, True
 
+
 def start_autonomous_mode(target_distance, speed_level):
     """Otonom sürüş modunu başlatır"""
     try:
@@ -464,9 +545,9 @@ def start_autonomous_mode(target_distance, speed_level):
 
         # Arka planda çalıştır
         subprocess.Popen(cmd,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        start_new_session=True)
+                         stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL,
+                         start_new_session=True)
 
         return "🔄 Otonom Sürüş Çalışıyor...", True, False
 
@@ -474,27 +555,17 @@ def start_autonomous_mode(target_distance, speed_level):
         print(f"Otonom sürüş başlatma hatası: {e}")
         return "❌ Başlatma Hatası", False, True
 
+
 def start_mapping_mode(h_angle, h_step, buzzer_dist):
     """Haritalama modunu başlatır (mevcut kod)"""
     # Mevcut sensor_script başlatma kodunuz
     pass
 
+
 def start_manual_mode():
     """Manuel kontrol modunu başlatır"""
     return "🎮 Manuel Kontrol Aktif", True, False
 
-stop_current_operation
-
-def stop_all_scripts():
-    """Tüm çalışan script'leri durdurur"""
-    for script_pid_file in [SENSOR_SCRIPT_PID_FILE, AUTONOMOUS_SCRIPT_PID_FILE]:
-        if os.path.exists(script_pid_file):
-            try:
-                with open(script_pid_file, 'r') as f:
-                    pid = int(f.read().strip())
-                os.kill(pid, 15)
-            except:
-                pass
 
 @app.callback(Output('scan-parameters-wrapper', 'style'), Input('mode-selection-radios', 'value'))
 def toggle_parameter_visibility(selected_mode):

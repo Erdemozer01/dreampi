@@ -2,7 +2,7 @@ from gpiozero import Servo
 from time import sleep
 
 # Servo motorunuzun bağlı olduğu GPIO pini
-SERVO_PIN = 12
+SERVO_PIN = 4
 
 def degree_to_servo_value(angle_deg):
     """0-180 dereceyi, gpiozero'nun -1 ile 1 aralığına çevirir."""

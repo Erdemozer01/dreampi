@@ -1,0 +1,40 @@
+{
+  "hardware": {
+    "motor_pins": {
+      "IN1": 26,
+      "IN2": 19,
+      "IN3": 13,
+      "IN4": 6
+    },
+    "sensor_pins": {
+      "TRIG_1": 23,
+      "ECHO_1": 24,
+      "TRIG_2": 17,
+      "ECHO_2": 18
+    },
+    "servo_pin": 4,
+    "buzzer_pin": 25,
+    "led_pin": 27,
+    "lcd": {
+      "address": "0x27",
+      "port_expander": "PCF8574",
+      "cols": 16,
+      "rows": 2,
+      "i2c_port": 1
+    }
+  },
+  "scan_settings": {
+    "horizontal_angle": 270.0,
+    "horizontal_step": 10.0,
+    "vertical_angle": 180.0,
+    "vertical_step": 15.0,
+    "buzzer_distance": 10,
+    "steps_per_revolution": 4096
+  },
+  "timing": {
+    "inter_step_delay": 0.0015,
+    "settle_time": 0.05,
+    "servo_delay": 0.4,
+    "loop_interval": 0.2
+  }
+}

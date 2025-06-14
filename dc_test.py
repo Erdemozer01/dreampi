@@ -24,28 +24,28 @@ sag_motor = Motor(forward=DC_MOTOR_SAG_ILERI, backward=DC_MOTOR_SAG_GERI, enable
 # ==============================================================================
 # --- Hareket Fonksiyonları (Bu kısımda değişiklik yok) ---
 # ==============================================================================
-def ileri(hiz=1.0):
+def ileri(hiz=0.2):
     """Araç ileri hareket eder. hiz 0.0 ile 1.0 arasında bir değerdir."""
     print(f"İleri hareket, Hız: {hiz * 100}%")
     sol_motor.forward(speed=hiz)
     sag_motor.forward(speed=hiz)
 
 
-def geri(hiz=1.0):
+def geri(hiz=0.2):
     """Araç geri hareket eder."""
     print(f"Geri hareket, Hız: {hiz * 100}%")
     sol_motor.backward(speed=hiz)
     sag_motor.backward(speed=hiz)
 
 
-def sola_don(hiz=0.7):
+def sola_don(hiz=0.2):
     """Araç yerinde sola döner."""
     print(f"Sola dönüş, Hız: {hiz * 100}%")
     sol_motor.backward(speed=hiz)
     sag_motor.forward(speed=hiz)
 
 
-def saga_don(hiz=0.7):
+def saga_don(hiz=0.2):
     """Araç yerinde sağa döner."""
     print(f"Sağa dönüş, Hız: {hiz * 100}%")
     sol_motor.forward(speed=hiz)
@@ -65,13 +65,13 @@ def dur():
 try:
     print("Araç hareket testi başlıyor...")
 
-    ileri(1.0)
+    ileri(0.2)
     sleep(2)
 
     dur()
     sleep(1)
 
-    geri(0.5)
+    geri(0.2)
     sleep(2)
 
     dur()

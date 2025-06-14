@@ -483,27 +483,7 @@ def start_manual_mode():
     """Manuel kontrol modunu başlatır"""
     return "🎮 Manuel Kontrol Aktif", True, False
 
-def stop_current_operation(mode):
-    """Mevcut işlemi durdurur"""
-    try:
-        if mode == 'autonomous':
-            # Otonom sürüş script'ini durdur
-            if os.path.exists(AUTONOMOUS_SCRIPT_PID_FILE):
-                with open(AUTONOMOUS_SCRIPT_PID_FILE, 'r') as f:
-                    pid = int(f.read().strip())
-                try:
-                    os.kill(pid, 15)  # SIGTERM
-                except ProcessLookupError:
-                    pass
-        elif mode == 'mapping':
-            # Haritalama script'ini durdur (mevcut kodunuz)
-            pass
-
-        return "▶️ Başlat", False, True
-
-    except Exception as e:
-        print(f"Durdurma hatası: {e}")
-        return "▶️ Başlat", False, True
+stop_current_operation
 
 def stop_all_scripts():
     """Tüm çalışan script'leri durdurur"""

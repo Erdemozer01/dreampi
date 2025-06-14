@@ -100,3 +100,4 @@ finally:
     # Program sonlanırken motorların kesinlikle durmasını sağla
     print("Güvenlik için motorlar durduruluyor.")
     dur()
+

@@ -3,7 +3,7 @@ import RPi.GPIO as GPIO
 import time
 
 # Servo'nun SİNYAL kablosunun bağlı olduğu GPIO pinini yazın (BCM numarası)
-servo_pin = 17
+servo_pin = 4
 
 # Pin numaralandırma modunu ayarla (BCM: GPIO numaraları, BOARD: Fiziksel pin numaraları)
 GPIO.setmode(GPIO.BCM)

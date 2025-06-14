@@ -6,8 +6,8 @@ from time import sleep
 # Pin numaraları projenize göre doğrudur, bu kısımda değişiklik yapılmadı.
 # ==============================================================================
 # Sol Motor Pinleri
-DC_MOTOR_SOL_ILERI = 16
-DC_MOTOR_SOL_GERI = 12
+DC_MOTOR_SOL_ILERI = 12
+DC_MOTOR_SOL_GERI = 16
 DC_MOTOR_SOL_HIZ = 5
 
 # Sağ Motor Pinleri

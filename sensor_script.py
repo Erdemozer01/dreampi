@@ -270,7 +270,7 @@ if __name__ == "__main__":
             logger.info(
                 f"\nAdım {i + 1}/{num_scan_steps + 1} | Tarama Açısı: {target_pan_angle:.1f}° | Sabit Eğim: {FIXED_TILT_ANGLE}°")
             move_motor_to_angle(target_pan_angle, STEPS_PER_REVOLUTION)
-            _stop_motor()
+
 
             # Sensör okuma
             raw_dist_1 = sensor_1.distance

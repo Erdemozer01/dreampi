@@ -4,7 +4,7 @@ from gpiozero import Servo
 # PiGPIOFactory artık kullanılmıyor, çünkü gpiozero doğru olanı seçecek.
 
 # Servo'nun SİNYAL kablosunun bağlı olduğu GPIO pinini yazın (BCM numarası)
-servo_pin_numarasi = 17
+servo_pin_numarasi = 4
 
 # Bu satır, gpiozero'nun Pi 5 için en uygun kütüphaneyi (lgpio)
 # otomatik olarak seçmesini sağlar.

@@ -309,58 +309,54 @@ control_panel = dbc.Card([
             ], width=12)
         ]),
 
-        # Mevcut parametreler...
         # Otonom sürüş parametreleri (sadece autonomous modunda görünür)
         html.Div(id='autonomous-parameters', children=[
             dbc.Row([
                 dbc.Col([
                     html.Label("🎯 Hedef Mesafe (cm):", className="fw-bold"),
-                    dbc.Input(
-                        id='target-distance',
-                        type='number',
-                        value=100,
-                        min=10,
-                        max=300,
-                        step=5
-                    )
+                    dbc.Input(id='target-distance', type='number', value=100, min=10, max=300, step=5)
                 ], width=6),
                 dbc.Col([
                     html.Label("⚡ Hız Seviyesi:", className="fw-bold"),
-                    dcc.Slider(
-                        id='speed-level',
-                        min=1,
-                        max=5,
-                        step=1,
-                        value=3,
-                        marks={i: f'{i}' for i in range(1, 6)}
-                    )
+                    dcc.Slider(id='speed-level', min=1, max=5, step=1, value=3, marks={i: f'{i}' for i in range(1, 6)})
                 ], width=6)
             ], className="mb-3"),
         ], style={'display': 'none'}),  # Başlangıçta gizli
+
+        # #############################################################
+        # #### EKSİK OLAN VE EKLENMESİ GEREKEN KISIM BURASI ####
+        html.Div(id='mapping-parameters', children=[
+            dbc.Row([
+                dbc.Col([
+                    html.Label("Tarama Açısı (°):", className="fw-bold"),
+                    dbc.Input(id='scan-duration-angle-input', type='number', value=270.0, step=10)
+                ], width=6),
+                dbc.Col([
+                    html.Label("Adım Açısı (°):", className="fw-bold"),
+                    dbc.Input(id='step-angle-input', type='number', value=10.0, step=0.5)
+                ], width=6)
+            ], className="mb-2"),
+            dbc.Row([
+                dbc.Col([
+                    html.Label("Buzzer Mesafesi (cm):", className="fw-bold"),
+                    dbc.Input(id='buzzer-distance-input', type='number', value=10)
+                ], width=12)
+            ], className="mb-3")
+        ]),
+        # #############################################################
 
         # Başlat/Durdur butonları
         dbc.Row([
             dbc.Col([
                 dbc.ButtonGroup([
-                    dbc.Button(
-                        "▶️ Başlat",
-                        id="start-button",
-                        color="success",
-                        size="lg",
-                        className="me-2"
-                    ),
-                    dbc.Button(
-                        "⏹️ Durdur",
-                        id="stop-button",
-                        color="danger",
-                        size="lg",
-                        disabled=True
-                    )
+                    dbc.Button("▶️ Başlat", id="start-button", color="success", size="lg", className="me-2"),
+                    dbc.Button("⏹️ Durdur", id="stop-button", color="danger", size="lg", disabled=True)
                 ])
             ], width=12, className="text-center")
         ])
     ])
 ])
+
 stats_panel = dbc.Card([dbc.CardHeader("Anlık Sensör Değerleri", className="bg-info text-white"), dbc.CardBody(dbc.Row(
     [dbc.Col(html.Div([html.H6("Mevcut Açı:"), html.H4(id='current-angle', children="--°")]), width=3,
              className="text-center border-end"),

@@ -513,6 +513,7 @@ def handle_start_stop_operations(start_clicks, stop_clicks, mode,
     if not ctx.triggered:
         return "▶️ Başlat", False, True
 
+
     button_id = ctx.triggered[0]["prop_id"].split(".")[0]
 
     if button_id == "start-button" and start_clicks:

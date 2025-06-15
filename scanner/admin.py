@@ -5,14 +5,13 @@ from scanner.models import Scan, ScanPoint, AIModelConfiguration
 from django import forms
 
 class ScanPointInline(admin.TabularInline):
-    """Scan detay sayfasında ilişkili noktaları göstermek için kullanılır."""
     model = ScanPoint
     extra = 0  # Yeni nokta ekleme alanı gösterme
     readonly_fields = ('derece', 'mesafe_cm', 'hiz_cm_s', 'timestamp', 'x_cm', 'y_cm') # Noktalar değiştirilemez olmalı
-    can_delete = False # Admin'den nokta silmeyi engelle
+    can_delete = False
 
     def has_add_permission(self, request, obj=None):
-        return False # Yeni nokta ekleme butonunu kaldır
+        return False
 
 
 @admin.register(Scan)
@@ -77,7 +76,6 @@ class ScanPointAdmin(admin.ModelAdmin):
     search_fields = ('scan__id',)
 
 
-# API anahtarını admin panelinde maskelemek için özel bir form
 class AIModelConfigurationForm(forms.ModelForm):
     api_key = forms.CharField(widget=forms.PasswordInput(render_value=True),
                               help_text="API anahtarınızı buraya girin. Kaydedildikten sonra güvenlik için gizlenir.")
@@ -90,7 +88,7 @@ class AIModelConfigurationForm(forms.ModelForm):
 @admin.register(AIModelConfiguration)
 class AIModelConfigurationAdmin(admin.ModelAdmin):
     form = AIModelConfigurationForm
-    list_display = ('name', 'model_provider', 'model_name', 'is_active', 'updated_at')
-    list_filter = ('is_active', 'model_provider')
+    list_display = ('name', 'model_name', 'is_active', 'updated_at')
+    list_filter = ('is_active',)
     search_fields = ('name', 'model_name')
     list_editable = ('is_active',)

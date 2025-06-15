@@ -119,8 +119,6 @@ class ScanPoint(models.Model):
     y_cm = models.FloatField(null=True, blank=True)
     z_cm = models.FloatField(null=True, blank=True)
 
-    # Artık kullanılmıyorsa bu alan kaldırılabilir
-    # mesafe_cm_2 = models.FloatField(null=True, blank=True, verbose_name="2. Sensör Mesafe (cm)")
 
     class Meta:
         ordering = ['timestamp']

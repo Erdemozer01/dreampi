@@ -484,19 +484,17 @@ def update_system_card(n):
     return status_text, status_class, cpu, f"{cpu:.1f}%", ram, f"{ram:.1f}%"
 
 
-# 6. Anlık sensör değerleri panelini günceller
-# 6. Anlık sensör değerleri panelini (açı, mesafe, hız vb.) günceller
+# 6. Anlık sensör değerleri panelini günceller (5 Çıktılı Tam Sürüm)
 @app.callback(
     [Output('current-angle', 'children'),
      Output('current-distance', 'children'),
-     Output('current-speed', 'children'),  # Eksik olan çıktı eklendi
-     Output('current-distance-col', 'style'),
-     Output('max-detected-distance', 'children')],
+     Output('current-speed', 'children'),  # Hız için 3. çıktı
+     Output('current-distance-col', 'style'),  # 4. çıktı
+     Output('max-detected-distance', 'children')],  # 5. çıktı
     [Input('latest-scan-points-store', 'data'),
      State('latest-scan-object-store', 'data')]
 )
 def update_realtime_values(points_json, scan_json):
-    # Varsayılan değerler
     style = {'padding': '10px', 'transition': 'background-color 0.5s ease', 'borderRadius': '5px'}
     default_return = ("--°", "-- cm", "-- cm/s", style, "-- cm")
 
@@ -506,26 +504,21 @@ def update_realtime_values(points_json, scan_json):
     try:
         df = pd.read_json(io.StringIO(points_json), orient='split')
         scan = json.loads(scan_json)
+        if df.empty:
+            return default_return
     except Exception:
         return default_return
 
-    if df.empty:
-        return default_return
-
-    # En son noktayı al
     point = df.sort_values(by='id', ascending=False).iloc[0]
 
-    # Tüm değerleri hesapla
     angle = f"{point.get('derece', 0.0):.1f}°"
     dist = f"{point.get('mesafe_cm', 0.0):.1f} cm"
-    speed = f"{point.get('hiz_cm_s', 0.0):.1f} cm/s"  # Hız değeri eklendi
+    speed = f"{point.get('hiz_cm_s', 0.0):.1f} cm/s"  # Hız değeri hesaplanıyor
 
-    # Buzzer için stil güncellemesi
     buzzer_dist = scan.get('buzzer_distance_setting')
     if buzzer_dist is not None and 0 < point['mesafe_cm'] <= buzzer_dist:
         style.update({'backgroundColor': '#d9534f', 'color': 'white'})
 
-    # Max mesafe hesaplaması
     df_valid = df[df['mesafe_cm'] > 0]
     max_dist_val = df_valid['mesafe_cm'].max() if not df_valid.empty else None
     max_dist = f"{max_dist_val:.1f} cm" if pd.notnull(max_dist_val) else "-- cm"

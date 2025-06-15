@@ -108,11 +108,18 @@ def stop_current_operation(mode):
     return html.Span([html.I(className="fa-solid fa-play me-2"), "Başlat"]), False, True
 
 
-def start_mapping_mode(scan_angle, step_angle, buzzer_dist, fixed_tilt):
+def start_mapping_mode(h_angle, h_step, v_angle, v_step, buzzer_dist):
     try:
         stop_all_scripts()
-        cmd = [sys.executable, SENSOR_SCRIPT_PATH, "--scan-angle", str(scan_angle), "--step-angle", str(step_angle),
-               "--buzzer-distance", str(buzzer_dist), "--fixed-tilt", str(fixed_tilt)]
+        cmd = [
+            sys.executable,
+            SENSOR_SCRIPT_PATH,
+            "--h-angle", str(h_angle),
+            "--h-step", str(h_step),
+            "--v-angle", str(v_angle),     # YENİ ARGÜMAN
+            "--v-step", str(v_step),       # YENİ ARGÜMAN
+            "--buzzer-distance", str(buzzer_dist)
+        ]
         log_file = open("sensor_script_live.log", "w")
         subprocess.Popen(cmd, stdout=log_file, stderr=log_file, start_new_session=True)
         return html.Span([html.I(className="fa-solid fa-spinner fa-spin me-2"), "Haritalama..."]), True, False
@@ -232,33 +239,53 @@ control_panel = dbc.Card([
             dcc.RadioItems(id='operation-mode', options=[
                 {'label': html.Span([html.I(className="fa-solid fa-map-location-dot me-2"), " Haritalama Modu"]),
                  'value': 'mapping'},
+                # Diğer modlar şimdilik devre dışı
                 {'label': html.Span([html.I(className="fa-solid fa-robot me-2"), " Otonom Sürüş Modu"]),
                  'value': 'autonomous', 'disabled': True},
                 {'label': html.Span([html.I(className="fa-solid fa-gamepad me-2"), " Manuel Kontrol"]),
                  'value': 'manual', 'disabled': True}],
                            value='mapping', labelStyle={'display': 'block', 'margin': '5px 0'}, className="mb-3")])]),
+
+        # Sadece Haritalama Modu için parametreler
         html.Div(id='mapping-parameters', children=[
+            # YATAY AYARLAR
             dbc.Row([
-                dbc.Col([html.Label([html.I(className="fa-solid fa-expand me-2"), "Tarama Açısı (°):"],
+                dbc.Col([html.Label([html.I(className="fa-solid fa-arrows-left-right me-2"), "Yatay Tarama Açısı (°):"],
                                     className="fw-bold"),
-                         dbc.Input(id='scan-angle-input', type='number', value=270.0, step=10)], width=6),
-                dbc.Col([html.Label([html.I(className="fa-solid fa-shoe-prints me-2"), "Adım Açısı (°):"],
+                         dbc.Input(id='h-scan-angle-input', type='number', value=360.0, step=10)], width=6),
+                dbc.Col([html.Label([html.I(className="fa-solid fa-shoe-prints me-2"), "Yatay Adım Açısı (°):"],
                                     className="fw-bold"),
-                         dbc.Input(id='step-angle-input', type='number', value=10.0, step=0.5)], width=6)],
+                         dbc.Input(id='h-step-angle-input', type='number', value=20.0, step=1)], width=6)],
                 className="mb-2"),
+
+            # DİKEY AYARLAR (YENİ EKLENDİ)
+            dbc.Row([
+                dbc.Col([html.Label([html.I(className="fa-solid fa-arrows-up-down me-2"), "Dikey Tarama Açısı (°):"],
+                                    className="fw-bold"),
+                         dbc.Input(id='v-scan-angle-input', type='number', value=360.0, step=10)], width=6),
+                dbc.Col([html.Label(
+                    [html.I(className="fa-solid fa-shoe-prints fa-rotate-90 me-2"), "Dikey Adım Açısı (°):"],
+                    className="fw-bold"),
+                         dbc.Input(id='v-step-angle-input', type='number', value=10.0, step=1)], width=6)],
+                className="mb-2"),
+
+            # DİĞER AYARLAR
             dbc.Row([
                 dbc.Col([html.Label([html.I(className="fa-solid fa-volume-high me-2"), "Buzzer Mesafesi (cm):"],
                                     className="fw-bold"),
-                         dbc.Input(id='buzzer-distance-input', type='number', value=10)], width=6),
-                dbc.Col([html.Label([html.I(className="fa-solid fa-up-down me-2"), "Sabit Dikey Açı (°):"],
-                                    className="fw-bold"),
-                         dbc.Input(id='fixed-tilt-angle-input', type='number', value=45.0, step=5)], width=6)],
-                className="mb-3")]),
+                         dbc.Input(id='buzzer-distance-input', type='number', value=15)], width=6)
+            ], className="mb-3")
+        ]),
+
+        # KONTROL BUTONLARI
         dbc.Row([dbc.Col(dbc.ButtonGroup([
             dbc.Button([html.I(className="fa-solid fa-play me-2"), "Başlat"], id="start-button", color="success",
                        size="lg", className="me-2"),
             dbc.Button([html.I(className="fa-solid fa-stop me-2"), "Durdur"], id="stop-button", color="danger",
-                       size="lg", disabled=True)]), width=12, className="text-center")])])])
+                       size="lg", disabled=True)]),
+            width=12, className="text-center")])
+    ])
+])
 
 stats_panel = dbc.Card([dbc.CardHeader([html.I(className="fa-solid fa-gauge-simple me-2"), "Anlık Sensör Değerleri"]),
                         dbc.CardBody(dbc.Row([
@@ -375,20 +402,33 @@ def toggle_mode_parameters(selected_mode):
 
 
 # 3. Başlat/Durdur Butonları
+# 3. Başlat/Durdur butonlarını yönetir ve ilgili arka plan script'lerini çalıştırır
 @app.callback(
-    [Output("start-button", "children"), Output("start-button", "disabled"), Output("stop-button", "disabled")],
-    [Input("start-button", "n_clicks"), Input("stop-button", "n_clicks")],
-    [State("operation-mode", "value"), State("scan-angle-input", "value"), State("step-angle-input", "value"),
-     State("buzzer-distance-input", "value"), State("fixed-tilt-angle-input", "value")]
+    [Output("start-button", "children"),
+     Output("start-button", "disabled"),
+     Output("stop-button", "disabled")],
+    [Input("start-button", "n_clicks"),
+     Input("stop-button", "n_clicks")],
+    [State("operation-mode", "value"),
+     State("h-scan-angle-input", "value"),
+     State("h-step-angle-input", "value"),
+     State("v-scan-angle-input", "value"),  # YENİ STATE
+     State("v-step-angle-input", "value"),  # YENİ STATE
+     State("buzzer-distance-input", "value")]
 )
-def handle_start_stop_operations(start_clicks, stop_clicks, mode, scan_angle, step_angle, buzzer_dist, fixed_tilt):
+def handle_start_stop_operations(start_clicks, stop_clicks, mode, h_angle, h_step, v_angle, v_step, buzzer_dist):
     ctx = dash.callback_context
-    if not ctx.triggered: return no_update, no_update, no_update
+    if not ctx.triggered:
+        return no_update, no_update, no_update
+
     button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
     if button_id == "start-button" and mode == 'mapping':
-        return start_mapping_mode(scan_angle, step_angle, buzzer_dist, fixed_tilt)
+        # Yeni değerler start_mapping_mode fonksiyonuna gönderiliyor
+        return start_mapping_mode(h_angle, h_step, v_angle, v_step, buzzer_dist)
     elif button_id == "stop-button":
         return stop_current_operation(mode)
+
     return no_update, no_update, no_update
 
 

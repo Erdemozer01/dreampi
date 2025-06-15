@@ -57,10 +57,9 @@ DEFAULT_UI_STEPS_PER_REVOLUTION = 4096
 # dash_apps.py içine eklenecek sabitler
 AUTONOMOUS_SCRIPT_FILENAME = 'autonomous_drive.py'
 AUTONOMOUS_SCRIPT_PATH = os.path.join(os.getcwd(), AUTONOMOUS_SCRIPT_FILENAME)
-AUTONOMOUS_SCRIPT_LOCK_FILE = '/tmp/autonomous_drive_script.lock'
-AUTONOMOUS_SCRIPT_PID_FILE = '/tmp/autonomous_drive_script.pid'
 
-app = DjangoDash('DreamPi', external_stylesheets=[dbc.themes.BOOTSTRAP])
+
+app = DjangoDash('DreamPi', external_stylesheets=[dbc.themes.BOOTSTRAP, FONT_AWESOME, dbc.icons.BOOTSTRAP, dbc.icons.FONT_AWESOME])
 
 # --- NAVBAR ---
 navbar = dbc.NavbarSimple(
@@ -322,58 +321,72 @@ def start_manual_mode():
 # --- ARAYÜZ BİLEŞENLERİ (LAYOUT) ---
 
 control_panel = dbc.Card([
-    dbc.CardHeader("🎛️ Sistem Kontrolü"),
+    # dbc.Icon kullanarak başlığa bir ayar çarkı ikonu ekliyoruz
+    dbc.CardHeader([dbc.Icon(className="fa-solid fa-gears me-2"), "Sistem Kontrolü"]),
     dbc.CardBody([
+        # Mod seçimine bir pusula ikonu
         dbc.Row([
             dbc.Col([
-                html.Label("🔄 Çalışma Modu:", className="fw-bold mb-2"),
-                dcc.RadioItems(id='operation-mode', options=[
-                    {'label': '📊 Haritalama Modu', 'value': 'mapping'},
-                    {'label': '🚗 Otonom Sürüş Modu', 'value': 'autonomous'},
-                    {'label': '🎮 Manuel Kontrol', 'value': 'manual'}
-                ], value='mapping', labelStyle={'display': 'block', 'margin': '5px 0'}, className="mb-3")
-            ])
+                html.Label([dbc.Icon(className="fa-solid fa-compass me-2"), "Çalışma Modu:"], className="fw-bold mb-2"),
+                dcc.RadioItems(
+                    id='operation-mode',
+                    options=[
+                        # İkonlar ve daha açıklayıcı metinler
+                        {'label': html.Span([dbc.Icon(className="fa-solid fa-map-location-dot me-2"), " Haritalama Modu"]), 'value': 'mapping'},
+                        {'label': html.Span([dbc.Icon(className="fa-solid fa-robot me-2"), " Otonom Sürüş Modu"]), 'value': 'autonomous'},
+                        {'label': html.Span([dbc.Icon(className="fa-solid fa-gamepad me-2"), " Manuel Kontrol"]), 'value': 'manual'}
+                    ],
+                    value='mapping',
+                    labelStyle={'display': 'block', 'margin': '5px 0'},
+                    className="mb-3"
+                )
+            ], width=12)
         ]),
+
+        # Otonom sürüş parametreleri (ikonlar eklendi)
         html.Div(id='autonomous-parameters', children=[
             dbc.Row([
                 dbc.Col([
-                    html.Label("🎯 Hedef Mesafe (cm):", className="fw-bold"),
+                    html.Label([dbc.Icon(className="fa-solid fa-bullseye me-2"), "Hedef Mesafe (cm):"], className="fw-bold"),
                     dbc.Input(id='target-distance', type='number', value=100, min=10, max=300, step=5)
                 ], width=6),
                 dbc.Col([
-                    html.Label("⚡ Hız Seviyesi:", className="fw-bold"),
+                    html.Label([dbc.Icon(className="fa-solid fa-gauge-high me-2"), "Hız Seviyesi:"], className="fw-bold"),
                     dcc.Slider(id='speed-level', min=1, max=5, step=1, value=3, marks={i: f'{i}' for i in range(1, 6)})
                 ], width=6)
             ], className="mb-3"),
         ], style={'display': 'none'}),
+
+        # Haritalama parametreleri (ikonlar eklendi)
         html.Div(id='mapping-parameters', children=[
             dbc.Row([
                 dbc.Col([
-                    html.Label("Tarama Açısı (°):", className="fw-bold"),
+                    html.Label([dbc.Icon(className="fa-solid fa-expand me-2"), "Tarama Açısı (°):"], className="fw-bold"),
                     dbc.Input(id='scan-angle-input', type='number', value=270.0, step=10)
                 ], width=6),
                 dbc.Col([
-                    html.Label("Adım Açısı (°):", className="fw-bold"),
+                    html.Label([dbc.Icon(className="fa-solid fa-shoe-prints me-2"), "Adım Açısı (°):"], className="fw-bold"),
                     dbc.Input(id='step-angle-input', type='number', value=10.0, step=0.5)
                 ], width=6)
             ], className="mb-2"),
             dbc.Row([
                 dbc.Col([
-                    html.Label("Buzzer Mesafesi (cm):", className="fw-bold"),
+                    html.Label([dbc.Icon(className="fa-solid fa-volume-high me-2"), "Buzzer Mesafesi (cm):"], className="fw-bold"),
                     dbc.Input(id='buzzer-distance-input', type='number', value=10)
                 ], width=6),
-                # YENİ GİRİŞ ALANI
                 dbc.Col([
-                    html.Label("Sabit Dikey Açı (°):", className="fw-bold"),
+                    html.Label([dbc.Icon(className="fa-solid fa-up-down me-2"), "Sabit Dikey Açı (°):"], className="fw-bold"),
                     dbc.Input(id='fixed-tilt-angle-input', type='number', value=45.0, step=5)
                 ], width=6)
             ], className="mb-3")
         ]),
+
+        # Başlat/Durdur butonları (ikonlar eklendi)
         dbc.Row([
             dbc.Col([
                 dbc.ButtonGroup([
-                    dbc.Button("▶️ Başlat", id="start-button", color="success", size="lg", className="me-2"),
-                    dbc.Button("⏹️ Durdur", id="stop-button", color="danger", size="lg", disabled=True)
+                    dbc.Button([dbc.Icon(className="fa-solid fa-play me-2"), "Başlat"], id="start-button", color="success", size="lg", className="me-2"),
+                    dbc.Button([dbc.Icon(className="fa-solid fa-stop me-2"), "Durdur"], id="stop-button", color="danger", size="lg", disabled=True)
                 ])
             ], width=12, className="text-center")
         ])

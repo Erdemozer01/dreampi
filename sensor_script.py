@@ -113,22 +113,65 @@ def _stop_all_motors():
 
 
 def release_resources_on_exit():
-    pid = os.getpid()
-    logger.info(f"[{pid}] Kaynaklar serbest bırakılıyor... Son durum: {script_exit_status_global}")
-    if current_scan_object_global and current_scan_object_global.status == Scan.Status.RUNNING:
-        try:
-            scan_to_update = Scan.objects.get(id=current_scan_object_global.id)
-            scan_to_update.status = script_exit_status_global
-            scan_to_update.end_time = timezone.now()
-            scan_to_update.save()
-            logger.info(f"Scan ID {scan_to_update.id} durumu '{script_exit_status_global}' olarak güncellendi.")
-        except Exception as e:
-            logger.error(f"Veritabanındaki tarama durumu güncellenirken hata oluştu: {e}")
+    """
+    Program sonlandığında tüm donanım kaynaklarını güvenli bir şekilde kapatır,
+    gerekirse analizi tetikler ve kilit dosyalarını temizler.
+    atexit tarafından otomatik olarak çağrılır.
+    """
+    # Fonksiyon içinde kullanılacak global değişkenler
+    global current_scan_object_global, lock_file_handle, sensor_1, sensor_2, script_exit_status_global
 
-    logger.info("Cihazlar kapatılıyor...")
-    if sensor_1: sensor_1.close()
-    if sensor_2: sensor_2.close()
+    pid = os.getpid()
+    logger.info(f"[{pid}] Kaynaklar serbest bırakılıyor... Betiğin son durumu: {script_exit_status_global}")
+
+    # --- 1. Veritabanı İşlemleri ---
+    if current_scan_object_global:
+        try:
+            # Nesnenin en güncel halini veritabanından al
+            scan_to_finalize = Scan.objects.get(id=current_scan_object_global.id)
+
+            # Eğer betik, taramayı başarıyla tamamladığı için çıkıyorsa...
+            if script_exit_status_global == Scan.Status.COMPLETED:
+                logger.info("Tarama tamamlandı. Analiz metodu çağrılıyor...")
+                scan_to_finalize.status = Scan.Status.COMPLETED
+                scan_to_finalize.end_time = timezone.now()
+                # Önce durumu ve bitiş zamanını kaydet
+                scan_to_finalize.save(update_fields=['status', 'end_time'])
+                # Sonra analizi çalıştır (bu da kendi içinde bir save yapacak)
+                scan_to_finalize.run_analysis_and_update()
+
+            # Eğer betik bir hata veya kesinti ile sonlanıyorsa ve durum hala 'Çalışıyor' ise...
+            elif scan_to_finalize.status == Scan.Status.RUNNING:
+                scan_to_finalize.status = script_exit_status_global
+                scan_to_finalize.end_time = timezone.now()
+                scan_to_finalize.save(update_fields=['status', 'end_time'])
+                logger.info(f"Scan ID {scan_to_finalize.id} durumu '{script_exit_status_global}' olarak güncellendi.")
+
+        except Scan.DoesNotExist:
+            logger.error("Temizleme sırasında veritabanında ilgili Scan nesnesi bulunamadı.")
+        except Exception as e:
+            logger.error(f"Veritabanı sonlandırma işlemleri sırasında hata: {e}", exc_info=True)
+
+    # --- 2. Donanım Kapatma İşlemleri ---
+    logger.info("Donanım cihazları kapatılıyor...")
+
+    # Arka plan hatasını önlemek için ÖNCE sensörleri kapat
+    if sensor_1:
+        try:
+            sensor_1.close()
+        except Exception as e:
+            logger.error(f"Sensor 1 kapatılırken hata: {e}")
+    if sensor_2:
+        try:
+            sensor_2.close()
+        except Exception as e:
+            logger.error(f"Sensor 2 kapatılırken hata: {e}")
+
+    time.sleep(0.1)  # Arka plan işlemlerinin durması için kısa bir an bekle
+
+    # Motorları ve diğer çevre birimlerini kapat
     _stop_all_motors()
+
     if buzzer and buzzer.is_active: buzzer.off()
     if lcd:
         try:
@@ -136,18 +179,22 @@ def release_resources_on_exit():
         except Exception:
             pass
     if led and led.is_active: led.off()
+
+    # --- 3. Dosya Kilitlerini Temizleme ---
     if lock_file_handle:
         try:
-            fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN);
+            fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN)
             lock_file_handle.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Kilit dosyası serbest bırakılırken hata: {e}")
+
     for fp in [PID_FILE_PATH, LOCK_FILE_PATH]:
         if os.path.exists(fp):
             try:
                 os.remove(fp)
             except OSError as e:
                 logger.error(f"Temizleme hatası: {fp} dosyası silinemedi: {e}")
+
     logger.info(f"[{pid}] Temizleme tamamlandı.")
 
 

@@ -607,8 +607,7 @@ def update_realtime_values(scan_json, points_json):
 # 7. Tarama analizi panelini (alan, çevre, genişlik, derinlik) günceller
 @app.callback(
     [Output('calculated-area', 'children'), Output('perimeter-length', 'children'), Output('max-width', 'children'),
-     Output('max-depth', 'children')],
-    Input('latest-scan-object-store', 'data')
+     Output('max-depth', 'children')],Input('latest-scan-object-store', 'data')
 )
 def update_analysis_panel(scan_json):
     if not scan_json: return "-- cm²", "-- cm", "-- cm", "-- cm"

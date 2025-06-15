@@ -301,7 +301,10 @@ def start_mapping_mode(scan_angle, step_angle, buzzer_dist, fixed_tilt):
             "--buzzer-distance", str(buzzer_dist),
             "--fixed-tilt", str(fixed_tilt)  # YENİ ARGÜMAN
         ]
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+        log_file = open("sensor_script_live.log", "w")
+        subprocess.Popen(cmd, stdout=log_file, stderr=log_file, start_new_session=True)
+
         return "🔄 Haritalama Çalışıyor...", True, False
     except Exception as e:
         print(f"Haritalama başlatma hatası: {e}")

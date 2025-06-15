@@ -702,7 +702,6 @@ def render_and_update_data_table(active_tab, points_json):
                                 fixed_rows={'headers': True}, style_table={'minHeight': '70vh', 'overflowY': 'auto'})
 
 
-
 # 11. Tüm grafikleri ve analiz metinlerini günceller
 @app.callback(
     [Output('scan-map-graph-3d', 'figure'), Output('scan-map-graph', 'figure'),

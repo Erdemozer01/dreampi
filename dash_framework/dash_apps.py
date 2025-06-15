@@ -600,7 +600,8 @@ def update_realtime_values(scan_json, points_json):
         return "--°", "-- cm", "-- cm/s", style, "-- cm"
 
     scan = json.loads(scan_json)
-    df = pd.read_json(points_json, orient='split')
+    df = pd.read_json(io.StringIO(points_json), orient='split')
+
 
     if df.empty:
         return "--°", "-- cm", "-- cm/s", style, "-- cm"
@@ -719,7 +720,7 @@ def update_all_graphs(scan_json, points_json):
         return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, "Tarama başlatın...", None
 
     scan = json.loads(scan_json)
-    df_pts = pd.read_json(points_json, orient='split')
+    df_pts = pd.read_json(io.StringIO(points_json), orient='split')
     figs = [go.Figure() for _ in range(5)]
     scan_id_for_revision = str(scan.get('id'))
 

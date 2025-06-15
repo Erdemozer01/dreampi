@@ -59,7 +59,7 @@ AUTONOMOUS_SCRIPT_FILENAME = 'autonomous_drive.py'
 AUTONOMOUS_SCRIPT_PATH = os.path.join(os.getcwd(), AUTONOMOUS_SCRIPT_FILENAME)
 
 
-app = DjangoDash('DreamPi', external_stylesheets=[dbc.themes.BOOTSTRAP, FONT_AWESOME, dbc.icons.BOOTSTRAP, dbc.icons.FONT_AWESOME])
+app = DjangoDash('DreamPi', external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP, dbc.icons.FONT_AWESOME])
 
 # --- NAVBAR ---
 navbar = dbc.NavbarSimple(

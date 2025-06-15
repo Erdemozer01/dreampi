@@ -302,7 +302,7 @@ if __name__ == "__main__":
         initial_angle = -SCAN_ANGLE / 2.0
         logger.info(f"Motorlar başlangıç pozisyonuna gidiyor: {initial_angle:.1f}°")
         move_motor_to_angle(initial_angle, STEPS_PER_REVOLUTION)
-        _stop_motor()
+
 
         num_scan_steps = int(SCAN_ANGLE / STEP_ANGLE) if STEP_ANGLE > 0 else 0
 
@@ -366,4 +366,3 @@ if __name__ == "__main__":
         logger.info("İşlem sonlanıyor. Motorlar sıfır pozisyonuna getiriliyor...")
         if MOTOR_BAGLI:
             move_motor_to_angle(0.0, STEPS_PER_REVOLUTION)
-        _stop_motor()

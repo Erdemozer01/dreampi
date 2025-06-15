@@ -14,38 +14,59 @@ class ScanPointInline(admin.TabularInline):
     def has_add_permission(self, request, obj=None):
         return False # Yeni nokta ekleme butonunu kaldır
 
+
 @admin.register(Scan)
 class ScanAdmin(admin.ModelAdmin):
     # Tarama listesinde gösterilecek alanlar
-    list_display = ('id', 'start_time', 'status', 'point_count', 'calculated_area_cm2')
+    list_display = ('id', 'start_time', 'status', 'get_point_count', 'calculated_area_cm2', 'calculated_volume_cm3')
     list_filter = ('status', 'start_time')
     search_fields = ('id', 'ai_commentary')
+    date_hierarchy = 'start_time'
 
     # Detay sayfasında alanları gruplama ve salt okunur yapma
+    # DÜZELTME: Alan adları models.py ile senkronize edildi ve yeni alanlar eklendi.
     fieldsets = (
         ('Genel Bilgiler', {
-            'fields': ('id', 'start_time', 'status')
+            'fields': ('id', 'start_time', 'end_time', 'status', 'point_count')
         }),
-        ('Tarama Ayarları', {
-            'classes': ('collapse',), # Gizlenebilir bölüm
-            'fields': ('start_angle_setting', 'end_angle_setting', 'step_angle_setting', 'buzzer_distance_setting', 'invert_motor_direction_setting')
+        ('Tarama Ayarları (Read-Only)', {
+            'classes': ('collapse',),  # Gizlenebilir bölüm
+            'fields': (
+                'h_scan_angle_setting', 'h_step_angle_setting',
+                'v_scan_angle_setting', 'v_step_angle_setting',
+                'steps_per_revolution_setting'
+            )
         }),
-        ('Analiz Sonuçları', {
-            'fields': ('calculated_area_cm2', 'perimeter_cm', 'max_width_cm', 'max_depth_cm')
+        ('Analiz Sonuçları (Read-Only)', {
+            'fields': (
+                'calculated_area_cm2', 'perimeter_cm',
+                'max_width_cm', 'max_depth_cm',
+                'max_height_cm', 'calculated_volume_cm3'
+            )
         }),
         ('Yapay Zeka Analizi', {
             'fields': ('ai_commentary',)
         }),
     )
-    readonly_fields = ('id', 'start_time')
+
+    # Bu alanlar admin panelinde sadece okunabilir olacak, değiştirilemez.
+    readonly_fields = (
+        'id', 'start_time', 'end_time', 'status', 'point_count',
+        'h_scan_angle_setting', 'h_step_angle_setting',
+        'v_scan_angle_setting', 'v_step_angle_setting',
+        'steps_per_revolution_setting', 'calculated_area_cm2',
+        'perimeter_cm', 'max_width_cm', 'max_depth_cm',
+        'max_height_cm', 'calculated_volume_cm3'
+    )
 
     # Tarama noktalarını aynı sayfada göstermek için inline ekle
     inlines = [ScanPointInline]
 
-    def point_count(self, obj):
+    @admin.display(description="Nokta Sayısı")
+    def get_point_count(self, obj):
         # Listede her taramanın kaç noktası olduğunu gösteren özel bir alan
-        return obj.points.count()
-    point_count.short_description = "Nokta Sayısı"
+        # Veritabanı sorgusunu azaltmak için modeldeki hazır alanı kullanıyoruz
+        return obj.point_count
 
 
 @admin.register(ScanPoint)

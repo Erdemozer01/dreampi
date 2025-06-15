@@ -111,46 +111,87 @@ def _stop_motor():
 
 
 def release_resources_on_exit():
+    """
+    Program sonlandığında tüm donanım kaynaklarını güvenli bir şekilde kapatır
+    ve kilit dosyalarını temizler. atexit tarafından otomatik olarak çağrılır.
+    """
+    # Global değişkenlere erişeceğimizi belirtiyoruz
+    global current_scan_object_global, lock_file_handle, sensor_1, sensor_2
+
     pid = os.getpid()
     logger.info(f"[{pid}] Kaynaklar serbest bırakılıyor... Son durum: {script_exit_status_global}")
+
+    # 1. Eğer tarama hala "RUNNING" durumundaysa, veritabanındaki durumunu güncelle
     if current_scan_object_global and current_scan_object_global.status == Scan.Status.RUNNING:
         try:
+            # Veritabanından en güncel halini al
             scan_to_update = Scan.objects.get(id=current_scan_object_global.id)
             scan_to_update.status = script_exit_status_global
             scan_to_update.end_time = timezone.now()
             scan_to_update.save()
+            logger.info(f"Scan ID {scan_to_update.id} durumu '{script_exit_status_global}' olarak güncellendi.")
         except Exception as e:
-            logger.error(f"DB çıkış hatası: {e}")
+            logger.error(f"Veritabanındaki tarama durumu güncellenirken hata oluştu: {e}")
 
+    # 2. Arka plan thread hatasını önlemek için ÖNCE sensörleri kapat
+    logger.info("Sensörlerin arka plan okumaları durduruluyor...")
+    if sensor_1:
+        try:
+            sensor_1.close()
+            sensor_1 = None
+        except Exception as e:
+            logger.error(f"Sensor 1 kapatılırken hata: {e}")
+    if sensor_2:
+        try:
+            sensor_2.close()
+            sensor_2 = None
+        except Exception as e:
+            logger.error(f"Sensor 2 kapatılırken hata: {e}")
+
+    # Arka plan işlemlerinin sonlanması için çok kısa bir bekleme süresi
+    time.sleep(0.1)
+
+    # 3. Motorları ve diğer basit aygıtları kapat
     _stop_motor()
-    if buzzer and buzzer.is_active: buzzer.off()
+
+    if buzzer and buzzer.is_active:
+        buzzer.off()
+
     if lcd:
         try:
             lcd.clear()
-        except:
-            pass
-    if led and led.is_active: led.off()
+        except Exception:
+            pass  # LCD zaten kapalıysa veya ulaşılamıyorsa hata vermesini engelle
 
-    all_devices = [sensor_1, sensor_2, buzzer, lcd, led] + list(motor_devices or [])
+    if led and led.is_active:
+        led.off()
+
+    # 4. Geriye kalan tüm gpiozero nesnelerini kapat
+    # Sensörler zaten kapatıldığı için listeye dahil edilmiyor
+    logger.info("Kalan GPIO cihazları kapatılıyor...")
+    all_devices = [buzzer, lcd, led] + list(motor_devices or [])
     for dev in all_devices:
         if dev and hasattr(dev, 'close'):
             try:
                 dev.close()
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Cihaz kapatılırken küçük bir hata oluştu: {e}")
 
+    # 5. Kilit ve PID dosyalarını serbest bırak ve sil
     if lock_file_handle:
         try:
             fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN)
             lock_file_handle.close()
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Kilit dosyası serbest bırakılırken hata oluştu: {e}")
+
     for fp in [PID_FILE_PATH, LOCK_FILE_PATH]:
         if os.path.exists(fp):
             try:
                 os.remove(fp)
             except OSError as e:
-                logger.error(f"Hata: {fp} dosyası silinemedi: {e}")
+                logger.error(f"Temizleme hatası: {fp} dosyası silinemedi: {e}")
+
     logger.info(f"[{pid}] Temizleme tamamlandı.")
 
 

@@ -70,6 +70,9 @@ class Scan(models.Model):
     end_time = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=3, choices=Status.choices, default=Status.RUNNING)
 
+    vertical_step_angle_setting = models.FloatField(null=True, blank=True, verbose_name="Dikey Adım Açısı Ayarı")
+
+
     # Analiz Sonuçları
     calculated_area_cm2 = models.FloatField(null=True, blank=True)
     perimeter_cm = models.FloatField(null=True, blank=True)

@@ -5,7 +5,7 @@ from gpiozero import DistanceSensor
 
 # Lütfen pinlerin doğru olduğundan emin olun
 TRIG_PIN_1, ECHO_PIN_1 = 23, 24
-TRIG_PIN_2, ECHO_PIN_2 = 17, 18
+TRIG_PIN_2, ECHO_PIN_2 = 17, 27
 
 print(">>> Ultrasonik Sensör Testi Başlatılıyor...")
 print(">>> Çıkmak için CTRL+C tuşlarına basın.")

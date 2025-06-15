@@ -10,6 +10,7 @@ import math
 import traceback
 import logging
 
+
 # Logger konfigürasyonu
 logging.basicConfig(
     level=logging.INFO,

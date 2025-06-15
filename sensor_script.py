@@ -272,24 +272,31 @@ def create_scan_entry(h_angle, h_step, v_angle, v_step, buzzer_dist, steps_per_r
         return False
 
 
-# --- ANA ÇALIŞMA BLOĞU ---
+# --- ANA ÇALIŞMA BLOĞU
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Çift Step Motorlu Raster Tarama Scripti")
+
+    # Argümanlar, arayüz (dashboard.py) tarafından gönderilenlerle tam uyumlu hale getirildi
     parser.add_argument("--h-angle", type=float, default=DEFAULT_H_SCAN_ANGLE)
     parser.add_argument("--h-step", type=float, default=DEFAULT_H_STEP_ANGLE)
     parser.add_argument("--v-angle", type=float, default=DEFAULT_V_SCAN_ANGLE)
     parser.add_argument("--v-step", type=float, default=DEFAULT_V_STEP_ANGLE)
-    parser.add_argument("--buzzer-distance", type=int, default=DEFAULT_BUZZER_DISTANCE)
+    parser.add_argument("--buzzer-distance", type=int, default=DEFAULT_BUZZER_DISTANCE)  # Buzzer argümanı eklendi
     parser.add_argument("--steps-per-rev", type=int, default=DEFAULT_STEPS_PER_REV)
+
     args = parser.parse_args()
 
+    # --- Başlangıç Kontrolleri (Sadece bir kez çalıştırılır) ---
     atexit.register(release_resources_on_exit)
-    if not acquire_lock_and_pid() or not init_hardware(): sys.exit(1)
+    if not acquire_lock_and_pid() or not init_hardware():
+        sys.exit(1)
 
+    # Veritabanı kaydı oluşturulur
     if not create_scan_entry(args.h_angle, args.h_step, args.v_angle, args.v_step, args.buzzer_distance,
                              args.steps_per_rev):
         sys.exit(1)
 
+    # Ana tarama mantığı
     try:
         h_initial_angle = -args.h_angle / 2.0
         v_initial_angle = 0.0
@@ -308,6 +315,7 @@ if __name__ == "__main__":
             logger.info(f"\nYatay Açı: {h_motor_ctx['current_angle']:.1f}° ({i + 1}/{num_h_steps + 1})")
 
             for j in range(num_v_steps + 1):
+                # "Ping-pong" tarama mantığı
                 if i % 2 == 0:
                     target_v_angle = v_initial_angle + (j * args.v_step)
                 else:
@@ -316,15 +324,23 @@ if __name__ == "__main__":
                 move_motor_to_angle(v_motor_devices, v_motor_ctx, target_v_angle, args.steps_per_rev,
                                     INVERT_V_MOTOR_DIRECTION)
 
+                # Sensör okuması ve veritabanına kayıt
                 dist_cm = (sensor_1.distance * 100) if sensor_1.distance is not None else -1.0
                 logger.info(f"  -> Dikey: {v_motor_ctx['current_angle']:.1f}°, Mesafe: {dist_cm:.1f}cm")
+
+                # Buzzer kontrolü
+                if dist_cm > 0 and args.buzzer_distance > 0:
+                    if dist_cm < args.buzzer_distance:
+                        buzzer.on()
+                    else:
+                        buzzer.off()
 
                 if dist_cm > 0:
                     angle_pan_rad = math.radians(h_motor_ctx['current_angle'])
                     angle_tilt_rad = math.radians(v_motor_ctx['current_angle'])
-                    h_radius = dist_cm * math.cos(angle_tilt_rad);
+                    h_radius = dist_cm * math.cos(angle_tilt_rad)
                     z = dist_cm * math.sin(angle_tilt_rad)
-                    x = h_radius * math.cos(angle_pan_rad);
+                    x = h_radius * math.cos(angle_pan_rad)
                     y = h_radius * math.sin(angle_pan_rad)
 
                     ScanPoint.objects.create(

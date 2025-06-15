@@ -704,70 +704,88 @@ def render_and_update_data_table(active_tab, points_json):
 
 
 # 11. Tüm grafikleri ve analiz metinlerini günceller
+# dashboard.py içine
+
 @app.callback(
-    [Output('scan-map-graph-3d', 'figure'), Output('scan-map-graph', 'figure'),
-     Output('polar-regression-graph', 'figure'), Output('polar-graph', 'figure'),
-     Output('time-series-graph', 'figure'), Output('environment-estimation-text', 'children'),
+    [Output('scan-map-graph-3d', 'figure'),
+     Output('scan-map-graph', 'figure'),
+     Output('polar-regression-graph', 'figure'),
+     Output('polar-graph', 'figure'),
+     Output('time-series-graph', 'figure'),
+     Output('environment-estimation-text', 'children'),
      Output('clustered-data-store', 'data')],
     [Input('latest-scan-object-store', 'data'),
      Input('latest-scan-points-store', 'data')]
 )
 def update_all_graphs(scan_json, points_json):
-    print(f">>> Grafik Güncelleme: Gelen Veri Boyutu={len(points_json) if points_json else 'Yok'}")
+    # --- HATA AYIKLAMA İÇİN PRINT İFADELERİ ---
+    print("--- update_all_graphs callback'i tetiklendi ---")
+    if not points_json:
+        print(">>> Gelen nokta verisi (points_json) boş veya None. Boş grafikler gönderiliyor.")
+        # Veri yoksa, tüm grafikler için boş bir figür ve diğer çıktılar için "güncelleme yok" döndür
+        empty_fig = go.Figure(
+            layout={'title': 'Veri Bekleniyor...', 'xaxis': {'visible': False}, 'yaxis': {'visible': False}})
+        return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, no_update, no_update
 
-    empty_fig = go.Figure(layout={'title': 'Veri Bekleniyor...'})
-    if not scan_json or not points_json:
-        return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, "Tarama başlatın...", None
+    print(f">>> Gelen verinin ilk 100 karakteri: {points_json[:100]}")
 
-    scan = json.loads(scan_json)
-    df_pts = pd.read_json(io.StringIO(points_json), orient='split')
-    figs = [go.Figure() for _ in range(5)]
-    scan_id_for_revision = str(scan.get('id'))
+    try:
+        # Gelen JSON verisini DataFrame'e çevir
+        df_pts = pd.read_json(io.StringIO(points_json), orient='split')
 
-    no_data_fig = go.Figure(layout={'title': f'Tarama #{scan_id_for_revision} için nokta verisi yok'})
-    if df_pts.empty:
-        return no_data_fig, no_data_fig, no_data_fig, no_data_fig, no_data_fig, "Nokta verisi bulunamadı.", None
+        if df_pts.empty:
+            print(">>> DataFrame oluşturuldu ancak içi boş. Boş grafikler gönderiliyor.")
+            empty_fig = go.Figure(layout={'title': 'Henüz Nokta Verisi Yok...'})
+            return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, no_update, no_update
 
-    df_val = df_pts[(df_pts['mesafe_cm'] > 0.1) & (df_pts['mesafe_cm'] < 400.0)].copy()
+        print(f">>> {len(df_pts)} adet nokta başarıyla DataFrame'e yüklendi.")
 
-    if not df_val.empty:
-        figs[0].add_trace(go.Scatter3d(x=df_val['y_cm'], y=df_val['x_cm'], z=df_val['z_cm'], mode='markers',
-                                       marker=dict(size=2, color=df_val['z_cm'], colorscale='Viridis', showscale=True,
-                                                   colorbar_title='Yükseklik (cm)')))
+        # --- EN BASİT GRAFİĞİ OLUŞTURMA ---
+        # Sadece 2D harita için basit bir scatter plot oluşturuyoruz
+        fig_2d_simple = go.Figure()
 
-    est_text, store_data = "Analiz için yetersiz veri.", None
-    if len(df_val) >= 10:
-        est_cart, df_clus = analyze_environment_shape(figs[1], df_val.copy())
-        store_data = df_clus.to_json(orient='split')
-        add_scan_rays(figs[1], df_val);
-        add_sector_area(figs[1], df_val)
-        line_data, est_polar = analyze_polar_regression(df_val)
-        figs[2].add_trace(go.Scatter(x=df_val['derece'], y=df_val['mesafe_cm'], mode='markers', name='Noktalar'))
-        if line_data: figs[2].add_trace(go.Scatter(x=line_data['x'], y=line_data['y'], mode='lines', name='Regresyon',
-                                                   line=dict(color='red', width=3)))
-        update_polar_graph(figs[3], df_val)
-        df_val['timestamp'] = pd.to_datetime(df_val['timestamp'])
-        update_time_series_graph(figs[4], df_val)
-        est_text = html.Div([html.P(estimate_geometric_shape(df_val), className="fw-bold"), html.Hr(),
-                             html.P(find_clearest_path(df_val), className="fw-bold text-primary"), html.Hr(),
-                             html.P(f"Kümeleme: {est_cart}"), html.Hr(), html.P(f"Regresyon: {est_polar}")])
+        # Noktaları haritaya ekle
+        fig_2d_simple.add_trace(
+            go.Scatter(
+                x=df_pts['y_cm'],
+                y=df_pts['x_cm'],
+                mode='markers',
+                marker=dict(color='blue', size=5),
+                name='Taranan Noktalar'
+            )
+        )
 
-    for i in range(5): add_sensor_position(figs[i]) if i != 0 else figs[i].add_trace(
-        go.Scatter3d(x=[0], y=[0], z=[0], mode='markers', marker=dict(size=5, color='red'), name='Sensör'))
-    titles = ['Ortamın 3D Haritası', '2D Harita (Üstten Görünüm)', 'Açıya Göre Mesafe Regresyonu', 'Polar Grafik',
-              'Zaman Serisi - Mesafe']
-    for i, fig in enumerate(figs): fig.update_layout(title_text=titles[i], uirevision=scan_id_for_revision,
-                                                     legend=dict(orientation="h", yanchor="bottom", y=1.02,
-                                                                 xanchor="right", x=1),
-                                                     margin=dict(l=40, r=40, t=80, b=40))
-    figs[0].update_layout(
-        scene=dict(xaxis_title='Y Ekseni (cm)', yaxis_title='X Ekseni (cm)', zaxis_title='Z Ekseni (cm)',
-                   aspectmode='data'))
-    figs[1].update_layout(xaxis_title="Yatay Mesafe (cm)", yaxis_title="Dikey Mesafe (cm)", yaxis_scaleanchor="x",
-                          yaxis_scaleratio=1)
-    figs[2].update_layout(xaxis_title="Tarama Açısı (Derece)", yaxis_title="Mesafe (cm)")
+        # Sensörün konumunu ekle
+        fig_2d_simple.add_trace(
+            go.Scatter(
+                x=[0],
+                y=[0],
+                mode='markers',
+                marker=dict(color='red', size=10, symbol='diamond'),
+                name='Sensör'
+            )
+        )
 
-    return figs[0], figs[1], figs[2], figs[3], figs[4], est_text, store_data
+        fig_2d_simple.update_layout(
+            title_text='Basit 2D Tarama Haritası (Test)',
+            xaxis_title="Yatay Mesafe (cm)",
+            yaxis_title="Dikey Mesafe (cm)",
+            yaxis_scaleanchor="x",
+            yaxis_scaleratio=1
+        )
+
+        print(">>> Basit 2D grafik başarıyla oluşturuldu. Arayüze gönderiliyor.")
+
+        # Sadece 2D grafiği güncelle, diğerlerini boş bırak
+        empty_fig = go.Figure()
+        return empty_fig, fig_2d_simple, empty_fig, empty_fig, empty_fig, "Test Modu Aktif", None
+
+    except Exception as e:
+        print(f"!!! GRAFİK OLUŞTURULURKEN KRİTİK HATA: {e}")
+        traceback.print_exc()
+        # Hata durumunda boş grafikler gönder
+        empty_fig = go.Figure(layout={'title': f'Grafik Hatası: {e}'})
+        return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, "Grafik oluşturulamadı!", None
 
 
 # 12. Grafik sekmesindeki dropdown menüsüne göre ilgili grafiği gösterir

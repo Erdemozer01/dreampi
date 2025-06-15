@@ -116,9 +116,10 @@ def start_mapping_mode(h_angle, h_step, v_angle, v_step, buzzer_dist):
             SENSOR_SCRIPT_PATH,
             "--h-angle", str(h_angle),
             "--h-step", str(h_step),
-            "--v-angle", str(v_angle),     # YENİ ARGÜMAN
-            "--v-step", str(v_step),       # YENİ ARGÜMAN
+            "--v-angle", str(v_angle),
+            "--v-step", str(v_step),
             "--buzzer-distance", str(buzzer_dist)
+            # Gerekirse --steps-per-rev de buradan gönderilebilir
         ]
         log_file = open("sensor_script_live.log", "w")
         subprocess.Popen(cmd, stdout=log_file, stderr=log_file, start_new_session=True)

@@ -132,10 +132,15 @@ class ScanPoint(models.Model):
 
 
 class AIModelConfiguration(models.Model):
-    """
-    Farklı yapay zeka modellerinin yapılandırmalarını ve API anahtarlarını
-    veritabanında saklamak için kullanılan model.
-    """
+
+    PROVIDER_CHOICES = [
+        ('Google', 'Google'),
+        ('OpenAI', 'OpenAI'),
+        ('Other', 'Diğer'),
+    ]
+    model_provider = models.CharField(max_length=50, choices=PROVIDER_CHOICES, default='Google', verbose_name="Sağlayıcı")
+
+
     name = models.CharField(max_length=100, unique=True, verbose_name="Yapılandırma Adı")
     model_name = models.CharField(max_length=100, verbose_name="Model Adı (örn: gemini-1.5-flash-latest)")
     api_key = models.CharField(max_length=255, help_text="Bu modele ait API anahtarı.")

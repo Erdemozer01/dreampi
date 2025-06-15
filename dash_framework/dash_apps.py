@@ -321,20 +321,20 @@ def start_manual_mode():
 # --- ARAYÜZ BİLEŞENLERİ (LAYOUT) ---
 
 control_panel = dbc.Card([
-    # dbc.Icon kullanarak başlığa bir ayar çarkı ikonu ekliyoruz
-    dbc.CardHeader([dbc.Icon(className="fa-solid fa-gears me-2"), "Sistem Kontrolü"]),
+    # html.I kullanarak başlığa bir ayar çarkı ikonu ekliyoruz
+    dbc.CardHeader([html.I(className="fa-solid fa-gears me-2"), "Sistem Kontrolü"]),
     dbc.CardBody([
         # Mod seçimine bir pusula ikonu
         dbc.Row([
             dbc.Col([
-                html.Label([dbc.Icon(className="fa-solid fa-compass me-2"), "Çalışma Modu:"], className="fw-bold mb-2"),
+                html.Label([html.I(className="fa-solid fa-compass me-2"), "Çalışma Modu:"], className="fw-bold mb-2"),
                 dcc.RadioItems(
                     id='operation-mode',
                     options=[
-                        # İkonlar ve daha açıklayıcı metinler
-                        {'label': html.Span([dbc.Icon(className="fa-solid fa-map-location-dot me-2"), " Haritalama Modu"]), 'value': 'mapping'},
-                        {'label': html.Span([dbc.Icon(className="fa-solid fa-robot me-2"), " Otonom Sürüş Modu"]), 'value': 'autonomous'},
-                        {'label': html.Span([dbc.Icon(className="fa-solid fa-gamepad me-2"), " Manuel Kontrol"]), 'value': 'manual'}
+                        # İkonlar html.I ile oluşturuluyor
+                        {'label': html.Span([html.I(className="fa-solid fa-map-location-dot me-2"), " Haritalama Modu"]), 'value': 'mapping'},
+                        {'label': html.Span([html.I(className="fa-solid fa-robot me-2"), " Otonom Sürüş Modu"]), 'value': 'autonomous'},
+                        {'label': html.Span([html.I(className="fa-solid fa-gamepad me-2"), " Manuel Kontrol"]), 'value': 'manual'}
                     ],
                     value='mapping',
                     labelStyle={'display': 'block', 'margin': '5px 0'},
@@ -347,11 +347,11 @@ control_panel = dbc.Card([
         html.Div(id='autonomous-parameters', children=[
             dbc.Row([
                 dbc.Col([
-                    html.Label([dbc.Icon(className="fa-solid fa-bullseye me-2"), "Hedef Mesafe (cm):"], className="fw-bold"),
+                    html.Label([html.I(className="fa-solid fa-bullseye me-2"), "Hedef Mesafe (cm):"], className="fw-bold"),
                     dbc.Input(id='target-distance', type='number', value=100, min=10, max=300, step=5)
                 ], width=6),
                 dbc.Col([
-                    html.Label([dbc.Icon(className="fa-solid fa-gauge-high me-2"), "Hız Seviyesi:"], className="fw-bold"),
+                    html.Label([html.I(className="fa-solid fa-gauge-high me-2"), "Hız Seviyesi:"], className="fw-bold"),
                     dcc.Slider(id='speed-level', min=1, max=5, step=1, value=3, marks={i: f'{i}' for i in range(1, 6)})
                 ], width=6)
             ], className="mb-3"),
@@ -361,21 +361,21 @@ control_panel = dbc.Card([
         html.Div(id='mapping-parameters', children=[
             dbc.Row([
                 dbc.Col([
-                    html.Label([dbc.Icon(className="fa-solid fa-expand me-2"), "Tarama Açısı (°):"], className="fw-bold"),
+                    html.Label([html.I(className="fa-solid fa-expand me-2"), "Tarama Açısı (°):"], className="fw-bold"),
                     dbc.Input(id='scan-angle-input', type='number', value=270.0, step=10)
                 ], width=6),
                 dbc.Col([
-                    html.Label([dbc.Icon(className="fa-solid fa-shoe-prints me-2"), "Adım Açısı (°):"], className="fw-bold"),
+                    html.Label([html.I(className="fa-solid fa-shoe-prints me-2"), "Adım Açısı (°):"], className="fw-bold"),
                     dbc.Input(id='step-angle-input', type='number', value=10.0, step=0.5)
                 ], width=6)
             ], className="mb-2"),
             dbc.Row([
                 dbc.Col([
-                    html.Label([dbc.Icon(className="fa-solid fa-volume-high me-2"), "Buzzer Mesafesi (cm):"], className="fw-bold"),
+                    html.Label([html.I(className="fa-solid fa-volume-high me-2"), "Buzzer Mesafesi (cm):"], className="fw-bold"),
                     dbc.Input(id='buzzer-distance-input', type='number', value=10)
                 ], width=6),
                 dbc.Col([
-                    html.Label([dbc.Icon(className="fa-solid fa-up-down me-2"), "Sabit Dikey Açı (°):"], className="fw-bold"),
+                    html.Label([html.I(className="fa-solid fa-up-down me-2"), "Sabit Dikey Açı (°):"], className="fw-bold"),
                     dbc.Input(id='fixed-tilt-angle-input', type='number', value=45.0, step=5)
                 ], width=6)
             ], className="mb-3")
@@ -385,8 +385,8 @@ control_panel = dbc.Card([
         dbc.Row([
             dbc.Col([
                 dbc.ButtonGroup([
-                    dbc.Button([dbc.Icon(className="fa-solid fa-play me-2"), "Başlat"], id="start-button", color="success", size="lg", className="me-2"),
-                    dbc.Button([dbc.Icon(className="fa-solid fa-stop me-2"), "Durdur"], id="stop-button", color="danger", size="lg", disabled=True)
+                    dbc.Button([html.I(className="fa-solid fa-play me-2"), "Başlat"], id="start-button", color="success", size="lg", className="me-2"),
+                    dbc.Button([html.I(className="fa-solid fa-stop me-2"), "Durdur"], id="stop-button", color="danger", size="lg", disabled=True)
                 ])
             ], width=12, className="text-center")
         ])

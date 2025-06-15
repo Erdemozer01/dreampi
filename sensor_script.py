@@ -252,12 +252,19 @@ def move_motor_to_angle(motor_devices, motor_ctx, target_angle_deg, total_steps_
 def create_scan_entry(h_angle, h_step, v_angle, v_step, buzzer_dist, steps_per_rev):
     global current_scan_object_global
     try:
+        # Eski ve çalışan taramaları hata durumuyla kapat
         Scan.objects.filter(status=Scan.Status.RUNNING).update(status=Scan.Status.ERROR, end_time=timezone.now())
+
+        # DÜZELTME: Modeldeki yeni alan adları kullanılıyor
         current_scan_object_global = Scan.objects.create(
-            start_angle_setting=h_angle, step_angle_setting=h_step,
-            end_angle_setting=v_angle, vertical_step_angle_setting=v_step,
-            buzzer_distance_setting=buzzer_dist, steps_per_revolution_setting=steps_per_rev,
-            status=Scan.Status.RUNNING)
+            h_scan_angle_setting=h_angle,
+            h_step_angle_setting=h_step,
+            v_scan_angle_setting=v_angle,
+            v_step_angle_setting=v_step,
+            # buzzer_distance_setting alanı modelinizde yok, bu yüzden kaldırıldı veya eklenmeli
+            steps_per_revolution_setting=steps_per_rev,
+            status=Scan.Status.RUNNING
+        )
         logger.info(f"Veritabanında yeni tarama kaydı oluşturuldu: ID {current_scan_object_global.id}")
         return True
     except Exception as e:

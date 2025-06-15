@@ -303,8 +303,10 @@ def start_mapping_mode(scan_angle, step_angle, buzzer_dist, fixed_tilt):
             "--fixed-tilt", str(fixed_tilt)  # YENİ ARGÜMAN
         ]
 
+        print("Sensor script'i log dosyası ile başlatılıyor...")
         log_file = open("sensor_script_live.log", "w")
         subprocess.Popen(cmd, stdout=log_file, stderr=log_file, start_new_session=True)
+        # --- DEĞİŞİKLİK SONU ---
 
         return "🔄 Haritalama Çalışıyor...", True, False
     except Exception as e:
@@ -483,6 +485,8 @@ def update_data_stores(n):
 
         points_qs = scan.points.all().values('id', 'x_cm', 'y_cm', 'z_cm', 'derece', 'dikey_aci', 'mesafe_cm',
                                              'hiz_cm_s', 'timestamp')
+        print(f">>> Veri Çekme: Scan ID={scan.id if scan else 'Bulunamadı'}, Nokta Sayısı={len(points_qs)}")
+
         if not points_qs.exists():
             return scan_json, None
 
@@ -708,6 +712,8 @@ def render_and_update_data_table(active_tab, points_json):
      Input('latest-scan-points-store', 'data')]
 )
 def update_all_graphs(scan_json, points_json):
+    print(f">>> Grafik Güncelleme: Gelen Veri Boyutu={len(points_json) if points_json else 'Yok'}")
+
     empty_fig = go.Figure(layout={'title': 'Veri Bekleniyor...'})
     if not scan_json or not points_json:
         return empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, "Tarama başlatın...", None

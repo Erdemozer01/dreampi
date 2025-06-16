@@ -664,13 +664,12 @@ def display_cluster_info(clickData, stored_data_json):
         return True, "Hata", f"Küme bilgisi gösterilemedi: {e}"
 
 
-
 # 13. Seçilen AI modelini kullanarak tarama verilerini yorumlar
 @app.callback(
     [Output('ai-yorum-sonucu', 'children'),
      Output('ai-image', 'children')],
     Input('ai-model-dropdown', 'value'),
-    [State('latest-scan-object-store', 'data'),  # Scan nesnesini de alıyoruz
+    [State('latest-scan-object-store', 'data'),
      State('latest-scan-points-store', 'data')],
     prevent_initial_call=True
 )
@@ -685,6 +684,7 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
     from scanner.ai_analyzer import AIAnalyzerService
 
     # Google AI kütüphanesinin yüklü olup olmadığını kontrol et
+    # Bu import dosyanın en üstünde kalabilir çünkü Django'ya bağımlı değil.
     if genai is None:
         return dbc.Alert("Google AI kütüphanesi (pip install google-generativeai) yüklü değil.", color="danger"), None
 
@@ -727,3 +727,5 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
     except Exception as e:
         traceback.print_exc()
         return dbc.Alert(f"Yapay zeka işlemi sırasında beklenmedik bir hata oluştu: {e}", color="danger"), None
+
+

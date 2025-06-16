@@ -67,15 +67,18 @@ class AIAnalyzerService:
             print(f"[ERROR] Gemini modelinden yanıt alınırken bir hata oluştu: {e}")
             return f"Analiz sırasında bir hata meydana geldi: {e}"
 
-    def generate_image_with_gemini(self, text_prompt: str) -> str:
+    # DÜZELTME: Fonksiyon adı, diğer dosyalarda çağrılan adla tutarlı olması için
+    # 'generate_image_with_imagen' olarak değiştirildi.
+    def generate_image_with_imagen(self, text_prompt: str) -> str:
         """
-        Verilen metin prompt'unu kullanarak Google'ın Gemini resim oluşturma modeli ile
+        Verilen metin prompt'unu kullanarak Google'ın resim oluşturma modeli ile
         bir resim oluşturur ve resmin data URI'ını döndürür. (DECODER)
         """
-        print(f"[INFO] Gemini resim modeli ile resim oluşturuluyor: '{text_prompt[:70]}...'")
+        print(f"[INFO] Resim oluşturma modeli ile resim oluşturuluyor: '{text_prompt[:70]}...'")
 
-        MODEL_NAME = "gemini-2.0-flash-preview-image-generation"
-        API_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:predict?key={self.config.api_key}"
+        # Gerçek model adı, API çağrısında kullanılacak
+        IMAGE_MODEL_NAME = "gemini-2.0-flash-preview-image-generation"
+        API_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{IMAGE_MODEL_NAME}:predict?key={self.config.api_key}"
 
         style_keywords = "photorealistic, 4k, digital art, futuristic, point cloud scan, cinematic lighting"
         full_image_prompt = f"{text_prompt}, {style_keywords}"

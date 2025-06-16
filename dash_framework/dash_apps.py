@@ -41,8 +41,9 @@ load_dotenv()
 # --- SABİTLER VE UYGULAMA BAŞLATMA ---
 SENSOR_SCRIPT_FILENAME = 'sensor_script.py'
 SENSOR_SCRIPT_PATH = os.path.join(os.getcwd(), SENSOR_SCRIPT_FILENAME)
-AUTONOMOUS_SCRIPT_PATH = os.path.join(os.getcwd(), 'autonomous_drive.py')
 SENSOR_SCRIPT_PID_FILE = '/tmp/sensor_scan_script.pid'
+AUTONOMOUS_SCRIPT_FILENAME = 'autonomous_drive.py'
+AUTONOMOUS_SCRIPT_PATH = os.path.join(os.getcwd(), AUTONOMOUS_SCRIPT_FILENAME)
 
 FONT_AWESOME = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
 
@@ -231,6 +232,22 @@ def analyze_3d_clusters(df_3d):
     return df_3d
 
 
+def start_autonomous_mode():
+    """Otonom sürüş modunu başlatır."""
+    try:
+        stop_all_scripts()  # Diğer betikleri durdur
+        cmd = [sys.executable, AUTONOMOUS_SCRIPT_PATH]
+
+        # Otonom sürüş betiğinin loglarını ayrı bir dosyada tutmak iyi bir pratiktir
+        log_file = open("autonomous_drive_live.log", "w")
+        subprocess.Popen(cmd, stdout=log_file, stderr=log_file, start_new_session=True)
+
+        # Buton metnini ve durumunu güncelle
+        return html.Span([html.I(className="fa-solid fa-robot fa-spin me-2"), "Otonom Sürüş..."]), True, False
+    except Exception as e:
+        print(f"Otonom sürüş başlatma hatası: {e}")
+        return html.Span([html.I(className="fa-solid fa-xmark me-2"), "Hata"]), False, True
+
 # --- ARAYÜZ BİLEŞENLERİ (LAYOUT) ---
 control_panel = dbc.Card([
     dbc.CardHeader([html.I(className="fa-solid fa-gears me-2"), "Sistem Kontrolü"]),
@@ -242,7 +259,7 @@ control_panel = dbc.Card([
                  'value': 'mapping'},
                 # Diğer modlar şimdilik devre dışı
                 {'label': html.Span([html.I(className="fa-solid fa-robot me-2"), " Otonom Sürüş Modu"]),
-                 'value': 'autonomous', 'disabled': True},
+                 'value': 'autonomous', 'disabled': False},
                 {'label': html.Span([html.I(className="fa-solid fa-gamepad me-2"), " Manuel Kontrol"]),
                  'value': 'manual', 'disabled': True}],
                            value='mapping', labelStyle={'display': 'block', 'margin': '5px 0'}, className="mb-3")])]),
@@ -401,8 +418,6 @@ def toggle_mode_parameters(selected_mode):
     return {'display': 'block'} if selected_mode == 'mapping' else {'display': 'none'}
 
 
-# 3. Başlat/Durdur Butonları
-# 3. Başlat/Durdur butonlarını yönetir ve ilgili arka plan script'lerini çalıştırır
 @app.callback(
     [Output("start-button", "children"),
      Output("start-button", "disabled"),
@@ -412,8 +427,8 @@ def toggle_mode_parameters(selected_mode):
     [State("operation-mode", "value"),
      State("h-scan-angle-input", "value"),
      State("h-step-angle-input", "value"),
-     State("v-scan-angle-input", "value"),  # YENİ STATE
-     State("v-step-angle-input", "value"),  # YENİ STATE
+     State("v-scan-angle-input", "value"),
+     State("v-step-angle-input", "value"),
      State("buzzer-distance-input", "value")]
 )
 def handle_start_stop_operations(start_clicks, stop_clicks, mode, h_angle, h_step, v_angle, v_step, buzzer_dist):
@@ -423,9 +438,13 @@ def handle_start_stop_operations(start_clicks, stop_clicks, mode, h_angle, h_ste
 
     button_id = ctx.triggered[0]["prop_id"].split(".")[0]
 
-    if button_id == "start-button" and mode == 'mapping':
-        # Yeni değerler start_mapping_mode fonksiyonuna gönderiliyor
-        return start_mapping_mode(h_angle, h_step, v_angle, v_step, buzzer_dist)
+    if button_id == "start-button":
+        if mode == 'mapping':
+            return start_mapping_mode(h_angle, h_step, v_angle, v_step, buzzer_dist)
+        # --- YENİ EKLENEN KISIM ---
+        elif mode == 'autonomous':
+            return start_autonomous_mode()
+        # -------------------------
     elif button_id == "stop-button":
         return stop_current_operation(mode)
 

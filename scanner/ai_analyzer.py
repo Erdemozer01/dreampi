@@ -35,7 +35,7 @@ class AIAnalyzerService:
 
     def get_text_interpretation(self, scan: Scan) -> str:
         """
-        Bir Scan nesnesine bağlı noktaları alır ve __init__ içinde başlatılan Gemini modeli ile yorumlar. (ENCODER)
+        Sensör verilerini analiz eder ve resim modeli için anahtar kelime listesi üretir. (ENCODER)
         """
         print(f"[INFO] Scan ID {scan.id} için veritabanı sorgulanıyor...")
         queryset = scan.points.filter(mesafe_cm__gt=0.1, mesafe_cm__lt=400.0)
@@ -45,42 +45,43 @@ class AIAnalyzerService:
 
         df = pd.DataFrame(list(queryset.values('derece', 'dikey_aci', 'mesafe_cm')))
         data_summary = df.describe().to_string()
-        sample_data = df.sample(min(len(df), 15)).to_string()
 
         print(f"[INFO] {len(df)} adet kayıt özetlendi. Yorumlama için {self.config.model_name}'e gönderiliyor...")
 
+        # Yapay zekadan uzun bir paragraf yerine, net bir anahtar kelime listesi üretmesini isteyen prompt.
         full_prompt = (
-            f"Sen, düşük çözünürlüklü 3D sensör verilerini analiz ederek bir ortamın fiziksel yapısını yeniden oluşturan bir teknik analistsin. "
-            f"Görevin, aşağıda verilen veri özetini ve örneklerini inceleyerek, gördüğün nesneleri ve düzeni doğrudan ve net bir şekilde betimlemektir. "
-            f"Sanatsal yorum veya atmosfer ekleme. Sadece ne algıladığını, nesnelerin ne olabileceğini ve birbirlerine göre konumlarını belirt. "
-            f"Bu metin, bir resim yapay zekası tarafından birebir görselleştirilecek. "
-            f"Örneğin: 'Ortada, 120cm genişliğinde, 75cm yüksekliğinde bir masa tespit edildi. Masanın altında, aralıklı olarak duran dört adet sandalye benzeri küme bulunuyor. Masanın üzerinde, ortada monitör olabilecek dikey bir yapı ve önünde klavye olabilecek yatay bir nesne var.'\n\n"
+            f"Sen, 3D sensör verilerini analiz eden bir teknik uzmansın. "
+            f"Görevin, aşağıdaki düşük çözünürlüklü veri özetini inceleyerek, sahnede bulunan ana nesnelerin bir listesini çıkarmaktır. "
+            f"Çıktın SADECE virgülle ayrılmış bir anahtar kelime listesi olmalıdır. Başka hiçbir açıklama veya cümle ekleme. "
+            f"Örnek çıktı: 'bir çalışma masası, bir ofis koltuğu, bir dizüstü bilgisayar, bir kitap yığını, bir pencere'.\n\n"
             f"--- Veri Özeti ---\n{data_summary}\n\n"
-            f"--- Veri Örnekleri ---\n{sample_data}\n\n"
-            f"--- Algılanan Sahnenin Betimlemesi ---\n"
+            f"--- Algılanan Nesnelerin Listesi ---\n"
         )
 
         try:
             response = self.text_model.generate_content(full_prompt)
-            print("[SUCCESS] Metinsel yorum başarıyla alındı!")
-            return response.text.strip()
+            print("[SUCCESS] Metinsel yorum (nesne listesi) başarıyla alındı!")
+            # Dönen metni temizleyip tek satır haline getiriyoruz
+            object_list = response.text.strip().replace('\n', ', ')
+            return object_list
         except Exception as e:
             print(f"[ERROR] Gemini modelinden yanıt alınırken bir hata oluştu: {e}")
             return f"Analiz sırasında bir hata meydana geldi: {e}"
 
     def generate_image_with_imagen(self, text_prompt: str) -> str:
         """
-        Verilen metin prompt'unu kullanarak Google'ın resim oluşturma modeli ile
-        bir resim oluşturur ve resmin data URI'ını döndürür. (DECODER)
+        Verilen anahtar kelime listesini kullanarak bir resim oluşturur. (DECODER)
         """
         print(f"[INFO] Resim oluşturma modeli ile resim oluşturuluyor: '{text_prompt[:70]}...'")
 
-        # DÜZELTME: Google'ın resim oluşturma için sunduğu doğru ve stabil model adı kullanılıyor.
         IMAGE_MODEL_NAME = "imagen-3.0-generate-002"
         API_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{IMAGE_MODEL_NAME}:predict?key={self.config.api_key}"
 
-        style_keywords = "photorealistic, 4k, digital art, futuristic, point cloud scan, cinematic lighting"
-        full_image_prompt = f"{text_prompt}, tanımlanan nesnelere ve ortama göre resim oluştur."
+        # Prompt yapısı, anahtar kelime listesini doğrudan kullanacak şekilde basitleştirildi.
+        full_image_prompt = (
+            f"A photorealistic, 4k, cinematic image of a room containing these objects: {text_prompt}. "
+            f"The scene should be well-lit and have a clean, modern aesthetic."
+        )
 
         payload = {
             "instances": [{"prompt": full_image_prompt}],

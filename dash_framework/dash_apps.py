@@ -664,6 +664,8 @@ def display_cluster_info(clickData, stored_data_json):
         return True, "Hata", f"Küme bilgisi gösterilemedi: {e}"
 
 
+
+# 13. Seçilen AI modelini kullanarak tarama verilerini yorumlar ve resim oluşturur
 @app.callback(
     [Output('ai-yorum-sonucu', 'children'),
      Output('ai-image', 'children')],
@@ -675,32 +677,38 @@ def display_cluster_info(clickData, stored_data_json):
 def yorumla_model_secimi(selected_config_id, scan_json, points_json):
     """
     Kullanıcı arayüzden bir AI yapılandırması seçtiğinde tetiklenir.
-    Önce metinsel yorum üretir, sonra bu yorumdan Google Imagen ile bir resim oluşturur.
+    Önce Türkçe metinsel yorum üretir, sonra bu yoruma dayalı İngilizce
+    bir komut ile resim oluşturur.
     """
-    # Gerekli modülleri fonksiyon içinde import ediyoruz
+    # Gerekli modüller, sadece bu callback çalıştığında import ediliyor.
     from scanner.models import AIModelConfiguration, Scan
     from scanner.ai_analyzer import AIAnalyzerService
 
     # Gerekli girdilerin olup olmadığını kontrol et
     if not selected_config_id:
-        return html.P("Yorum için bir AI yapılandırması seçin."), None
+        return html.P("Yorum almak için yukarıdan bir AI yapılandırması seçin."), None
     if not scan_json or not points_json:
         return dbc.Alert("Analiz edilecek tarama verisi bulunamadı.", color="warning"), None
 
     try:
+        # 1. Gerekli verileri ve yapılandırmayı al
         config = AIModelConfiguration.objects.get(id=selected_config_id)
         scan_id = json.loads(scan_json).get('id')
         scan_to_analyze = Scan.objects.get(id=scan_id)
 
+        # 2. AI servisini başlat
         analyzer = AIAnalyzerService(config=config)
 
-        # ADIM 1: Metinsel yorumu üret (Encoder)
-        text_interpretation = analyzer.get_text_interpretation(scan=scan_to_analyze)
-        text_component = dcc.Markdown(text_interpretation, dangerously_allow_html=True, link_target="_blank")
+        # ADIM 1: Metinsel yorumu ve resim prompt'unu al (Encoder)
+        # get_text_interpretation fonksiyonu artık (türkçe_analiz, ingilizce_prompt) şeklinde bir tuple döndürüyor.
+        turkish_analysis, english_image_prompt = analyzer.get_text_interpretation(scan=scan_to_analyze)
 
-        # ADIM 2: Üretilen metinden resim oluştur (Decoder)
-        # DÜZELTME: Yeni fonksiyon adı çağrılıyor
-        image_data_uri = analyzer.generate_image_with_imagen(text_interpretation)
+        # Arayüzde kullanıcıya gösterilecek olan Türkçe analizi hazırla
+        text_component = dcc.Markdown(turkish_analysis, dangerously_allow_html=True, link_target="_blank")
+
+        # ADIM 2: Üretilen İngilizce prompt'tan resim oluştur (Decoder)
+        # Resim oluşturma fonksiyonuna, özel olarak bu iş için üretilmiş İngilizce metni gönder
+        image_data_uri = analyzer.generate_image_with_imagen(english_image_prompt)
 
         # ADIM 3: Resmi arayüzde göster
         # Eğer bir hata mesajı döndüyse, onu bir Alert olarak göster
@@ -722,6 +730,7 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
         safe_error_message = str(e).encode('ascii', 'ignore').decode('ascii')
         return dbc.Alert(f"Yapay zeka işlemi sırasında beklenmedik bir hata oluştu: {safe_error_message}",
                          color="danger"), None
+
 
 
 

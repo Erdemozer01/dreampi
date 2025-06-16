@@ -48,20 +48,19 @@ class AIAnalyzerService:
 
         print(f"[INFO] {len(df)} adet kayıt özetlendi. Yorumlama için {self.config.model_name}'e gönderiliyor...")
 
-        # Yapay zekadan uzun bir paragraf yerine, net bir anahtar kelime listesi üretmesini isteyen prompt.
+        # DÜZELTME: Prompt, yapay zekadan nesne listesini İNGİLİZCE olarak vermesini istiyor.
         full_prompt = (
-            f"Sen, 3D sensör verilerini analiz eden bir teknik uzmansın. "
-            f"Görevin, aşağıdaki düşük çözünürlüklü veri özetini inceleyerek, sahnede bulunan ana nesnelerin bir listesini çıkarmaktır. "
-            f"Çıktın SADECE virgülle ayrılmış bir anahtar kelime listesi olmalıdır. "
-            f"Örnek çıktı: 'bir çalışma masası, bir ofis koltuğu, bir dizüstü bilgisayar, bir kitap yığını, bir pencere'.\n\n"
-            f"--- Veri Özeti ---\n{data_summary}\n\n"
-            f"--- Algılanan Nesnelerin Listesi ---\n"
+            f"You are a technical expert analyzing 3D sensor data to identify objects in an indoor environment. "
+            f"Your task is to analyze the following data summary and output a comma-separated list of the common indoor objects you detect. "
+            f"IMPORTANT: Your output must ONLY be a list of keywords in ENGLISH. Do not add any other explanations or sentences. "
+            f"Example output: 'a work desk, an office chair, a laptop, a stack of books, a window'.\n\n"
+            f"--- Data Summary ---\n{data_summary}\n\n"
+            f"--- List of Detected Indoor Objects (in English) ---\n"
         )
 
         try:
             response = self.text_model.generate_content(full_prompt)
-            print("[SUCCESS] Metinsel yorum (nesne listesi) başarıyla alındı!")
-            # Dönen metni temizleyip tek satır haline getiriyoruz
+            print("[SUCCESS] Metinsel yorum (İngilizce nesne listesi) başarıyla alındı!")
             object_list = response.text.strip().replace('\n', ', ')
             return object_list
         except Exception as e:
@@ -77,9 +76,10 @@ class AIAnalyzerService:
         IMAGE_MODEL_NAME = "imagen-3.0-generate-002"
         API_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{IMAGE_MODEL_NAME}:predict?key={self.config.api_key}"
 
-        # Prompt yapısı, anahtar kelime listesini doğrudan kullanacak şekilde basitleştirildi.
+        # Prompt yapısı, İngilizce anahtar kelime listesini doğrudan kullanacak şekilde ayarlandı.
         full_image_prompt = (
-            f"{text_prompt} bahsi geçen ortama ve nesne listesine göre resim oluştur. herhangi bir kafa karışıklı olması. {text_prompt} da nelerden bahsediyorsa ona göre resim oluştur. "
+            f"A photorealistic, 4k, cinematic image of a room containing these objects: {text_prompt}. "
+            f"The scene should be well-lit and have a clean, modern aesthetic."
         )
 
         payload = {

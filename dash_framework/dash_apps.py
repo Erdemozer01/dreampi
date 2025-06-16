@@ -664,6 +664,7 @@ def display_cluster_info(clickData, stored_data_json):
         return True, "Hata", f"Küme bilgisi gösterilemedi: {e}"
 
 
+
 # 13. Seçilen AI modelini kullanarak tarama verilerini yorumlar
 @app.callback(
     [Output('ai-yorum-sonucu', 'children'),

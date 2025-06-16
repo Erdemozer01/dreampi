@@ -50,13 +50,14 @@ class AIAnalyzerService:
         print(f"[INFO] {len(df)} adet kayıt özetlendi. Yorumlama için {self.config.model_name}'e gönderiliyor...")
 
         full_prompt = (
-            f"Sen, bir mekanın ruhunu sensör verilerinden okuyabilen bir şair/sanatçısın. "
-            f"Görevin, aşağıda verilen düşük çözünürlüklü 3D tarama verilerini inceleyerek, "
-            f"bu mekanın atmosferini, olası içeriğini ve hissettirdiklerini betimleyen canlı bir paragraf yazmaktır. "
-            f"Bu metin, bir resim yapay zekasına ilham vermek için kullanılacak. Somut olmaktan çekinme, boşlukları hayal gücünle doldur.\n\n"
+            f"Sen, 3D sensör verilerini analiz ederek bir ortamı yeniden oluşturan bir teknik analistsin. "
+            f"Görevin, aşağıda verilen düşük çözünürlüklü ultrasonik sensör verilerinin istatistiksel özetini ve örneklerini incelemektir. "
+            f"Bu verilerden yola çıkarak, ortamdaki fiziksel nesneleri, bunların konumlarını ve düzenini mantıksal çıkarımlarla tanımla. "
+            f"Bu tanım, bir resim oluşturma yapay zekası için net bir girdi olacak şekilde, olabildiğince somut ve betimleyici olmalı. "
+            f"Boşlukları, veriye en uygun mantıksal senaryo ile doldur. Örneğin, geniş düz bir yüzeyin 'masa', altındaki daha küçük kümelerin 'sandalye' olabileceğini belirt.\n\n"
             f"--- Veri Özeti ---\n{data_summary}\n\n"
             f"--- Veri Örnekleri ---\n{sample_data}\n\n"
-            f"--- Betimleme ---\n"
+            f"--- Analitik Betimleme ---\n"
         )
 
         try:

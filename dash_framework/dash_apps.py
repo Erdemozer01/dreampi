@@ -257,7 +257,6 @@ control_panel = dbc.Card([
             dcc.RadioItems(id='operation-mode', options=[
                 {'label': html.Span([html.I(className="fa-solid fa-map-location-dot me-2"), " Haritalama Modu"]),
                  'value': 'mapping'},
-                # Diğer modlar şimdilik devre dışı
                 {'label': html.Span([html.I(className="fa-solid fa-robot me-2"), " Otonom Sürüş Modu"]),
                  'value': 'autonomous', 'disabled': False},
                 {'label': html.Span([html.I(className="fa-solid fa-gamepad me-2"), " Manuel Kontrol"]),

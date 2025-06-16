@@ -25,12 +25,8 @@ class AIAnalyzerService:
 
         self.config = config
         try:
-            # API anahtarını yapılandır
             genai.configure(api_key=self.config.api_key)
-
-            # DÜZELTME: Metin modeli artık veritabanından gelen yapılandırmaya göre başlatılıyor.
             self.text_model = genai.GenerativeModel(self.config.model_name)
-
             print(f"[SUCCESS] AI Servisi: '{self.config.model_name}' metin modeli başarıyla yüklendi.")
         except Exception as e:
             print(
@@ -52,9 +48,6 @@ class AIAnalyzerService:
         sample_data = df.sample(min(len(df), 15)).to_string()
 
         print(f"[INFO] {len(df)} adet kayıt özetlendi. Yorumlama için {self.config.model_name}'e gönderiliyor...")
-
-        # DÜZELTME: Sabit model tanımı kaldırıldı, self.text_model kullanılıyor.
-        # text_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
         full_prompt = (
             f"Sen, bir mekanın ruhunu sensör verilerinden okuyabilen bir şair/sanatçısın. "
@@ -122,4 +115,3 @@ class AIAnalyzerService:
         except Exception as e:
             print(f"[ERROR] Resim oluşturma sırasında genel bir hata oluştu: {e}")
             return f"Resim oluşturulurken beklenmedik bir hata oluştu: {e}"
-

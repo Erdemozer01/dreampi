@@ -1,5 +1,3 @@
-# scanner/ai_analyzer.py
-
 import pandas as pd
 import google.generativeai as genai
 from django.db.models import Model
@@ -26,10 +24,12 @@ class AIAnalyzerService:
         try:
             genai.configure(api_key=self.config.api_key)
             self.model = genai.GenerativeModel(self.config.model_name)
-            print(f"✅ AI Servisi: '{self.config.model_name}' modeli başarıyla yüklendi.")
+            # DÜZELTME: Unicode emoji (✅) kaldırıldı.
+            print(f"[SUCCESS] AI Servisi: '{self.config.model_name}' modeli başarıyla yüklendi.")
         except Exception as e:
+            # DÜZELTME: Unicode emoji (❌) kaldırıldı.
             print(
-                f"❌ HATA: '{self.config.model_name}' modeli yüklenemedi. Model adını veya API anahtarını kontrol edin.")
+                f"[ERROR] HATA: '{self.config.model_name}' modeli yüklenemedi. Model adını veya API anahtarını kontrol edin.")
             raise e
 
     def get_text_interpretation(self, scan: 'Scan') -> str:
@@ -43,7 +43,8 @@ class AIAnalyzerService:
         Returns:
             str: Yapay zeka tarafından üretilen metinsel yorum.
         """
-        print(f"🔍 Scan ID {scan.id} için veritabanı sorgulanıyor...")
+        # DÜZELTME: Unicode emoji (🔍) kaldırıldı.
+        print(f"[INFO] Scan ID {scan.id} için veritabanı sorgulanıyor...")
         queryset = scan.points.filter(mesafe_cm__gt=0.1, mesafe_cm__lt=400.0)
 
         if not queryset.exists():
@@ -54,7 +55,8 @@ class AIAnalyzerService:
         data_summary = df.describe().to_string()  # İstatistiksel özet
         sample_data = df.sample(min(len(df), 15)).to_string()  # Rastgele 15 örnek
 
-        print(f"📊 {len(df)} adet kayıt özetlendi. Yorumlama için Gemini'ye gönderiliyor...")
+        # DÜZELTME: Unicode emoji (📊) kaldırıldı.
+        print(f"[INFO] {len(df)} adet kayıt özetlendi. Yorumlama için Gemini'ye gönderiliyor...")
 
         # Sanatsal bir prompt oluşturmak için Gemini'ye gönderilecek talimat
         full_prompt = (
@@ -69,9 +71,10 @@ class AIAnalyzerService:
 
         try:
             response = self.model.generate_content(full_prompt)
-            print("✅ Metinsel yorum başarıyla alındı!")
+            # DÜZELTME: Unicode emoji (✅) kaldırıldı.
+            print("[SUCCESS] Metinsel yorum başarıyla alındı!")
             return response.text.strip()
         except Exception as e:
-            print(f"❌ Gemini modelinden yanıt alınırken bir hata oluştu: {e}")
+            # DÜZELTME: Unicode emoji (❌) kaldırıldı.
+            print(f"[ERROR] Gemini modelinden yanıt alınırken bir hata oluştu: {e}")
             return f"Analiz sırasında bir hata meydana geldi: {e}"
-

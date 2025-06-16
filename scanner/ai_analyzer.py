@@ -8,7 +8,6 @@ import json
 import traceback
 import requests
 import base64
-import numpy as np
 
 
 class AIAnalyzerService:
@@ -26,7 +25,6 @@ class AIAnalyzerService:
 
         self.config = config
         try:
-            # API anahtarını yapılandır ve metin modelini başlat
             genai.configure(api_key=self.config.api_key)
             self.text_model = genai.GenerativeModel(self.config.model_name)
             print(f"[SUCCESS] AI Servisi: '{self.config.model_name}' metin modeli başarıyla yüklendi.")
@@ -37,7 +35,7 @@ class AIAnalyzerService:
 
     def get_text_interpretation(self, scan: Scan) -> tuple[str, str]:
         """
-        Sensör verilerini analiz eder ve biri kullanıcı için Türkçe analiz, diğeri
+        Sensör verilerinin tamamını analiz eder ve biri kullanıcı için Türkçe analiz, diğeri
         resim modeli için İngilizce prompt olmak üzere iki metin döndürür. (ENCODER)
         """
         print(f"[INFO] Scan ID {scan.id} için veritabanı sorgulanıyor...")
@@ -46,52 +44,27 @@ class AIAnalyzerService:
         if not queryset.exists():
             return "Analiz için uygun veri bulunamadı.", "No data to generate an image from."
 
-        # DÜZELTME: Veriyi daha anlamlı hale getirmek için ön işleme yapıyoruz.
-        df = pd.DataFrame(list(queryset.values('x_cm', 'y_cm', 'z_cm')))
-        df.dropna(inplace=True)
+        # Tüm geçerli noktaları DataFrame'e yükle
+        df = pd.DataFrame(list(queryset.values('derece', 'dikey_aci', 'mesafe_cm')))
 
-        print(f"[INFO] {len(df)} adet kayıt özetlendi. Yorumlama için {self.config.model_name}'e gönderiliyor...")
+        # DÜZELTME: Artık verinin bir özetini değil, tamamını string formatına çeviriyoruz.
+        # Not: Çok büyük taramalarda (10.000+ nokta) bu veri API limitlerini zorlayabilir.
+        # Şimdilik en fazla 1000 noktayı göndererek dengeli bir yaklaşım izliyoruz.
+        data_string = df.head(1000).to_string(index=False)
 
-        # --- YENİ: Veriyi Izgara Yapısına Dönüştürme ---
-        # Tarama alanını 5x5'lik bir ızgaraya böl ve her hücre için özet bilgi çıkar.
-        x_min, x_max = df['x_cm'].min(), df['x_cm'].max()
-        y_min, y_max = df['y_cm'].min(), df['y_cm'].max()
-
-        grid_x = np.linspace(x_min, x_max, 6)
-        grid_y = np.linspace(y_min, y_max, 6)
-
-        grid_summary = []
-        for i in range(5):
-            row_summary = []
-            for j in range(5):
-                cell_df = df[
-                    (df['x_cm'] >= grid_x[i]) & (df['x_cm'] < grid_x[i + 1]) &
-                    (df['y_cm'] >= grid_y[j]) & (df['y_cm'] < grid_y[j + 1])
-                    ]
-                if not cell_df.empty:
-                    row_summary.append({
-                        "nokta_sayisi": len(cell_df),
-                        "ortalama_yukseklik_cm": round(cell_df['z_cm'].mean(), 1)
-                    })
-                else:
-                    row_summary.append({"nokta_sayisi": 0})
-            grid_summary.append(row_summary)
-
-        grid_summary_text = json.dumps(grid_summary, indent=2, ensure_ascii=False)
-        # ----------------------------------------------
+        print(f"[INFO] {len(df)} adet noktanın tamamı analiz için {self.config.model_name}'e gönderiliyor...")
 
         h_angle = scan.h_scan_angle_setting
         v_angle = scan.v_scan_angle_setting
 
-        # DÜZELTME: Prompt, artık yapılandırılmış ızgara verisini alıyor.
+        # DÜZELTME: Prompt, yapay zekaya artık bir özet değil, tam veri seti verildiğini belirtiyor.
         full_prompt = (
-            f"You are a digital forensics expert. Your task is to analyze the following structured grid data derived from a 3D sensor scan. "
-            f"The grid represents a top-down view of the scanned area, divided into 5x5 cells. Each cell shows the number of points detected and their average height in cm. "
+            f"You are a 3D Scene Reconstruction Analyst. Your task is to interpret the following full point cloud data from a sparse 3D sensor. "
             f"The scan was performed with a horizontal angle of {h_angle} degrees and a vertical angle of {v_angle} degrees. "
             f"Your output MUST be a valid JSON object with two keys: 'turkish_analysis' and 'english_image_prompt'.\n"
-            f"1. For 'turkish_analysis' (in TURKISH): Analyze the grid summary. Identify high-density cells as potential objects. Use the average height to deduce what these objects might be (e.g., cells with 75cm height could be a desk). Describe the overall layout and object placement.\n"
+            f"1. For 'turkish_analysis' (in TURKISH): Analyze the entire point cloud. Identify clusters, planes, and empty spaces. Deduce what the objects are (desk, chair, wall, window, etc.) and describe their spatial relationships. Explain your reasoning based on the data patterns.\n"
             f"2. For 'english_image_prompt' (in ENGLISH): Synthesize your analysis into a single, rich, descriptive paragraph for an image generation AI. Describe the objects, their placement, the lighting, and the overall atmosphere of the scene.\n\n"
-            f"--- Structured Grid Data (5x5, top-down view) ---\n{grid_summary_text}\n\n"
+            f"--- Full Point Cloud Data (derece, dikey_aci, mesafe_cm) ---\n{data_string}\n\n"
             f"--- Generate Forensic JSON Report ---\n"
         )
 

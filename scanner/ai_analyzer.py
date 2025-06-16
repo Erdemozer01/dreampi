@@ -25,6 +25,7 @@ class AIAnalyzerService:
 
         self.config = config
         try:
+            # API anahtarını yapılandır ve metin modelini başlat
             genai.configure(api_key=self.config.api_key)
             self.text_model = genai.GenerativeModel(self.config.model_name)
             print(f"[SUCCESS] AI Servisi: '{self.config.model_name}' metin modeli başarıyla yüklendi.")
@@ -33,51 +34,71 @@ class AIAnalyzerService:
                 f"[ERROR] HATA: '{self.config.model_name}' modeli yüklenemedi. Model adını veya API anahtarını kontrol edin.")
             raise e
 
-    def get_text_interpretation(self, scan: Scan) -> str:
+    def get_text_interpretation(self, scan: Scan) -> tuple[str, str]:
         """
-        Sensör verilerini analiz eder ve resim modeli için teknik bir sahne betimlemesi üretir. (ENCODER)
+        Sensör verilerini analiz eder ve biri kullanıcı için Türkçe analiz, diğeri
+        resim modeli için İngilizce prompt olmak üzere iki metin döndürür. (ENCODER)
         """
         print(f"[INFO] Scan ID {scan.id} için veritabanı sorgulanıyor...")
         queryset = scan.points.filter(mesafe_cm__gt=0.1, mesafe_cm__lt=400.0)
 
         if not queryset.exists():
-            return "Analiz için uygun veri bulunamadı."
+            return "Analiz için uygun veri bulunamadı.", "No data to generate an image from."
 
         df = pd.DataFrame(list(queryset.values('derece', 'dikey_aci', 'mesafe_cm')))
         data_summary = df.describe().to_string()
 
         print(f"[INFO] {len(df)} adet kayıt özetlendi. Yorumlama için {self.config.model_name}'e gönderiliyor...")
 
-        # DÜZELTME: Prompt, yapay zekayı daha teknik ve analitik bir yorum yapmaya yönlendiriyor.
+        # DÜZELTME: Prompt, artık o anki taramanın gerçek açı ayarlarını içeriyor.
+        h_angle = scan.h_scan_angle_setting
+        v_angle = scan.v_scan_angle_setting
+
         full_prompt = (
-            f"You are a 3D Scene Reconstruction Analyst. Your task is to interpret the following statistical summary of sparse 3D sensor data and generate a technical but descriptive scene description for an image generation model. "
-            f"1. Start by analyzing the data summary. Comment on the angular range (derece, dikey_aci) and distance variation (mesafe_cm) to estimate the overall size and shape of the scanned area. "
-            f"2. Based on your analysis, deduce the most likely objects and their layout in the room. "
-            f"3. Combine these findings into a single, coherent paragraph in ENGLISH, describing the scene as a factual report. This final text will be used to generate an image. "
-            f"Example Output: 'The sensor data indicates a wide horizontal scan of approximately 270 degrees with a vertical sweep up to 90 degrees. The distances range up to 350cm, suggesting a medium-sized room. A large, flat cluster of points at a distance of 150cm is likely a wall. In front of it, a rectangular cluster at a height of 80cm is interpreted as a work desk, with smaller, more complex clusters underneath and around it, consistent with an office chair and a computer monitor.'\n\n"
-            f"--- Data Summary ---\n{data_summary}\n\n"
-            f"--- Technical Scene Description for Image Generation (in English) ---\n"
+            f"You are a 3D Scene Reconstruction Analyst. Your task is to interpret the following statistical summary of sparse 3D sensor data, considering the scan settings used. "
+            f"The scan was performed with a horizontal angle of {h_angle} degrees and a vertical angle of {v_angle} degrees. "
+            f"Your output MUST be a valid JSON object containing two keys: 'turkish_analysis' and 'english_image_prompt'.\n"
+            f"1. For 'turkish_analysis', provide a detailed technical analysis of the scene in TURKISH. Use the provided scan settings ({h_angle}° horizontal, {v_angle}° vertical) and the data summary to deduce the most likely objects and their layout.\n"
+            f"2. For 'english_image_prompt', provide a concise, descriptive scene description in ENGLISH, based on your analysis.\n"
+            f"Example JSON output for a different scan: {{"
+            f"  \"turkish_analysis\": \"Sensör verileri yaklaşık 270 derecelik geniş bir yatay taramayı ve 90 dereceye varan bir dikey hareketi göstermektedir. Mesafeler 350cm'ye kadar uzanmakta, bu da orta büyüklükte bir odaya işaret etmektedir. 150cm uzaklıktaki geniş ve düz bir küme muhtemelen bir duvardır. Önünde, 80cm yükseklikteki dikdörtgen küme, bir çalışma masası olarak yorumlanmıştır.\", "
+            f"  \"english_image_prompt\": \"A work desk with a computer monitor and an office chair in a medium-sized room, based on a 3D sensor scan.\""
+            f"}}\n\n"
+            f"--- Data Summary for This Scan ---\n{data_summary}\n\n"
+            f"--- Generate JSON Output for the {h_angle}°x{v_angle}° Scan ---\n"
         )
 
         try:
             response = self.text_model.generate_content(full_prompt)
-            print("[SUCCESS] Teknik ve analitik yorum başarıyla alındı!")
-            object_list = response.text.strip().replace('\n', ' ')
-            return object_list
+            print("[SUCCESS] İkili dilde yorum başarıyla alındı!")
+
+            json_response_text = response.text.strip()
+            if json_response_text.startswith("```json"):
+                json_response_text = json_response_text[7:-3].strip()
+
+            data = json.loads(json_response_text)
+
+            turkish_analysis = data.get("turkish_analysis", "Türkçe analiz üretilemedi.")
+            english_image_prompt = data.get("english_image_prompt", "English image prompt could not be generated.")
+
+            return turkish_analysis, english_image_prompt
+
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"[ERROR] Gemini modelinden gelen JSON yanıtı ayrıştırılamadı: {e}")
+            return "Analiz sırasında bir JSON hatası meydana geldi.", "JSON parsing error."
         except Exception as e:
             print(f"[ERROR] Gemini modelinden yanıt alınırken bir hata oluştu: {e}")
-            return f"Analiz sırasında bir hata meydana geldi: {e}"
+            return "Analiz sırasında bir hata meydana geldi.", "API error during analysis."
 
     def generate_image_with_imagen(self, text_prompt: str) -> str:
         """
-        Verilen teknik betimlemeyi kullanarak bir resim oluşturur. (DECODER)
+        Verilen İngilizce betimlemeyi kullanarak Google Imagen ile bir resim oluşturur. (DECODER)
         """
         print(f"[INFO] Resim oluşturma modeli ile resim oluşturuluyor: '{text_prompt[:70]}...'")
 
         IMAGE_MODEL_NAME = "imagen-3.0-generate-002"
-        API_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{IMAGE_MODEL_NAME}:predict?key={self.config.api_key}"
+        API_ENDPOINT = f"[https://generativelanguage.googleapis.com/v1beta/models/](https://generativelanguage.googleapis.com/v1beta/models/){IMAGE_MODEL_NAME}:predict?key={self.config.api_key}"
 
-        # Prompt yapısı, teknik betimlemeyi doğrudan kullanacak şekilde ayarlandı.
         full_image_prompt = (
             f"A photorealistic, 4k, cinematic image of the following scene, which is a reconstruction from sensor data: {text_prompt}. "
             f"The image should have a clean, modern, slightly technical aesthetic."

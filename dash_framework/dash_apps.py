@@ -664,7 +664,6 @@ def display_cluster_info(clickData, stored_data_json):
         return True, "Hata", f"Küme bilgisi gösterilemedi: {e}"
 
 
-# 13. Seçilen AI modelini kullanarak tarama verilerini yorumlar
 @app.callback(
     [Output('ai-yorum-sonucu', 'children'),
      Output('ai-image', 'children')],
@@ -676,60 +675,55 @@ def display_cluster_info(clickData, stored_data_json):
 def yorumla_model_secimi(selected_config_id, scan_json, points_json):
     """
     Kullanıcı arayüzden bir AI yapılandırması seçtiğinde tetiklenir.
-    Seçilen yapılandırmaya göre AIAnalyzerService'i kullanarak metinsel yorum üretir.
+    Önce metinsel yorum üretir, sonra bu yorumdan Google Imagen ile bir resim oluşturur.
     """
-    # DÜZELTME: Gerekli modüller, sadece bu callback çalıştığında import ediliyor.
-    # Bu, "Apps aren't loaded yet." hatasını çözer.
+    # Gerekli modülleri fonksiyon içinde import ediyoruz
     from scanner.models import AIModelConfiguration, Scan
     from scanner.ai_analyzer import AIAnalyzerService
 
-    # Google AI kütüphanesinin yüklü olup olmadığını kontrol et
-    # Bu import dosyanın en üstünde kalabilir çünkü Django'ya bağımlı değil.
-    if genai is None:
-        return dbc.Alert("Google AI kütüphanesi (pip install google-generativeai) yüklü değil.", color="danger"), None
-
     # Gerekli girdilerin olup olmadığını kontrol et
     if not selected_config_id:
-        return html.P("Yorum almak için yukarıdan bir AI yapılandırması seçin."), None
-
+        return html.P("Yorum için bir AI yapılandırması seçin."), None
     if not scan_json or not points_json:
         return dbc.Alert("Analiz edilecek tarama verisi bulunamadı.", color="warning"), None
 
     try:
-        # 1. Veritabanından AI yapılandırmasını al
         config = AIModelConfiguration.objects.get(id=selected_config_id)
-
-        # 2. Analiz edilecek Scan nesnesini al
         scan_id = json.loads(scan_json).get('id')
         scan_to_analyze = Scan.objects.get(id=scan_id)
 
-        # 3. AIAnalyzerService'i doğru yapılandırma ile başlat
         analyzer = AIAnalyzerService(config=config)
 
-        # 4. Metinsel yorumu üret
+        # ADIM 1: Metinsel yorumu üret (Encoder)
         text_interpretation = analyzer.get_text_interpretation(scan=scan_to_analyze)
+        text_component = dcc.Markdown(text_interpretation, dangerously_allow_html=True, link_target="_blank")
 
-        # 5. Sonuçları arayüz bileşenlerine yerleştir
-        text_component = dcc.Markdown(text_interpretation, dangerously_allow_html=True)
+        # ADIM 2: Üretilen metinden resim oluştur (Decoder)
+        # DÜZELTME: Yeni fonksiyon adı çağrılıyor
+        image_data_uri = analyzer.generate_image_with_imagen(text_interpretation)
 
-        # Şimdilik resim oluşturma adımını bir yer tutucu olarak bırakıyoruz
-        image_component = html.Div([
-            html.Hr(),
-            html.P("Resim oluşturma özelliği daha sonra eklenecektir.", className="text-muted fst-italic")
-        ])
+        # ADIM 3: Resmi arayüzde göster
+        # Eğer bir hata mesajı döndüyse, onu bir Alert olarak göster
+        if image_data_uri.startswith("data:image/png;base64,"):
+            image_component = html.Div([
+                html.Hr(),
+                dbc.Spinner(html.Img(
+                    src=image_data_uri,
+                    style={'maxWidth': '100%', 'height': 'auto', 'borderRadius': '10px', 'marginTop': '15px'}
+                ))
+            ])
+        else:  # Hata mesajı döndüyse
+            image_component = dbc.Alert(f"Resim oluşturulamadı: {image_data_uri}", color="warning", className="mt-3")
 
         return text_component, image_component
 
-    except AIModelConfiguration.DoesNotExist:
-        return dbc.Alert(f"ID'si {selected_config_id} olan AI yapılandırması bulunamadı.", color="danger"), None
-    except Scan.DoesNotExist:
-        return dbc.Alert(f"Analiz edilecek tarama (ID: {scan_id}) veritabanında bulunamadı.", color="danger"), None
     except Exception as e:
         traceback.print_exc()
-        # DÜZELTME: UnicodeEncodeError hatasını önlemek için hata mesajını güvenli hale getiriyoruz.
         safe_error_message = str(e).encode('ascii', 'ignore').decode('ascii')
         return dbc.Alert(f"Yapay zeka işlemi sırasında beklenmedik bir hata oluştu: {safe_error_message}",
                          color="danger"), None
+
+
 
 
 

@@ -6,7 +6,8 @@ from django.db.models import Model
 from .models import AIModelConfiguration, Scan
 import json
 import traceback
-import urllib.parse  # Resim URL'i için gerekli
+import requests  # API çağrıları için gerekli
+import base64  # Dönen resmi işlemek için
 
 
 class AIAnalyzerService:
@@ -16,9 +17,6 @@ class AIAnalyzerService:
     """
 
     def __init__(self, config: AIModelConfiguration):
-        """
-        AI servisini, veritabanından gelen bir yapılandırma nesnesi ile başlatır.
-        """
         if not config or not isinstance(config, AIModelConfiguration):
             raise ValueError("Geçerli bir AIModelConfiguration nesnesi gereklidir.")
 
@@ -67,22 +65,47 @@ class AIAnalyzerService:
             print(f"[ERROR] Gemini modelinden yanıt alınırken bir hata oluştu: {e}")
             return f"Analiz sırasında bir hata meydana geldi: {e}"
 
-    # --- YENİ FONKSİYON ---
-    def generate_image_from_text(self, text_prompt: str) -> str:
+    def generate_image_with_imagen(self, text_prompt: str) -> str:
         """
-        Verilen metin prompt'unu kullanarak bir resim oluşturur ve resmin URL'ini döndürür. (DECODER)
-        Not: Bu fonksiyon şimdilik basit bir URL servisi kullanır.
-             Gelecekte Google Imagen API ile değiştirilebilir.
+        Verilen metin prompt'unu kullanarak Google'ın Imagen modeli ile bir resim oluşturur
+        ve resmin data URI'ını döndürür. (DECODER)
         """
-        print(f"[INFO] Alınan metin ile resim oluşturuluyor: '{text_prompt[:50]}...'")
+        print(f"[INFO] Imagen modeli ile resim oluşturuluyor: '{text_prompt[:70]}...'")
 
-        # Metni URL formatına uygun hale getir (boşlukları %20 vb. ile değiştirir)
-        encoded_prompt = urllib.parse.quote(text_prompt)
+        # Google Cloud Vertex AI endpoint'i
+        # Bu endpoint projenizin Google Cloud ayarlarından alınmalıdır, ancak genellikle standarttır.
+        # Şimdilik bu genel endpoint'i kullanıyoruz.
+        API_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key={self.config.api_key}"
 
-        # Pollinations.ai servisini kullanarak anında bir resim URL'i oluşturuyoruz.
-        # Bu URL, tarayıcı tarafından çağrıldığında bir resim üretecektir.
-        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+        style_keywords = "photorealistic, 4k, digital art, futuristic, point cloud scan, cinematic lighting"
+        full_image_prompt = f"{text_prompt}, {style_keywords}"
 
-        print(f"[SUCCESS] Resim URL'i başarıyla oluşturuldu.")
-        return image_url
+        # Imagen API'si için istek gövdesini oluştur
+        payload = {
+            "instances": [{"prompt": full_image_prompt}],
+            "parameters": {"sampleCount": 1}
+        }
+
+        try:
+            response = requests.post(API_ENDPOINT, json=payload)
+            response.raise_for_status()  # HTTP hataları için (4xx veya 5xx)
+            result = response.json()
+
+            # API'den dönen base64 formatındaki resim verisini al
+            if 'predictions' in result and result['predictions']:
+                base64_image = result['predictions'][0].get('bytesBase64Encoded')
+                if base64_image:
+                    print("[SUCCESS] Resim başarıyla oluşturuldu ve base64 olarak alındı.")
+                    # Tarayıcının gösterebilmesi için data URI formatına çevir
+                    return f"data:image/png;base64,{base64_image}"
+
+            print("[ERROR] API'den resim verisi alınamadı. Dönen cevap:", result)
+            return "Resim oluşturulamadı (API'den boş yanıt)."
+
+        except requests.exceptions.RequestException as e:
+            print(f"[ERROR] Imagen API'ye bağlanırken hata oluştu: {e}")
+            return f"Resim oluşturma servisine bağlanılamadı: {e}"
+        except Exception as e:
+            print(f"[ERROR] Resim oluşturma sırasında genel bir hata oluştu: {e}")
+            return f"Resim oluşturulurken beklenmedik bir hata oluştu: {e}"
 

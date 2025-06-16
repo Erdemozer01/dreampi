@@ -55,7 +55,7 @@ step_sequence = [[1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0], [0, 1, 1, 0],
                  [0, 0, 1, 0], [0, 0, 1, 1], [0, 0, 0, 1], [1, 0, 0, 1]]
 
 
-# --- PID YÖNETİMİ VE DONANIM KURULUMU ---
+# --- SÜREÇ VE KAYNAK YÖNETİMİ ---
 def create_pid_file():
     try:
         with open(AUTONOMOUS_SCRIPT_PID_FILE, 'w') as f:
@@ -65,10 +65,24 @@ def create_pid_file():
         logging.error(f"PID dosyası oluşturulamadı: {e}")
 
 
-def remove_pid_file():
-    if os.path.exists(AUTONOMOUS_SCRIPT_PID_FILE):
-        os.remove(AUTONOMOUS_SCRIPT_PID_FILE)
-        logging.info("Otonom sürüş PID dosyası temizlendi.")
+def cleanup_on_exit():
+    """
+    Program sonlandığında tüm donanım kaynaklarını güvenli bir şekilde kapatır
+    ve PID dosyasını temizler. atexit tarafından otomatik olarak çağrılır.
+    """
+    logging.info("Program sonlanıyor. Tüm kaynaklar temizleniyor...")
+    try:
+        if left_motors: left_motors.stop()
+        if right_motors: right_motors.stop()
+        if h_motor_devices: _set_motor_pins(h_motor_devices, 0, 0, 0, 0)
+        if v_motor_devices: _set_motor_pins(v_motor_devices, 0, 0, 0, 0)
+    except Exception as e:
+        logging.error(f"Motorlar durdurulurken hata: {e}")
+    finally:
+        if os.path.exists(AUTONOMOUS_SCRIPT_PID_FILE):
+            os.remove(AUTONOMOUS_SCRIPT_PID_FILE)
+            logging.info("Otonom sürüş PID dosyası temizlendi.")
+        logging.info("Temizleme tamamlandı.")
 
 
 def setup_hardware():
@@ -83,7 +97,7 @@ def setup_hardware():
     logging.info("Tüm donanım nesneleri başarıyla oluşturuldu.")
 
 
-# --- DC MOTOR HAREKET FONKSİYONLARI ---
+# --- HAREKET VE TARAMA FONKSİYONLARI ---
 def move_forward():
     logging.info("İleri Gidiliyor...")
     left_motors.forward();
@@ -122,7 +136,6 @@ def stop_motors():
     right_motors.stop()
 
 
-# --- STEP MOTOR TARAMA VE ANALİZ FONKSİYONLARI ---
 def _set_motor_pins(motor_devices, s1, s2, s3, s4):
     motor_devices[0].value, motor_devices[1].value, motor_devices[2].value, motor_devices[3].value = bool(s1), bool(
         s2), bool(s3), bool(s4)
@@ -161,12 +174,8 @@ def analyze_and_decide(front_scan, rear_scan):
     front_left = front_scan.get(-45, 0);
     front_center = front_scan.get(0, 0);
     front_right = front_scan.get(45, 0)
-
-    # DÜZELTME: Arka tarama verisi de artık karar sürecine dahil ediliyor.
-    # Arka tarama açıları: 180 (tam arka)
     rear_center = rear_scan.get(180, 0)
 
-    # Öncelik her zaman ileridir
     if front_center > OBSTACLE_DISTANCE_CM and front_center >= max(front_left, front_right):
         logging.info("Karar: En açık yol ÖNDE. İleri gidilecek.")
         return "FORWARD"
@@ -176,7 +185,6 @@ def analyze_and_decide(front_scan, rear_scan):
     elif front_left > OBSTACLE_DISTANCE_CM:
         logging.info("Karar: En açık yol SOLDA. Sola dönülecek.")
         return "TURN_LEFT"
-    # Eğer ön taraf tamamen kapalıysa, arkaya bak
     elif rear_center > OBSTACLE_DISTANCE_CM:
         logging.info("Karar: Ön taraf kapalı, ARKA AÇIK. Geri gidilecek.")
         return "BACKWARD"
@@ -187,35 +195,33 @@ def analyze_and_decide(front_scan, rear_scan):
 
 # --- ANA ÇALIŞMA DÖNGÜSÜ ---
 def main():
-    atexit.register(remove_pid_file)
+    # DÜZELTME: Programdan çıkıldığında çalışacak temizleme fonksiyonu en başa kaydedilir.
+    atexit.register(cleanup_on_exit)
     create_pid_file()
 
-    setup_hardware()
-    # Başlangıçta step motorları sıfırla
-    move_step_motor_to_angle(h_motor_devices, h_motor_ctx, 0)
-    move_step_motor_to_angle(v_motor_devices, v_motor_ctx, 0)
-
+    # DÜZELTME: Tüm başlangıç ve çalışma mantığı bir try...except bloğu içine alındı.
+    # Bu, 'GPIO busy' gibi başlangıç hatalarını yakalayacak ve kullanıcıya bildirecektir.
     try:
+        setup_hardware()
+        move_step_motor_to_angle(h_motor_devices, h_motor_ctx, 0)
+        move_step_motor_to_angle(v_motor_devices, v_motor_ctx, 0)
+
         while True:
             logging.info("\n--- YENİ DÖNGÜ: DUR-DÜŞÜN-HAREKET ET ---")
             stop_motors()
 
-            # DÜŞÜN: Önü ve arkayı tara
             logging.info("1. Ön Taraf Taranıyor...")
             front_scan_data = perform_quick_scan(v_motor_devices, v_motor_ctx, [0, -45, 45, 0])
 
             logging.info("2. Arka Taraf Taranıyor ('Dikiz Aynası')...")
-            # DÜZELTME: Arka tarama aktif hale getirildi (180 dereceye bakıp geri döner)
             rear_scan_data = perform_quick_scan(h_motor_devices, h_motor_ctx, [0, 180, 0])
 
-            # Karar ver
             decision = analyze_and_decide(front_scan_data, rear_scan_data)
 
-            # Kararı uygula
             if decision == "FORWARD":
                 move_forward()
             elif decision == "BACKWARD":
-                move_backward()  # Yeni hareket eklendi
+                move_backward()
             elif decision == "TURN_LEFT":
                 turn_left()
             elif decision == "TURN_RIGHT":
@@ -226,13 +232,12 @@ def main():
 
             time.sleep(1)
 
-    except KeyboardInterrupt:
-        print("\nProgram kullanıcı tarafından sonlandırıldı.")
-    finally:
-        stop_motors()
-        move_step_motor_to_angle(h_motor_devices, h_motor_ctx, 0)
-        move_step_motor_to_angle(v_motor_devices, v_motor_ctx, 0)
-        logging.info("Tüm işlemler durduruldu.")
+    except Exception as e:
+        # Herhangi bir hata durumunda kullanıcıyı bilgilendir.
+        logging.error(f"KRİTİK BİR HATA OLUŞTU: {e}")
+        logging.error(
+            "Lütfen GPIO pinlerinin başka bir program (örn: sensor_script.py) tarafından kullanılmadığından emin olun.")
+        logging.error("Program sonlandırılıyor.")
 
 
 if __name__ == '__main__':

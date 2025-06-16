@@ -3,67 +3,75 @@
 import pandas as pd
 import google.generativeai as genai
 from django.db.models import Model
-from .models import AIModelConfiguration  # Kendi modelimizi import ediyoruz
+from .models import AIModelConfiguration
+import json
+import traceback
 
 
 class AIAnalyzerService:
     """
     Veritabanından alınan bir AIModelConfiguration nesnesine göre
-    analiz gerçekleştiren yeniden kullanılabilir servis.
+    metinsel analiz ve yorumlama gerçekleştiren servis.
+    Bu servis bir "Encoder" görevi görür.
     """
 
     def __init__(self, config: AIModelConfiguration):
         """
         AI servisini, veritabanından gelen bir yapılandırma nesnesi ile başlatır.
-
-        Args:
-            config (AIModelConfiguration): Kullanılacak yapılandırmayı içeren model nesnesi.
         """
         if not config or not isinstance(config, AIModelConfiguration):
             raise ValueError("Geçerli bir AIModelConfiguration nesnesi gereklidir.")
 
         self.config = config
-        self._configure_api()
-        self.model = self._load_model()
-        print(f"✅ AI Servisi: '{self.config.model_name}' modeli başarıyla yüklendi.")
-
-    def _configure_api(self):
-        """API anahtarını yapılandırma nesnesinden alarak genai kütüphanesini yapılandırır."""
-        genai.configure(api_key=self.config.api_key)
-
-    def _load_model(self) -> genai.GenerativeModel:
-        """Model adını yapılandırma nesnesinden alarak modeli oluşturur."""
         try:
-            return genai.GenerativeModel(self.config.model_name)
+            genai.configure(api_key=self.config.api_key)
+            self.model = genai.GenerativeModel(self.config.model_name)
+            print(f"✅ AI Servisi: '{self.config.model_name}' modeli başarıyla yüklendi.")
         except Exception as e:
             print(
                 f"❌ HATA: '{self.config.model_name}' modeli yüklenemedi. Model adını veya API anahtarını kontrol edin.")
             raise e
 
-    def analyze_model_data(self, django_model: Model, custom_prompt: str, fields: list = None, **filters) -> str:
-        # Bu metodun içeriğinde herhangi bir değişiklik yapmaya gerek yok.
-        # Aynen önceki gibi kalabilir.
-        print(f"🔍 Veritabanı sorgulanıyor: Model={django_model.__name__}, Filtreler={filters}")
-        queryset = django_model.objects.filter(**filters)
+    def get_text_interpretation(self, scan: 'Scan') -> str:
+        """
+        Bir Scan nesnesine bağlı noktaları alır, özetler ve Gemini'ye göndererek
+        ortam hakkında sanatsal ve betimleyici bir metin üretmesini sağlar.
+
+        Args:
+            scan (Scan): Analiz edilecek tarama nesnesi.
+
+        Returns:
+            str: Yapay zeka tarafından üretilen metinsel yorum.
+        """
+        print(f"🔍 Scan ID {scan.id} için veritabanı sorgulanıyor...")
+        queryset = scan.points.filter(mesafe_cm__gt=0.1, mesafe_cm__lt=400.0)
+
         if not queryset.exists():
-            return f"Analiz için uygun veri bulunamadı. (Model: {django_model.__name__}, Filtre: {filters})"
-        df = pd.DataFrame(list(queryset.values(*fields) if fields else queryset.values()))
-        print(f"📊 {len(df)} adet kayıt DataFrame'e yüklendi. Analiz için gönderiliyor...")
-        data_string = df.to_string()
+            return "Analiz için uygun veri bulunamadı."
+
+        # Daha verimli bir prompt için veriyi özetleyelim
+        df = pd.DataFrame(list(queryset.values('derece', 'dikey_aci', 'mesafe_cm')))
+        data_summary = df.describe().to_string()  # İstatistiksel özet
+        sample_data = df.sample(min(len(df), 15)).to_string()  # Rastgele 15 örnek
+
+        print(f"� {len(df)} adet kayıt özetlendi. Yorumlama için Gemini'ye gönderiliyor...")
+
+        # Sanatsal bir prompt oluşturmak için Gemini'ye gönderilecek talimat
         full_prompt = (
-            f"Ultrasonic sensör mesafe ölçümlerinden elde edilen veriler analiz et:\n\n"
-            f"--- VERİ TABLOSU ({django_model.__name__}) ---\n"
-            f"{data_string}\n\n"
-            f"--- ANALİZ İSTEĞİ ---\n"
-            f"{custom_prompt}\n\n"
-            f"Lütfen cevabını net başlıklar ve maddeler halinde Markdown formatında sun. "
-            f"Multimodal özelliğinle resim oluştur. Resim tahmini yapma. Alan ve çevre tahmini yap."
-            f"Bulunduğun ortamın geometrik şeklini tahmin et"
+            f"Sen, bir mekanın ruhunu sensör verilerinden okuyabilen bir şair/sanatçısın. "
+            f"Görevin, aşağıda verilen düşük çözünürlüklü 3D tarama verilerinin istatistiksel özetini ve birkaç örneğini inceleyerek, "
+            f"bu mekanın atmosferini, olası içeriğini ve hissettirdiklerini betimleyen canlı bir paragraf yazmaktır. "
+            f"Bu metin, bir resim yapay zekasına ilham vermek için kullanılacak. Somut olmaktan çekinme, boşlukları hayal gücünle doldur.\n\n"
+            f"--- Veri Özeti ---\n{data_summary}\n\n"
+            f"--- Veri Örnekleri ---\n{sample_data}\n\n"
+            f"--- Betimleme ---\n"
         )
+
         try:
             response = self.model.generate_content(full_prompt)
-            print("✅ Analiz başarıyla tamamlandı!")
-            return response.text
+            print("✅ Metinsel yorum başarıyla alındı!")
+            return response.text.strip()
         except Exception as e:
-            print(f"❌ Yapay zeka modelinden yanıt alınırken bir hata oluştu: {e}")
-            return "Analiz sırasında bir hata meydana geldi."
+            print(f"❌ Gemini modelinden yanıt alınırken bir hata oluştu: {e}")
+            return f"Analiz sırasında bir hata meydana geldi: {e}"
+

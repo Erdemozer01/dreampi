@@ -539,6 +539,7 @@ def render_and_update_data_table(active_tab, points_json):
 
 
 # 10. ANA GRAFİK VE ANALİZ GÜNCELLEME FONKSİYONU (3D KÜMELEME EKLENDİ)
+# ANA GRAFİK VE ANALİZ GÜNCELLEME FONKSİYONU (Görsel İsteğine Göre Güncellendi)
 @app.callback(
     [Output('scan-map-graph-3d', 'figure'),
      Output('scan-map-graph-2d', 'figure'),
@@ -549,64 +550,64 @@ def render_and_update_data_table(active_tab, points_json):
      Output('perimeter-length', 'children'),
      Output('max-width', 'children'),
      Output('max-depth', 'children')],
-    [Input('latest-scan-points-store', 'data')]
+    [Input('latest-scan-object-store', 'data'),  # Scan ID için bu input eklendi
+     Input('latest-scan-points-store', 'data')]
 )
-def update_all_graphs_and_analytics(points_json):
+def update_all_graphs_and_analytics(scan_json, points_json):
+    # Boş figürler ve varsayılan değerler
     empty_fig = go.Figure(layout=dict(title='Veri Bekleniyor...',
                                       annotations=[dict(text="Tarama başlatın.", showarrow=False, font=dict(size=16))]))
-    if not points_json:
-        return (empty_fig,) * 3 + ("Analiz için veri bekleniyor.", None) + ("--",) * 4
+    default_return = (empty_fig,) * 3 + ("Analiz için veri bekleniyor.", None) + ("--",) * 4
 
+    if not scan_json or not points_json:
+        return default_return
+
+    # Veriyi yükle ve işle
+    scan_data = json.loads(scan_json)
+    scan_id = scan_data.get('id', 'Bilinmiyor')
     df = pd.read_json(io.StringIO(points_json), orient='split')
+
     if df.empty:
-        empty_fig = go.Figure(layout=dict(title='Henüz Nokta Verisi Yok...'))
+        empty_fig = go.Figure(layout=dict(title=f'Tarama #{scan_id} için Nokta Verisi Yok...'))
         return (empty_fig,) * 3 + ("Analiz için veri bekleniyor.", None) + ("--",) * 4
 
     df_valid = df[(df['mesafe_cm'] > 0.1) & (df['mesafe_cm'] < 400.0)].copy()
     df_valid.dropna(subset=['x_cm', 'y_cm', 'z_cm'], inplace=True)
 
-    fig_3d = go.Figure(layout=dict(title='3D Kümelenmiş Harita', margin=dict(l=0, r=0, b=0, t=40)))
+    # Figürleri ve varsayılan değerleri başlat
+    # DÜZELTME: Başlık dinamik hale getirildi
+    fig_3d = go.Figure(
+        layout=dict(title=f'3D Tarama Görüntüsü - Tarama ID: {scan_id}', margin=dict(l=0, r=0, b=0, t=40)))
     fig_2d = go.Figure(layout=dict(title='2D Harita (Üstten Görünüm)', margin=dict(l=20, r=20, b=20, t=40)))
     fig_polar = go.Figure(layout=dict(title='Polar Grafik', margin=dict(l=40, r=40, b=40, t=40)))
+
     est_text, store_data = "Analiz için yetersiz veri.", None
     area, perim, width, depth = "-- cm²", "-- cm", "-- cm", "-- cm"
 
-    if len(df_valid) > 10:  # Kümeleme için yeterli nokta kontrolü
-        # --- 3D Grafik (KÜMELEME İLE GÜNCELLENDİ) ---
-        df_clustered_3d = analyze_3d_clusters(df_valid.copy())
-
-        unique_clusters = sorted(df_clustered_3d['cluster'].unique())
-        num_clusters = len(unique_clusters) - (1 if -1 in unique_clusters else 0)
-        colors = plt.cm.get_cmap('jet', num_clusters if num_clusters > 0 else 1)
-
-        for k in unique_clusters:
-            cluster_df = df_clustered_3d[df_clustered_3d['cluster'] == k]
-            if k == -1:
-                # Gürültü noktalarını yarı şeffaf gri yap
-                marker_dict = dict(size=2, color='rgba(150, 150, 150, 0.5)')
-                name = 'Gürültü'
-            else:
-                # Her kümeye farklı bir renk ata
-                norm_k = k / (num_clusters - 1) if num_clusters > 1 else 0.0
-                rc = colors(np.clip(norm_k, 0.0, 1.0))
-                marker_dict = dict(size=3, color=f'rgb({rc[0] * 255}, {rc[1] * 255}, {rc[2] * 255})')
-                name = f'Küme {k}'
-
-            fig_3d.add_trace(go.Scatter3d(
-                x=cluster_df['y_cm'], y=cluster_df['x_cm'], z=cluster_df['z_cm'],
-                mode='markers', marker=marker_dict, name=name
-            ))
-
+    if len(df_valid) > 3:
+        # --- 3D Grafik ---
+        # DÜZELTME: Noktalar artık 'z_cm' yerine 'mesafe_cm' değerine göre renklendiriliyor.
+        fig_3d.add_trace(go.Scatter3d(
+            x=df_valid['y_cm'], y=df_valid['x_cm'], z=df_valid['z_cm'],
+            mode='markers',
+            marker=dict(
+                size=2,
+                color=df_valid['mesafe_cm'],  # Renk kaynağı olarak mesafe kullanılıyor
+                colorscale='Viridis',  # Resimdeki gibi 'viridis' renk skalası
+                showscale=True,
+                colorbar_title='Mesafe (cm)'  # Renk barı başlığı güncellendi
+            )
+        ))
         fig_3d.update_layout(
             scene=dict(xaxis_title='Y Ekseni (cm)', yaxis_title='X Ekseni (cm)', zaxis_title='Z Ekseni (cm)',
                        aspectmode='data'))
 
-        # --- 2D Grafik (Mevcut haliyle kalıyor) ---
-        clustering_desc, df_clus_2d = analyze_environment_shape(fig_2d, df_valid)
-        store_data = df_clus_2d.to_json(orient='split')
-        add_scan_rays(fig_2d, df_valid);
+        # --- 2D Grafik ---
+        clustering_desc, df_clus = analyze_environment_shape(fig_2d, df_valid.copy())
+        store_data = df_clus.to_json(orient='split')
+        add_scan_rays(fig_2d, df_valid)
         add_sector_area(fig_2d, df_valid)
-        fig_2d.update_layout(xaxis_title="Yatay Mesafe (cm)", yaxis_title="Dikey Mesafe (cm)", yaxis_scaleanchor="x",
+        fig_2d.update_layout(xaxis_title="Yanal Mesafe (cm)", yaxis_title="İleri Mesafe (cm)", yaxis_scaleanchor="x",
                              yaxis_scaleratio=1,
                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
 
@@ -620,24 +621,24 @@ def update_all_graphs_and_analytics(points_json):
         try:
             hull_points = df_valid[['y_cm', 'x_cm']].values
             if len(hull_points) >= 3:
-                hull = ConvexHull(hull_points);
-                area = f"{hull.volume:.1f} cm²";
+                hull = ConvexHull(hull_points)
+                area = f"{hull.volume:.1f} cm²"
                 perim = f"{hull.area:.1f} cm"
         except Exception as e:
             print(f"ConvexHull hatası: {e}")
-        width = f"{df_valid['y_cm'].max() - df_valid['y_cm'].min():.1f} cm";
+        width = f"{df_valid['y_cm'].max() - df_valid['y_cm'].min():.1f} cm"
         depth = f"{df_valid['x_cm'].max():.1f} cm"
         est_text = html.Div([
             html.P(estimate_geometric_shape(df_valid), className="fw-bold"), html.Hr(),
             html.P(find_clearest_path(df_valid), className="fw-bold text-primary"), html.Hr(),
-            html.P(f"2D Kümeleme: {clustering_desc}")])
+            html.P(f"2D Kümeleme: {clustering_desc}")
+        ])
 
     # Her figüre sensör pozisyonunu ekle
     add_sensor_position(fig_2d)
     fig_3d.add_trace(go.Scatter3d(x=[0], y=[0], z=[0], mode='markers', marker=dict(size=5, color='red'), name='Sensör'))
 
     return fig_3d, fig_2d, fig_polar, est_text, store_data, area, perim, width, depth
-
 
 # 12. 2D haritadaki bir noktaya tıklandığında kümeleme bilgilerini gösterir
 @app.callback(

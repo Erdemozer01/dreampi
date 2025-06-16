@@ -18,7 +18,7 @@ import json
 from scipy.spatial import ConvexHull
 from sklearn.cluster import DBSCAN
 from sklearn.linear_model import RANSACRegressor
-from scanner.ai_analyzer import AIAnalyzerService
+
 
 # Dash ve Plotly Kütüphaneleri
 from django_plotly_dash import DjangoDash
@@ -727,5 +727,6 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
     except Exception as e:
         traceback.print_exc()
         return dbc.Alert(f"Yapay zeka işlemi sırasında beklenmedik bir hata oluştu: {e}", color="danger"), None
+
 
 

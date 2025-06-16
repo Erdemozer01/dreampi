@@ -35,8 +35,8 @@ class AIAnalyzerService:
 
     def get_text_interpretation(self, scan: Scan) -> tuple[str, str]:
         """
-        Sensör verilerinin tamamını analiz eder ve biri kullanıcı için Türkçe analiz, diğeri
-        resim modeli için İngilizce prompt olmak üzere iki metin döndürür. (ENCODER)
+        Sensör verilerinin tamamını analiz eder. Önce Türkçe bir teknik rapor,
+        sonra bu raporun özetinden İngilizce bir resim prompt'u üretir.
         """
         print(f"[INFO] Scan ID {scan.id} için veritabanı sorgulanıyor...")
         queryset = scan.points.filter(mesafe_cm__gt=0.1, mesafe_cm__lt=400.0)
@@ -44,12 +44,7 @@ class AIAnalyzerService:
         if not queryset.exists():
             return "Analiz için uygun veri bulunamadı.", "No data to generate an image from."
 
-        # Tüm geçerli noktaları DataFrame'e yükle
         df = pd.DataFrame(list(queryset.values('derece', 'dikey_aci', 'mesafe_cm')))
-
-        # DÜZELTME: Artık verinin bir özetini değil, tamamını string formatına çeviriyoruz.
-        # Not: Çok büyük taramalarda (10.000+ nokta) bu veri API limitlerini zorlayabilir.
-        # Şimdilik en fazla 1000 noktayı göndererek dengeli bir yaklaşım izliyoruz.
         data_string = df.head(1000).to_string(index=False)
 
         print(f"[INFO] {len(df)} adet noktanın tamamı analiz için {self.config.model_name}'e gönderiliyor...")
@@ -57,20 +52,22 @@ class AIAnalyzerService:
         h_angle = scan.h_scan_angle_setting
         v_angle = scan.v_scan_angle_setting
 
-        # DÜZELTME: Prompt, yapay zekaya artık bir özet değil, tam veri seti verildiğini belirtiyor.
+        # DÜZELTME: Prompt, yapay zekayı önce analiz yapıp sonra bu analizi özetlemeye yönlendiriyor.
         full_prompt = (
-            f"You are a 3D Scene Reconstruction Analyst. Your task is to interpret the following full point cloud data from a sparse 3D sensor. "
+            f"You are a 3D Scene Analysis expert. Your task is to perform a two-step process on the following sensor data. "
             f"The scan was performed with a horizontal angle of {h_angle} degrees and a vertical angle of {v_angle} degrees. "
-            f"Your output MUST be a valid JSON object with two keys: 'turkish_analysis' and 'english_image_prompt'.\n"
-            f"1. For 'turkish_analysis' (in TURKISH): Analyze the entire point cloud. Identify clusters, planes, and empty spaces. Deduce what the objects are (desk, chair, wall, window, etc.) and describe their spatial relationships. Explain your reasoning based on the data patterns.\n"
-            f"2. For 'english_image_prompt' (in ENGLISH): Synthesize your analysis into a single, rich, descriptive paragraph for an image generation AI. Describe the objects, their placement, the lighting, and the overall atmosphere of the scene.\n\n"
-            f"--- Full Point Cloud Data (derece, dikey_aci, mesafe_cm) ---\n{data_string}\n\n"
-            f"--- Generate Forensic JSON Report ---\n"
+            f"Your output MUST be a valid JSON object with two keys: 'turkish_analysis' and 'english_image_prompt'.\n\n"
+            f"STEP 1: DETAILED ANALYSIS (for 'turkish_analysis' key, in TURKISH)\n"
+            f"Analyze the point cloud data thoroughly. Identify key features like large planes (walls, floor), clusters of points (potential objects), and empty zones. Based on the data patterns, deduce what the objects are (e.g., 'A flat horizontal cluster at 75cm height is likely a desk.'). Explain your reasoning in a technical report format.\n\n"
+            f"STEP 2: VISUAL SUMMARY (for 'english_image_prompt' key, in ENGLISH)\n"
+            f"Based on YOUR OWN analysis from Step 1, create a concise and effective summary prompt for an image generation AI. Do not describe the data, describe the final scene. This summary should focus on the main objects and the overall atmosphere. Example: 'A modern office space with a large work desk in the center, an ergonomic chair, and a laptop. A large window on the left wall fills the room with soft daylight.'\n\n"
+            f"--- Sensor Data ---\n{data_string}\n\n"
+            f"--- Generate JSON Report ---\n"
         )
 
         try:
             response = self.text_model.generate_content(full_prompt)
-            print("[SUCCESS] İkili dilde yorum başarıyla alındı!")
+            print("[SUCCESS] İkili dilde yorum ve özet başarıyla alındı!")
 
             json_response_text = response.text.strip()
             if json_response_text.startswith("```json"):
@@ -92,7 +89,7 @@ class AIAnalyzerService:
 
     def generate_image_with_imagen(self, text_prompt: str) -> str:
         """
-        Verilen İngilizce betimlemeyi kullanarak Google Imagen ile bir resim oluşturur. (DECODER)
+        Verilen İngilizce özet betimlemeyi kullanarak Google Imagen ile bir resim oluşturur. (DECODER)
         """
         print(f"[INFO] Resim oluşturma modeli ile resim oluşturuluyor: '{text_prompt[:70]}...'")
 

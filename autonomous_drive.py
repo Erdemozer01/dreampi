@@ -30,8 +30,8 @@ MOTOR_RIGHT_FORWARD = 8
 MOTOR_RIGHT_BACKWARD = 7
 
 # Step Motor Pinleri
-H_MOTOR_IN1, H_MOTOR_IN2, H_MOTOR_IN3, H_MOTOR_IN4 = 26, 19, 13, 6  # Yatay (Pan/Dikiz Aynası)
-V_MOTOR_IN1, V_MOTOR_IN2, V_MOTOR_IN3, V_MOTOR_IN4 = 21, 20, 16, 12  # Dikey (Tilt/Ön Tarama)
+H_MOTOR_IN1, H_MOTOR_IN2, H_MOTOR_IN3, H_MOTOR_IN4 = 26, 19, 13, 6  # Yatay (Pan/Ön Tarama)
+V_MOTOR_IN1, V_MOTOR_IN2, V_MOTOR_IN3, V_MOTOR_IN4 = 21, 20, 16, 12  # Dikey (Tilt/Dikiz Aynası)
 
 # Ultrasonik Sensör Pinleri
 TRIG_PIN_1, ECHO_PIN_1 = 23, 24
@@ -226,7 +226,7 @@ def main():
     try:
         setup_hardware()
 
-        # DÜZELTME: Ana döngüden önce donanım testini çalıştırıyoruz.
+        # Ana döngüden önce donanım testini çalıştırıyoruz.
         test_dc_motors()
         input("Motor testi tamamlandı. Ana sürüş döngüsüne başlamak için Enter'a basın...")
 
@@ -237,11 +237,12 @@ def main():
             logging.info("\n--- YENİ DÖNGÜ: DUR-DÜŞÜN-HAREKET ET ---")
             stop_motors()
 
-            logging.info("1. Ön Taraf Taranıyor...")
-            front_scan_data = perform_quick_scan(v_motor_devices, v_motor_ctx, [0, -45, 45, 0])
+            # DÜZELTME: Motor görevleri isteğinize göre değiştirildi.
+            logging.info("1. Ön Taraf Taranıyor (Yatay Motor)...")
+            front_scan_data = perform_quick_scan(h_motor_devices, h_motor_ctx, [0, -45, 45, 0])
 
-            logging.info("2. Arka Taraf Taranıyor ('Dikiz Aynası')...")
-            rear_scan_data = perform_quick_scan(h_motor_devices, h_motor_ctx, [0, 180, 0])
+            logging.info("2. Arka Taraf Taranıyor ('Dikiz Aynası' - Dikey Motor)...")
+            rear_scan_data = perform_quick_scan(v_motor_devices, v_motor_ctx, [0, 180, 0])
 
             decision = analyze_and_decide(front_scan_data, rear_scan_data)
 

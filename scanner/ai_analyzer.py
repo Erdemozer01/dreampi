@@ -124,7 +124,7 @@ class AIAnalyzerService:
         print(f"[INFO] Resim oluşturma modeli ile resim oluşturuluyor: '{text_prompt[:70]}...'")
 
         IMAGE_MODEL_NAME = "imagen-3.0-generate-002"
-        API_ENDPOINT = f"[https://generativelanguage.googleapis.com/v1beta/models/](https://generativelanguage.googleapis.com/v1beta/models/){IMAGE_MODEL_NAME}:predict?key={self.config.api_key}"
+        API_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{IMAGE_MODEL_NAME}:predict?key={self.config.api_key}"
 
         full_image_prompt = (
             f"A photorealistic, 4k, cinematic image of the following scene, which is a reconstruction from sensor data: {text_prompt}. "

@@ -80,7 +80,7 @@ class AIAnalyzerService:
         API_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{IMAGE_MODEL_NAME}:predict?key={self.config.api_key}"
 
         style_keywords = "photorealistic, 4k, digital art, futuristic, point cloud scan, cinematic lighting"
-        full_image_prompt = f"{text_prompt}, {style_keywords}"
+        full_image_prompt = f"{text_prompt}, özetle ve uygun şekilde resim oluştur"
 
         payload = {
             "instances": [{"prompt": full_image_prompt}],

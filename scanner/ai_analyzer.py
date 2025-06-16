@@ -50,14 +50,14 @@ class AIAnalyzerService:
         print(f"[INFO] {len(df)} adet kayıt özetlendi. Yorumlama için {self.config.model_name}'e gönderiliyor...")
 
         full_prompt = (
-            f"Sen, 3D sensör verilerini analiz ederek bir ortamı yeniden oluşturan bir teknik analistsin. "
-            f"Görevin, aşağıda verilen düşük çözünürlüklü ultrasonik sensör verilerinin istatistiksel özetini ve örneklerini incelemektir. "
-            f"Bu verilerden yola çıkarak, ortamdaki fiziksel nesneleri, bunların konumlarını ve düzenini mantıksal çıkarımlarla tanımla. "
-            f"Bu tanım, bir resim oluşturma yapay zekası için net bir girdi olacak şekilde, olabildiğince somut ve betimleyici olmalı. "
-            f"Boşlukları, veriye en uygun mantıksal senaryo ile doldur. Örneğin, geniş düz bir yüzeyin 'masa', altındaki daha küçük kümelerin 'sandalye' olabileceğini belirt.\n\n"
+            f"Sen, düşük çözünürlüklü 3D sensör verilerini analiz ederek bir ortamın fiziksel yapısını yeniden oluşturan bir teknik analistsin. "
+            f"Görevin, aşağıda verilen veri özetini ve örneklerini inceleyerek, gördüğün nesneleri ve düzeni doğrudan ve net bir şekilde betimlemektir. "
+            f"Sanatsal yorum veya atmosfer ekleme. Sadece ne algıladığını, nesnelerin ne olabileceğini ve birbirlerine göre konumlarını belirt. "
+            f"Bu metin, bir resim yapay zekası tarafından birebir görselleştirilecek. "
+            f"Örneğin: 'Ortada, 120cm genişliğinde, 75cm yüksekliğinde bir masa tespit edildi. Masanın altında, aralıklı olarak duran dört adet sandalye benzeri küme bulunuyor. Masanın üzerinde, ortada monitör olabilecek dikey bir yapı ve önünde klavye olabilecek yatay bir nesne var.'\n\n"
             f"--- Veri Özeti ---\n{data_summary}\n\n"
             f"--- Veri Örnekleri ---\n{sample_data}\n\n"
-            f"--- Analitik Betimleme ---\n"
+            f"--- Algılanan Sahnenin Betimlemesi ---\n"
         )
 
         try:

@@ -726,7 +726,10 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
         return dbc.Alert(f"Analiz edilecek tarama (ID: {scan_id}) veritabanında bulunamadı.", color="danger"), None
     except Exception as e:
         traceback.print_exc()
-        return dbc.Alert(f"Yapay zeka işlemi sırasında beklenmedik bir hata oluştu: {e}", color="danger"), None
+        # DÜZELTME: UnicodeEncodeError hatasını önlemek için hata mesajını güvenli hale getiriyoruz.
+        safe_error_message = str(e).encode('ascii', 'ignore').decode('ascii')
+        return dbc.Alert(f"Yapay zeka işlemi sırasında beklenmedik bir hata oluştu: {safe_error_message}",
+                         color="danger"), None
 
 
 

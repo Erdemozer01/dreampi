@@ -66,10 +66,6 @@ def create_pid_file():
 
 
 def cleanup_on_exit():
-    """
-    Program sonlandığında tüm donanım kaynaklarını güvenli bir şekilde kapatır
-    ve PID dosyasını temizler. atexit tarafından otomatik olarak çağrılır.
-    """
     logging.info("Program sonlanıyor. Tüm kaynaklar temizleniyor...")
     try:
         if left_motors: left_motors.stop()
@@ -95,6 +91,40 @@ def setup_hardware():
     v_motor_devices = (OutputDevice(V_MOTOR_IN1), OutputDevice(V_MOTOR_IN2), OutputDevice(V_MOTOR_IN3),
                        OutputDevice(V_MOTOR_IN4))
     logging.info("Tüm donanım nesneleri başarıyla oluşturuldu.")
+
+
+# --- DONANIM TEST FONKSİYONU ---
+def test_dc_motors():
+    """
+    Sadece DC motorları test etmek için basit bir fonksiyon.
+    Her motoru sırayla 1 saniye ileri ve geri çalıştırır.
+    """
+    logging.info("--- DC MOTOR TESTİ BAŞLATILIYOR ---")
+
+    logging.info("--> Sol tekerlekler 1 saniye İLERİ...")
+    left_motors.forward()
+    time.sleep(1)
+    left_motors.stop()
+    time.sleep(0.5)
+
+    logging.info("--> Sol tekerlekler 1 saniye GERİ...")
+    left_motors.backward()
+    time.sleep(1)
+    left_motors.stop()
+    time.sleep(1)
+
+    logging.info("--> Sağ tekerlekler 1 saniye İLERİ...")
+    right_motors.forward()
+    time.sleep(1)
+    right_motors.stop()
+    time.sleep(0.5)
+
+    logging.info("--> Sağ tekerlekler 1 saniye GERİ...")
+    right_motors.backward()
+    time.sleep(1)
+    right_motors.stop()
+
+    logging.info("--- DC MOTOR TESTİ TAMAMLANDI ---")
 
 
 # --- HAREKET VE TARAMA FONKSİYONLARI ---
@@ -177,32 +207,29 @@ def analyze_and_decide(front_scan, rear_scan):
     rear_center = rear_scan.get(180, 0)
 
     if front_center > OBSTACLE_DISTANCE_CM and front_center >= max(front_left, front_right):
-        logging.info("Karar: En açık yol ÖNDE. İleri gidilecek.")
         return "FORWARD"
     elif front_right > OBSTACLE_DISTANCE_CM and front_right > front_left:
-        logging.info("Karar: En açık yol SAĞDA. Sağa dönülecek.")
         return "TURN_RIGHT"
     elif front_left > OBSTACLE_DISTANCE_CM:
-        logging.info("Karar: En açık yol SOLDA. Sola dönülecek.")
         return "TURN_LEFT"
     elif rear_center > OBSTACLE_DISTANCE_CM:
-        logging.info("Karar: Ön taraf kapalı, ARKA AÇIK. Geri gidilecek.")
         return "BACKWARD"
     else:
-        logging.info("Karar: Tüm yönler kapalı. Durulacak.")
         return "STOP"
 
 
 # --- ANA ÇALIŞMA DÖNGÜSÜ ---
 def main():
-    # DÜZELTME: Programdan çıkıldığında çalışacak temizleme fonksiyonu en başa kaydedilir.
     atexit.register(cleanup_on_exit)
     create_pid_file()
 
-    # DÜZELTME: Tüm başlangıç ve çalışma mantığı bir try...except bloğu içine alındı.
-    # Bu, 'GPIO busy' gibi başlangıç hatalarını yakalayacak ve kullanıcıya bildirecektir.
     try:
         setup_hardware()
+
+        # DÜZELTME: Ana döngüden önce donanım testini çalıştırıyoruz.
+        test_dc_motors()
+        input("Motor testi tamamlandı. Ana sürüş döngüsüne başlamak için Enter'a basın...")
+
         move_step_motor_to_angle(h_motor_devices, h_motor_ctx, 0)
         move_step_motor_to_angle(v_motor_devices, v_motor_ctx, 0)
 
@@ -233,10 +260,9 @@ def main():
             time.sleep(1)
 
     except Exception as e:
-        # Herhangi bir hata durumunda kullanıcıyı bilgilendir.
         logging.error(f"KRİTİK BİR HATA OLUŞTU: {e}")
-        logging.error(
-            "Lütfen GPIO pinlerinin başka bir program (örn: sensor_script.py) tarafından kullanılmadığından emin olun.")
+        logging.error("Lütfen GPIO pinlerinin başka bir program tarafından kullanılmadığından emin olun.")
+        logging.error("L298N motor sürücüsüne harici güç verdiğinizden ve GND bağlantısını yaptığınızdan emin olun.")
         logging.error("Program sonlandırılıyor.")
 
 

@@ -35,7 +35,7 @@ class AIAnalyzerService:
 
     def get_text_interpretation(self, scan: Scan) -> str:
         """
-        Sensör verilerini analiz eder ve resim modeli için anahtar kelime listesi üretir. (ENCODER)
+        Sensör verilerini analiz eder ve resim modeli için teknik bir sahne betimlemesi üretir. (ENCODER)
         """
         print(f"[INFO] Scan ID {scan.id} için veritabanı sorgulanıyor...")
         queryset = scan.points.filter(mesafe_cm__gt=0.1, mesafe_cm__lt=400.0)
@@ -48,20 +48,21 @@ class AIAnalyzerService:
 
         print(f"[INFO] {len(df)} adet kayıt özetlendi. Yorumlama için {self.config.model_name}'e gönderiliyor...")
 
-        # DÜZELTME: Prompt, yapay zekadan nesne listesini İNGİLİZCE olarak vermesini istiyor.
+        # DÜZELTME: Prompt, yapay zekayı daha teknik ve analitik bir yorum yapmaya yönlendiriyor.
         full_prompt = (
-            f"You are a technical expert analyzing 3D sensor data to identify objects in an indoor environment. "
-            f"Your task is to analyze the following data summary and output a comma-separated list of the common indoor objects you detect. "
-            f"IMPORTANT: Your output must ONLY be a list of keywords in ENGLISH. Do not add any other explanations or sentences. "
-            f"Example output: 'a work desk, an office chair, a laptop, a stack of books, a window'.\n\n"
+            f"You are a 3D Scene Reconstruction Analyst. Your task is to interpret the following statistical summary of sparse 3D sensor data and generate a technical but descriptive scene description for an image generation model. "
+            f"1. Start by analyzing the data summary. Comment on the angular range (derece, dikey_aci) and distance variation (mesafe_cm) to estimate the overall size and shape of the scanned area. "
+            f"2. Based on your analysis, deduce the most likely objects and their layout in the room. "
+            f"3. Combine these findings into a single, coherent paragraph in ENGLISH, describing the scene as a factual report. This final text will be used to generate an image. "
+            f"Example Output: 'The sensor data indicates a wide horizontal scan of approximately 270 degrees with a vertical sweep up to 90 degrees. The distances range up to 350cm, suggesting a medium-sized room. A large, flat cluster of points at a distance of 150cm is likely a wall. In front of it, a rectangular cluster at a height of 80cm is interpreted as a work desk, with smaller, more complex clusters underneath and around it, consistent with an office chair and a computer monitor.'\n\n"
             f"--- Data Summary ---\n{data_summary}\n\n"
-            f"--- List of Detected Indoor Objects (in English) ---\n"
+            f"--- Technical Scene Description for Image Generation (in English) ---\n"
         )
 
         try:
             response = self.text_model.generate_content(full_prompt)
-            print("[SUCCESS] Metinsel yorum (İngilizce nesne listesi) başarıyla alındı!")
-            object_list = response.text.strip().replace('\n', ', ')
+            print("[SUCCESS] Teknik ve analitik yorum başarıyla alındı!")
+            object_list = response.text.strip().replace('\n', ' ')
             return object_list
         except Exception as e:
             print(f"[ERROR] Gemini modelinden yanıt alınırken bir hata oluştu: {e}")
@@ -69,17 +70,17 @@ class AIAnalyzerService:
 
     def generate_image_with_imagen(self, text_prompt: str) -> str:
         """
-        Verilen anahtar kelime listesini kullanarak bir resim oluşturur. (DECODER)
+        Verilen teknik betimlemeyi kullanarak bir resim oluşturur. (DECODER)
         """
         print(f"[INFO] Resim oluşturma modeli ile resim oluşturuluyor: '{text_prompt[:70]}...'")
 
         IMAGE_MODEL_NAME = "imagen-3.0-generate-002"
         API_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{IMAGE_MODEL_NAME}:predict?key={self.config.api_key}"
 
-        # Prompt yapısı, İngilizce anahtar kelime listesini doğrudan kullanacak şekilde ayarlandı.
+        # Prompt yapısı, teknik betimlemeyi doğrudan kullanacak şekilde ayarlandı.
         full_image_prompt = (
-            f"A photorealistic, 4k, cinematic image of a room containing these objects: {text_prompt}. "
-            f"The scene should be well-lit and have a clean, modern aesthetic."
+            f"A photorealistic, 4k, cinematic image of the following scene, which is a reconstruction from sensor data: {text_prompt}. "
+            f"The image should have a clean, modern, slightly technical aesthetic."
         )
 
         payload = {

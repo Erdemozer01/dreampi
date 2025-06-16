@@ -98,4 +98,45 @@ class AIAnalyzerService:
         IMAGE_MODEL_NAME = "imagen-3.0-generate-002"
 
         # DÜZELTME: URL'deki hatalı Markdown formatı kaldırıldı.
-        API_ENDPOINT = f"[https://generativelanguage.googleapis.com/v1beta/models/](https://generativelanguage.googleapis.com/v1beta/models/){IMAGE_MOD
+        API_ENDPOINT = f"[https://generativelanguage.googleapis.com/v1beta/models/](https://generativelanguage.googleapis.com/v1beta/models/){IMAGE_MODEL_NAME}:predict?key={self.config.api_key}"
+
+        full_image_prompt = (
+            f"A photorealistic, 4k, cinematic image of the following scene, which is a reconstruction from sensor data: {text_prompt}. "
+            f"The image should have a clean, modern, slightly technical aesthetic."
+        )
+
+        payload = {
+            "instances": [{"prompt": full_image_prompt}],
+            "parameters": {"sampleCount": 1}
+        }
+
+        try:
+            response = requests.post(API_ENDPOINT, json=payload, timeout=90)
+
+            if response.status_code != 200:
+                error_details = "Bilinmeyen API Hatası"
+                try:
+                    error_json = response.json()
+                    error_details = error_json.get('error', {}).get('message', response.text)
+                except json.JSONDecodeError:
+                    error_details = response.text
+                print(f"[ERROR] Resim API Hatası (Kod: {response.status_code}): {error_details}")
+                return f"API Hatası (Kod: {response.status_code}): {error_details}"
+
+            result = response.json()
+
+            if 'predictions' in result and result['predictions']:
+                base64_image = result['predictions'][0].get('bytesBase64Encoded')
+                if base64_image:
+                    print("[SUCCESS] Resim başarıyla oluşturuldu.")
+                    return f"data:image/png;base64,{base64_image}"
+
+            print("[ERROR] API'den resim verisi alınamadı. Dönen cevap:", result)
+            return "Resim oluşturulamadı (API'den boş veya hatalı yanıt)."
+
+        except requests.exceptions.RequestException as e:
+            print(f"[ERROR] API'ye bağlanırken hata oluştu: {e}")
+            return f"Resim oluşturma servisine bağlanılamadı: {e}"
+        except Exception as e:
+            print(f"[ERROR] Resim oluşturma sırasında genel bir hata oluştu: {e}")
+            return f"Resim oluşturulurken beklenmedik bir hata oluştu: {e}"

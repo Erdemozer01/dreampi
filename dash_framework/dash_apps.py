@@ -678,15 +678,17 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
     Kullanıcı arayüzden bir AI yapılandırması seçtiğinde tetiklenir.
     Seçilen yapılandırmaya göre AIAnalyzerService'i kullanarak metinsel yorum üretir.
     """
+    # DÜZELTME: Gerekli modüller, sadece bu callback çalıştığında import ediliyor.
+    # Bu, "Apps aren't loaded yet." hatasını çözer.
+    from scanner.models import AIModelConfiguration, Scan
+    from scanner.ai_analyzer import AIAnalyzerService
+
     # Google AI kütüphanesinin yüklü olup olmadığını kontrol et
     if genai is None:
         return dbc.Alert("Google AI kütüphanesi (pip install google-generativeai) yüklü değil.", color="danger"), None
 
-    from scanner.models import AIModelConfiguration, Scan
-
     # Gerekli girdilerin olup olmadığını kontrol et
     if not selected_config_id:
-        # Bu bir hata değil, sadece kullanıcının henüz bir seçim yapmadığı durumdur.
         return html.P("Yorum almak için yukarıdan bir AI yapılandırması seçin."), None
 
     if not scan_json or not points_json:
@@ -697,8 +699,6 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
         config = AIModelConfiguration.objects.get(id=selected_config_id)
 
         # 2. Analiz edilecek Scan nesnesini al
-        # Not: `get_latest_scan` yerine anlık veri deposundan ('dcc.Store') gelen veriyi kullanmak,
-        # arayüz ve analiz arasında tutarlılık sağlar.
         scan_id = json.loads(scan_json).get('id')
         scan_to_analyze = Scan.objects.get(id=scan_id)
 
@@ -706,7 +706,6 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
         analyzer = AIAnalyzerService(config=config)
 
         # 4. Metinsel yorumu üret
-        # get_text_interpretation metodu, argüman olarak tam bir Scan nesnesi bekliyordu.
         text_interpretation = analyzer.get_text_interpretation(scan=scan_to_analyze)
 
         # 5. Sonuçları arayüz bileşenlerine yerleştir

@@ -52,7 +52,7 @@ class AIAnalyzerService:
         full_prompt = (
             f"Sen, 3D sensör verilerini analiz eden bir teknik uzmansın. "
             f"Görevin, aşağıdaki düşük çözünürlüklü veri özetini inceleyerek, sahnede bulunan ana nesnelerin bir listesini çıkarmaktır. "
-            f"Çıktın SADECE virgülle ayrılmış bir anahtar kelime listesi olmalıdır. Başka hiçbir açıklama veya cümle ekleme. "
+            f"Çıktın SADECE virgülle ayrılmış bir anahtar kelime listesi olmalıdır. "
             f"Örnek çıktı: 'bir çalışma masası, bir ofis koltuğu, bir dizüstü bilgisayar, bir kitap yığını, bir pencere'.\n\n"
             f"--- Veri Özeti ---\n{data_summary}\n\n"
             f"--- Algılanan Nesnelerin Listesi ---\n"
@@ -79,8 +79,7 @@ class AIAnalyzerService:
 
         # Prompt yapısı, anahtar kelime listesini doğrudan kullanacak şekilde basitleştirildi.
         full_image_prompt = (
-            f"A photorealistic, 4k, cinematic image of a room containing these objects: {text_prompt}. "
-            f"The scene should be well-lit and have a clean, modern aesthetic."
+            f"{text_prompt} bahsi geçen ortama ve nesne listesine göre resim oluştur. herhangi bir kafa karışıklı olması. {text_prompt} da nelerden bahsediyorsa ona göre resim oluştur. "
         )
 
         payload = {

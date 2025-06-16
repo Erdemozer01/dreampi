@@ -54,7 +54,7 @@ class AIAnalyzerService:
         data_summary = df.describe().to_string()  # İstatistiksel özet
         sample_data = df.sample(min(len(df), 15)).to_string()  # Rastgele 15 örnek
 
-        print(f"� {len(df)} adet kayıt özetlendi. Yorumlama için Gemini'ye gönderiliyor...")
+        print(f"📊 {len(df)} adet kayıt özetlendi. Yorumlama için Gemini'ye gönderiliyor...")
 
         # Sanatsal bir prompt oluşturmak için Gemini'ye gönderilecek talimat
         full_prompt = (

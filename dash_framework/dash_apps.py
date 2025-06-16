@@ -1,5 +1,3 @@
-# DreamPi Dash App (dashboard.py) - NİHAİ, TAM VE ÇALIŞIR VERSİYON
-
 # Standart ve Django'ya bağımlı olmayan kütüphaneler
 import logging
 import os
@@ -20,6 +18,7 @@ import json
 from scipy.spatial import ConvexHull
 from sklearn.cluster import DBSCAN
 from sklearn.linear_model import RANSACRegressor
+from scanner.ai_analyzer import AIAnalyzerService
 
 # Dash ve Plotly Kütüphaneleri
 from django_plotly_dash import DjangoDash
@@ -231,6 +230,7 @@ def analyze_3d_clusters(df_3d):
 
     return df_3d
 
+
 # --- ARAYÜZ BİLEŞENLERİ (LAYOUT) ---
 control_panel = dbc.Card([
     dbc.CardHeader([html.I(className="fa-solid fa-gears me-2"), "Sistem Kontrolü"]),
@@ -267,7 +267,7 @@ control_panel = dbc.Card([
                 dbc.Col([html.Label(
                     [html.I(className="fa-solid fa-shoe-prints fa-rotate-90 me-2"), "Dikey Adım Açısı (°):"],
                     className="fw-bold"),
-                         dbc.Input(id='v-step-angle-input', type='number', value=10.0, step=1)], width=6)],
+                    dbc.Input(id='v-step-angle-input', type='number', value=10.0, step=1)], width=6)],
                 className="mb-2"),
 
             # DİĞER AYARLAR
@@ -299,7 +299,7 @@ stats_panel = dbc.Card([dbc.CardHeader([html.I(className="fa-solid fa-gauge-simp
                                     width=3, className="text-center border-end"),
                             dbc.Col(html.Div(
                                 [html.H6("Max Mesafe:"), html.H4(id='max-detected-distance', children="-- cm")]),
-                                    width=3, className="text-center")]))], className="mb-3")
+                                width=3, className="text-center")]))], className="mb-3")
 
 system_card = dbc.Card(
     [dbc.CardHeader([html.I(className="fa-solid fa-microchip me-2"), "Sistem Durumu"]), dbc.CardBody([
@@ -368,7 +368,6 @@ app.layout = html.Div(style={'padding': '20px'}, children=[
 
 
 # --- CALLBACK FONKSİYONLARI ---
-# (Tüm callback'ler bir önceki yanıtta eksiksiz olarak verilmiştir. Buraya tekrar ekleyerek dosyanın bütünlüğünü sağlıyoruz.)
 
 # 1. Periyodik Veri Çekme
 @app.callback(
@@ -640,9 +639,6 @@ def update_all_graphs_and_analytics(points_json):
     return fig_3d, fig_2d, fig_polar, est_text, store_data, area, perim, width, depth
 
 
-# 11. Grafik sekmeleri arasında geçişi yönetir
-# Bu callback artık gerekli değil çünkü dbc.Tabs bunu kendisi yönetiyor.
-
 # 12. 2D haritadaki bir noktaya tıklandığında kümeleme bilgilerini gösterir
 @app.callback(
     [Output("cluster-info-modal", "is_open"), Output("modal-title", "children"), Output("modal-body", "children")],
@@ -670,21 +666,64 @@ def display_cluster_info(clickData, stored_data_json):
 
 # 13. Seçilen AI modelini kullanarak tarama verilerini yorumlar
 @app.callback(
-    [Output('ai-yorum-sonucu', 'children'), Output('ai-image', 'children')],
-    Input('ai-model-dropdown', 'value'), State('latest-scan-points-store', 'data'), prevent_initial_call=True)
-def yorumla_model_secimi(selected_config_id, points_json):
-    if genai is None: return dbc.Alert("Google AI kütüphanesi yüklü değil.", color="danger"), None
-    from scanner.models import AIModelConfiguration
-    if not selected_config_id: return html.P("Yorum için bir AI yapılandırması seçin."), None
-    if not points_json: return dbc.Alert("Analiz edilecek veri bulunamadı.", color="warning"), None
+    [Output('ai-yorum-sonucu', 'children'),
+     Output('ai-image', 'children')],
+    Input('ai-model-dropdown', 'value'),
+    [State('latest-scan-object-store', 'data'),  # Scan nesnesini de alıyoruz
+     State('latest-scan-points-store', 'data')],
+    prevent_initial_call=True
+)
+def yorumla_model_secimi(selected_config_id, scan_json, points_json):
+    """
+    Kullanıcı arayüzden bir AI yapılandırması seçtiğinde tetiklenir.
+    Seçilen yapılandırmaya göre AIAnalyzerService'i kullanarak metinsel yorum üretir.
+    """
+    # Google AI kütüphanesinin yüklü olup olmadığını kontrol et
+    if genai is None:
+        return dbc.Alert("Google AI kütüphanesi (pip install google-generativeai) yüklü değil.", color="danger"), None
+
+    from scanner.models import AIModelConfiguration, Scan
+
+    # Gerekli girdilerin olup olmadığını kontrol et
+    if not selected_config_id:
+        # Bu bir hata değil, sadece kullanıcının henüz bir seçim yapmadığı durumdur.
+        return html.P("Yorum almak için yukarıdan bir AI yapılandırması seçin."), None
+
+    if not scan_json or not points_json:
+        return dbc.Alert("Analiz edilecek tarama verisi bulunamadı.", color="warning"), None
+
     try:
+        # 1. Veritabanından AI yapılandırmasını al
         config = AIModelConfiguration.objects.get(id=selected_config_id)
-        analysis_result_text = f"Model '{config.name}' ile analiz başlatıldı. Toplam {len(pd.read_json(io.StringIO(points_json), orient='split'))} nokta incelendi. Ortamda geniş bir yüzey ve birkaç dağınık nesne tespit edildi."
-        text_component = dcc.Markdown(analysis_result_text)
-        image_component = html.Img(src="https://via.placeholder.com/512x256.png?text=Yapay+Zeka+Görseli",
-                                   style={'maxWidth': '100%', 'borderRadius': '10px', 'marginTop': '15px'})
+
+        # 2. Analiz edilecek Scan nesnesini al
+        # Not: `get_latest_scan` yerine anlık veri deposundan ('dcc.Store') gelen veriyi kullanmak,
+        # arayüz ve analiz arasında tutarlılık sağlar.
+        scan_id = json.loads(scan_json).get('id')
+        scan_to_analyze = Scan.objects.get(id=scan_id)
+
+        # 3. AIAnalyzerService'i doğru yapılandırma ile başlat
+        analyzer = AIAnalyzerService(config=config)
+
+        # 4. Metinsel yorumu üret
+        # get_text_interpretation metodu, argüman olarak tam bir Scan nesnesi bekliyordu.
+        text_interpretation = analyzer.get_text_interpretation(scan=scan_to_analyze)
+
+        # 5. Sonuçları arayüz bileşenlerine yerleştir
+        text_component = dcc.Markdown(text_interpretation, dangerously_allow_html=True)
+
+        # Şimdilik resim oluşturma adımını bir yer tutucu olarak bırakıyoruz
+        image_component = html.Div([
+            html.Hr(),
+            html.P("Resim oluşturma özelliği daha sonra eklenecektir.", className="text-muted fst-italic")
+        ])
+
         return text_component, image_component
+
     except AIModelConfiguration.DoesNotExist:
         return dbc.Alert(f"ID'si {selected_config_id} olan AI yapılandırması bulunamadı.", color="danger"), None
+    except Scan.DoesNotExist:
+        return dbc.Alert(f"Analiz edilecek tarama (ID: {scan_id}) veritabanında bulunamadı.", color="danger"), None
     except Exception as e:
-        traceback.print_exc(); return dbc.Alert(f"Analiz sırasında genel hata: {e}", color="danger"), None
+        traceback.print_exc()
+        return dbc.Alert(f"Yapay zeka işlemi sırasında beklenmedik bir hata oluştu: {e}", color="danger"), None

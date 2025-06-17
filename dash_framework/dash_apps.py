@@ -1,4 +1,4 @@
-# Standart ve Django'ya bağımlı olmayan kütüphaneler
+
 import atexit
 import logging
 import os
@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 try:
     import google.generativeai as genai
 except ImportError:
-    genai = None  # Eğer kütüphane yoksa hata vermesini engelle
+    genai = None
 from dotenv import load_dotenv
 import dash
 

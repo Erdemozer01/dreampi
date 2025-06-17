@@ -1,4 +1,4 @@
-# autonomous_drive.py - Proaktif ve Akıllı Navigasyon Betiği
+# autonomous_drive.py - Proaktif ve Akıllı Navigasyon Betiği (PWM Hız Kontrolü ile)
 
 import os
 import sys
@@ -37,10 +37,14 @@ TRIG_PIN_1, ECHO_PIN_1 = 23, 24
 # --- PARAMETRELER ---
 STEPS_PER_REVOLUTION = 4096
 STEP_MOTOR_INTER_STEP_DELAY = 0.0015
-MOVE_DURATION = 1.0
-TURN_DURATION = 0.4
+MOVE_DURATION = 1.0  # saniye
+TURN_DURATION = 0.5  # saniye
 OBSTACLE_DISTANCE_CM = 35
 INVERT_REAR_MOTOR_DIRECTION = True
+
+# DÜZELTME: PWM için hız ayarları eklendi (0.0 ile 1.0 arası)
+MOVE_SPEED = 0.7  # İleri/geri hareket hızı (%70 güç)
+TURN_SPEED = 0.6  # Dönüş hızı (%60 güç)
 
 # --- GLOBAL NESNELER ---
 left_motors: Motor = None;
@@ -93,20 +97,37 @@ def setup_hardware():
     logging.info("Tüm donanım nesneleri başarıyla oluşturuldu.")
 
 
-def move_forward(): logging.info("İleri Gidiliyor..."); left_motors.forward(); right_motors.forward(); time.sleep(
-    MOVE_DURATION); stop_motors()
+# DÜZELTME: Hareket fonksiyonları artık hız parametresi alıyor
+def move_forward():
+    logging.info(f"İleri Gidiliyor (Hız: {MOVE_SPEED})...");
+    left_motors.forward(speed=MOVE_SPEED)
+    right_motors.forward(speed=MOVE_SPEED)
+    time.sleep(MOVE_DURATION)
+    stop_motors()
 
 
-def move_backward(): logging.info("Geri Gidiliyor..."); left_motors.backward(); right_motors.backward(); time.sleep(
-    MOVE_DURATION); stop_motors()
+def move_backward():
+    logging.info(f"Geri Gidiliyor (Hız: {MOVE_SPEED})...");
+    left_motors.backward(speed=MOVE_SPEED)
+    right_motors.backward(speed=MOVE_SPEED)
+    time.sleep(MOVE_DURATION)
+    stop_motors()
 
 
-def turn_left(): logging.info("Sola Dönülüyor..."); left_motors.backward(); right_motors.forward(); time.sleep(
-    TURN_DURATION); stop_motors()
+def turn_left():
+    logging.info(f"Sola Dönülüyor (Hız: {TURN_SPEED})...");
+    left_motors.backward(speed=TURN_SPEED)
+    right_motors.forward(speed=TURN_SPEED)
+    time.sleep(TURN_DURATION)
+    stop_motors()
 
 
-def turn_right(): logging.info("Sağa Dönülüyor..."); left_motors.forward(); right_motors.backward(); time.sleep(
-    TURN_DURATION); stop_motors()
+def turn_right():
+    logging.info(f"Sağa Dönülüyor (Hız: {TURN_SPEED})...");
+    left_motors.forward(speed=TURN_SPEED)
+    right_motors.backward(speed=TURN_SPEED)
+    time.sleep(TURN_DURATION)
+    stop_motors()
 
 
 def stop_motors(): logging.info("Tekerlek Motorları Durduruldu."); left_motors.stop(); right_motors.stop()
@@ -167,12 +188,8 @@ def check_rear():
     return distance
 
 
-# DÜZELTME: Karar verme mantığı daha net ve robust hale getirildi.
 def analyze_and_decide(front_scan, rear_distance):
-    """Tüm tarama verilerini birleştirir, en iyi ve en güvenli yolu seçer."""
     logging.info("Tüm yönler analiz ediliyor...")
-
-    # Olası tüm yönleri ve mesafelerini bir sözlükte topla
     all_options = {
         "TURN_RIGHT": front_scan.get(90, 0),
         "FORWARD": front_scan.get(0, 0),
@@ -180,15 +197,10 @@ def analyze_and_decide(front_scan, rear_distance):
         "BACKWARD": rear_distance
     }
     logging.info(f"Tüm Yönler ve Mesafeler: {all_options}")
-
-    # Sadece engel mesafesinden daha uzak olan güvenli yolları değerlendir
     safe_options = {direction: dist for direction, dist in all_options.items() if dist > OBSTACLE_DISTANCE_CM}
-
     if not safe_options:
         logging.warning("Tüm yönler kapalı veya engel mesafesinden yakın. Durulacak.")
         return "STOP"
-
-    # En uzun mesafeye sahip olan en iyi yönü seç
     best_direction = max(safe_options, key=safe_options.get)
     logging.info(f"Karar: En uygun yol {best_direction} yönünde. Mesafe: {safe_options[best_direction]:.1f} cm")
     return best_direction
@@ -211,20 +223,17 @@ def main():
         while not stop_event.is_set():
             logging.info("\n--- YENİ DÖNGÜ: En Uygun Yolu Bul ve İlerle ---")
             stop_motors()
+            stop_step_motors()
 
-            # 1. DÜŞÜN: Önü ve arkayı tara
             front_scan_data = perform_front_scan()
             if stop_event.is_set(): break
-
             rear_distance = check_rear()
             if stop_event.is_set(): break
 
             stop_step_motors()
 
-            # 2. KARAR VER
             decision = analyze_and_decide(front_scan_data, rear_distance)
 
-            # 3. HAREKET ET
             if decision == "FORWARD":
                 move_forward()
             elif decision == "BACKWARD":

@@ -1,9 +1,8 @@
-# autonomous_drive.py - Otonom Sürüş ve Engel Tespiti Betiği
+# autonomous_drive.py - Otonom Sürüş ve Akıllı Navigasyon Betiği
 
 import os
 import sys
 import time
-import argparse
 import logging
 import atexit
 from gpiozero import Motor, DistanceSensor, OutputDevice
@@ -29,9 +28,9 @@ MOTOR_LEFT_BACKWARD = 9
 MOTOR_RIGHT_FORWARD = 8
 MOTOR_RIGHT_BACKWARD = 7
 
-# Step Motor Pinleri
-H_MOTOR_IN1, H_MOTOR_IN2, H_MOTOR_IN3, H_MOTOR_IN4 = 26, 19, 13, 6  # Yatay (Pan/Ön Tarama)
-V_MOTOR_IN1, V_MOTOR_IN2, V_MOTOR_IN3, V_MOTOR_IN4 = 21, 20, 16, 12  # Dikey (Tilt/Dikiz Aynası)
+# Step Motor Pinleri (Fiziksel duruma göre ayarlandı)
+V_MOTOR_IN1, V_MOTOR_IN2, V_MOTOR_IN3, V_MOTOR_IN4 = 26, 19, 13, 6  # Dikey (Tilt/Ön Tarama)
+H_MOTOR_IN1, H_MOTOR_IN2, H_MOTOR_IN3, H_MOTOR_IN4 = 21, 20, 16, 12  # Yatay (Pan/Dikiz Aynası)
 
 # Ultrasonik Sensör Pinleri
 TRIG_PIN_1, ECHO_PIN_1 = 23, 24
@@ -39,9 +38,9 @@ TRIG_PIN_1, ECHO_PIN_1 = 23, 24
 # --- PARAMETRELER ---
 STEPS_PER_REVOLUTION = 4096
 STEP_MOTOR_INTER_STEP_DELAY = 0.0015
-MOVE_DURATION = 1.0
-TURN_DURATION = 0.5
-OBSTACLE_DISTANCE_CM = 30
+MOVE_DURATION = 1.0  # saniye
+TURN_DURATION = 0.4  # saniye
+OBSTACLE_DISTANCE_CM = 35  # Engel olarak kabul edilecek minimum mesafe (cm)
 
 # --- GLOBAL NESNELER ---
 left_motors: Motor = None
@@ -73,7 +72,7 @@ def cleanup_on_exit():
         if h_motor_devices: _set_motor_pins(h_motor_devices, 0, 0, 0, 0)
         if v_motor_devices: _set_motor_pins(v_motor_devices, 0, 0, 0, 0)
     except Exception as e:
-        logging.error(f"Motorlar durdurulurken hata: {e}")
+        logging.error(f"Donanım durdurulurken hata: {e}")
     finally:
         if os.path.exists(AUTONOMOUS_SCRIPT_PID_FILE):
             os.remove(AUTONOMOUS_SCRIPT_PID_FILE)
@@ -91,40 +90,6 @@ def setup_hardware():
     v_motor_devices = (OutputDevice(V_MOTOR_IN1), OutputDevice(V_MOTOR_IN2), OutputDevice(V_MOTOR_IN3),
                        OutputDevice(V_MOTOR_IN4))
     logging.info("Tüm donanım nesneleri başarıyla oluşturuldu.")
-
-
-# --- DONANIM TEST FONKSİYONU ---
-def test_dc_motors():
-    """
-    Sadece DC motorları test etmek için basit bir fonksiyon.
-    Her motoru sırayla 1 saniye ileri ve geri çalıştırır.
-    """
-    logging.info("--- DC MOTOR TESTİ BAŞLATILIYOR ---")
-
-    logging.info("--> Sol tekerlekler 1 saniye İLERİ...")
-    left_motors.forward()
-    time.sleep(1)
-    left_motors.stop()
-    time.sleep(0.5)
-
-    logging.info("--> Sol tekerlekler 1 saniye GERİ...")
-    left_motors.backward()
-    time.sleep(1)
-    left_motors.stop()
-    time.sleep(1)
-
-    logging.info("--> Sağ tekerlekler 1 saniye İLERİ...")
-    right_motors.forward()
-    time.sleep(1)
-    right_motors.stop()
-    time.sleep(0.5)
-
-    logging.info("--> Sağ tekerlekler 1 saniye GERİ...")
-    right_motors.backward()
-    time.sleep(1)
-    right_motors.stop()
-
-    logging.info("--- DC MOTOR TESTİ TAMAMLANDI ---")
 
 
 # --- HAREKET VE TARAMA FONKSİYONLARI ---
@@ -206,16 +171,25 @@ def analyze_and_decide(front_scan, rear_scan):
     front_right = front_scan.get(45, 0)
     rear_center = rear_scan.get(180, 0)
 
-    if front_center > OBSTACLE_DISTANCE_CM and front_center >= max(front_left, front_right):
-        return "FORWARD"
-    elif front_right > OBSTACLE_DISTANCE_CM and front_right > front_left:
-        return "TURN_RIGHT"
-    elif front_left > OBSTACLE_DISTANCE_CM:
-        return "TURN_LEFT"
-    elif rear_center > OBSTACLE_DISTANCE_CM:
-        return "BACKWARD"
-    else:
+    # En güvenli mesafeyi ve yönü bul
+    options = {
+        "FORWARD": front_center,
+        "TURN_RIGHT": front_right,
+        "TURN_LEFT": front_left,
+        "BACKWARD": rear_center,
+    }
+
+    # Sadece engel mesafesinden daha uzak olan yolları değerlendir
+    safe_options = {direction: dist for direction, dist in options.items() if dist > OBSTACLE_DISTANCE_CM}
+
+    if not safe_options:
+        logging.warning("Tüm yönler kapalı veya engel mesafesinden yakın. Durulacak.")
         return "STOP"
+
+    # En uzun mesafeye sahip olan en iyi yönü seç
+    best_direction = max(safe_options, key=safe_options.get)
+    logging.info(f"Karar: En uygun yol {best_direction} yönünde. Mesafe: {safe_options[best_direction]:.1f} cm")
+    return best_direction
 
 
 # --- ANA ÇALIŞMA DÖNGÜSÜ ---
@@ -225,11 +199,7 @@ def main():
 
     try:
         setup_hardware()
-
-        # Ana döngüden önce donanım testini çalıştırıyoruz.
-        test_dc_motors()
-        input("Motor testi tamamlandı. Ana sürüş döngüsüne başlamak için Enter'a basın...")
-
+        # Başlangıçta step motorları sıfırla
         move_step_motor_to_angle(h_motor_devices, h_motor_ctx, 0)
         move_step_motor_to_angle(v_motor_devices, v_motor_ctx, 0)
 
@@ -237,15 +207,17 @@ def main():
             logging.info("\n--- YENİ DÖNGÜ: DUR-DÜŞÜN-HAREKET ET ---")
             stop_motors()
 
-            # DÜZELTME: Motor görevleri isteğinize göre değiştirildi.
-            logging.info("1. Ön Taraf Taranıyor (Yatay Motor)...")
-            front_scan_data = perform_quick_scan(h_motor_devices, h_motor_ctx, [0, -45, 45, 0])
+            # DÜŞÜN: Etrafı Tara
+            logging.info("1. Ön Taraf Taranıyor (Dikey Motor)...")
+            front_scan_data = perform_quick_scan(v_motor_devices, v_motor_ctx, [0, -45, 45, 0])
 
-            logging.info("2. Arka Taraf Taranıyor ('Dikiz Aynası' - Dikey Motor)...")
-            rear_scan_data = perform_quick_scan(v_motor_devices, v_motor_ctx, [0, 180, 0])
+            logging.info("2. Arka Taraf Taranıyor ('Dikiz Aynası' - Yatay Motor)...")
+            rear_scan_data = perform_quick_scan(h_motor_devices, h_motor_ctx, [0, 180, 0])
 
+            # DÜŞÜN: Karar Ver
             decision = analyze_and_decide(front_scan_data, rear_scan_data)
 
+            # HAREKET ET: Kararı Uygula
             if decision == "FORWARD":
                 move_forward()
             elif decision == "BACKWARD":
@@ -255,7 +227,7 @@ def main():
             elif decision == "TURN_RIGHT":
                 turn_right()
             elif decision == "STOP":
-                logging.warning("Engel tespit edildi! Yardım bekleniyor...")
+                logging.warning("Hareket edecek güvenli bir yol bulunamadı! İşlem durduruluyor.")
                 break
 
             time.sleep(1)
@@ -269,3 +241,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

@@ -7,7 +7,7 @@ import logging
 import atexit
 import signal
 import threading
-import traceback  # DÜZELTME: Eksik olan import eklendi
+import traceback
 from gpiozero import Motor, DistanceSensor, OutputDevice
 from gpiozero.pins.pigpio import PiGPIOFactory
 from gpiozero import Device
@@ -24,17 +24,20 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # --- SABİTLER ---
 AUTONOMOUS_SCRIPT_PID_FILE = '/tmp/autonomous_drive_script.pid'
 
-# --- DONANIM PIN TANIMLAMALARI (GÖREVE GÖRE İSİMLENDİRİLMİŞ) ---
+# --- DONANIM PIN TANIMLAMALARI (GÖREVE GÖRE DÜZELTİLDİ) ---
 # L298N Motor Sürücü Pinleri
 MOTOR_LEFT_FORWARD = 10
 MOTOR_LEFT_BACKWARD = 9
 MOTOR_RIGHT_FORWARD = 8
 MOTOR_RIGHT_BACKWARD = 7
 
+# DÜZELTME: Pin atamaları, kullanıcının geri bildirimine göre motorların
+# gerçek fiziksel görevleriyle eşleşecek şekilde değiştirildi.
+
 # Fiziksel olarak DİKEY duran ve ÖN TARAFI TARAYAN motorun pinleri
-FRONT_SCAN_MOTOR_IN1, FRONT_SCAN_MOTOR_IN2, FRONT_SCAN_MOTOR_IN3, FRONT_SCAN_MOTOR_IN4 = 26, 19, 13, 6
+FRONT_SCAN_MOTOR_IN1, FRONT_SCAN_MOTOR_IN2, FRONT_SCAN_MOTOR_IN3, FRONT_SCAN_MOTOR_IN4 = 21, 20, 16, 12
 # Fiziksel olarak YATAY duran ve ARKAYI KONTROL EDEN motorun pinleri
-REAR_MIRROR_MOTOR_IN1, REAR_MIRROR_MOTOR_IN2, REAR_MIRROR_MOTOR_IN3, REAR_MIRROR_MOTOR_IN4 = 21, 20, 16, 12
+REAR_MIRROR_MOTOR_IN1, REAR_MIRROR_MOTOR_IN2, REAR_MIRROR_MOTOR_IN3, REAR_MIRROR_MOTOR_IN4 = 26, 19, 13, 6
 
 # Ultrasonik Sensör Pinleri
 TRIG_PIN_1, ECHO_PIN_1 = 23, 24
@@ -98,7 +101,6 @@ def setup_hardware():
     right_motors = Motor(forward=MOTOR_RIGHT_FORWARD, backward=MOTOR_RIGHT_BACKWARD)
     sensor = DistanceSensor(echo=ECHO_PIN_1, trigger=TRIG_PIN_1)
 
-    # DÜZELTME: Değişken adları, dosyanın en üstündeki tanımlarla eşleşecek şekilde düzeltildi.
     rear_mirror_motor_devices = (OutputDevice(REAR_MIRROR_MOTOR_IN1), OutputDevice(REAR_MIRROR_MOTOR_IN2),
                                  OutputDevice(REAR_MIRROR_MOTOR_IN3), OutputDevice(REAR_MIRROR_MOTOR_IN4))
     front_scan_motor_devices = (OutputDevice(FRONT_SCAN_MOTOR_IN1), OutputDevice(FRONT_SCAN_MOTOR_IN2),

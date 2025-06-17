@@ -26,18 +26,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 AUTONOMOUS_SCRIPT_PID_FILE = '/tmp/autonomous_drive_script.pid'
 
 # --- DONANIM PIN TANIMLAMALARI ---
-# L298N Motor Sürücü Pinleri
 MOTOR_LEFT_FORWARD = 10
 MOTOR_LEFT_BACKWARD = 9
 MOTOR_RIGHT_FORWARD = 8
 MOTOR_RIGHT_BACKWARD = 7
-
-# Fiziksel olarak DİKEY duran ve ÖN TARAFI TARAYAN motorun pinleri
 FRONT_SCAN_MOTOR_IN1, FRONT_SCAN_MOTOR_IN2, FRONT_SCAN_MOTOR_IN3, FRONT_SCAN_MOTOR_IN4 = 26, 19, 13, 6
-# Fiziksel olarak YATAY duran ve ARKAYI KONTROL EDEN motorun pinleri
 REAR_MIRROR_MOTOR_IN1, REAR_MIRROR_MOTOR_IN2, REAR_MIRROR_MOTOR_IN3, REAR_MIRROR_MOTOR_IN4 = 21, 20, 16, 12
-
-# Ultrasonik Sensör Pinleri
 TRIG_PIN_1, ECHO_PIN_1 = 23, 24
 
 # --- PARAMETRELER ---
@@ -46,8 +40,6 @@ STEP_MOTOR_INTER_STEP_DELAY = 0.0015
 MOVE_DURATION = 1.0
 TURN_DURATION = 0.4
 OBSTACLE_DISTANCE_CM = 35
-
-# DÜZELTME: Yatay motorun yönünü ters çevirmek için ayar eklendi.
 INVERT_REAR_MOTOR_DIRECTION = True
 
 # --- GLOBAL NESNELER ---
@@ -60,7 +52,6 @@ rear_mirror_motor_ctx = {'current_angle': 0.0, 'sequence_index': 0}
 front_scan_motor_ctx = {'current_angle': 0.0, 'sequence_index': 0}
 step_sequence = [[1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0], [0, 1, 1, 0],
                  [0, 0, 1, 0], [0, 0, 1, 1], [0, 0, 0, 1], [1, 0, 0, 1]]
-
 stop_event = threading.Event()
 
 
@@ -82,8 +73,7 @@ def cleanup_on_exit():
     try:
         if left_motors: left_motors.stop()
         if right_motors: right_motors.stop()
-        if rear_mirror_motor_devices: _set_motor_pins(rear_mirror_motor_devices, 0, 0, 0, 0)
-        if front_scan_motor_devices: _set_motor_pins(front_scan_motor_devices, 0, 0, 0, 0)
+        stop_step_motors()  # Çıkarken de step motorları kapat
     except Exception as e:
         logging.error(f"Donanım durdurulurken hata: {e}")
     finally:
@@ -127,9 +117,16 @@ def _set_motor_pins(motor_devices, s1, s2, s3, s4):
         s2), bool(s3), bool(s4)
 
 
+# YENİ FONKSİYON: Step motorların gücünü keser
+def stop_step_motors():
+    logging.info("Step motorlar güç tasarrufu için durduruluyor...")
+    if rear_mirror_motor_devices: _set_motor_pins(rear_mirror_motor_devices, 0, 0, 0, 0)
+    if front_scan_motor_devices: _set_motor_pins(front_scan_motor_devices, 0, 0, 0, 0)
+
+
 def _step_motor(motor_devices, motor_ctx, num_steps, direction_positive, invert_direction=False):
     step_increment = 1 if direction_positive else -1
-    if invert_direction: step_increment *= -1  # Yönü ters çevir
+    if invert_direction: step_increment *= -1
     for _ in range(int(num_steps)):
         if stop_event.is_set(): break
         motor_ctx['sequence_index'] = (motor_ctx['sequence_index'] + step_increment) % len(step_sequence)
@@ -195,9 +192,13 @@ def main():
 
             safe_paths = {angle: dist for angle, dist in front_scan_data.items() if dist > OBSTACLE_DISTANCE_CM}
 
+            # GÜÇ YÖNETİMİ: Hareket etmeden hemen önce step motorları kapat
+            stop_step_motors()
+
             if not safe_paths:
                 logging.warning("Önde güvenli bir yol bulunamadı! Arka taraf kontrol ediliyor...")
-                rear_distance = check_rear()
+                rear_distance = check_rear()  # Bu fonksiyon çağrıldığında step motorlar tekrar çalışır
+                stop_step_motors()  # Arka kontrol sonrası tekrar kapat
                 if rear_distance > OBSTACLE_DISTANCE_CM:
                     logging.info("Karar: Arka taraf açık. Geri gidilecek.")
                     move_backward()

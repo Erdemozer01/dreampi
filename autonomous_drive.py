@@ -1,4 +1,4 @@
-# autonomous_drive.py - Proaktif ve Akıllı Navigasyon Betiği
+# autonomous_drive.py - Proaktif ve Geniş Açılı Akıllı Navigasyon Betiği
 
 import os
 import sys
@@ -73,7 +73,7 @@ def cleanup_on_exit():
     try:
         if left_motors: left_motors.stop()
         if right_motors: right_motors.stop()
-        stop_step_motors()  # Çıkarken de step motorları kapat
+        stop_step_motors()
     except Exception as e:
         logging.error(f"Donanım durdurulurken hata: {e}")
     finally:
@@ -112,16 +112,14 @@ def turn_right(): logging.info("Sağa Dönülüyor..."); left_motors.forward(); 
 def stop_motors(): logging.info("Tekerlek Motorları Durduruldu."); left_motors.stop(); right_motors.stop()
 
 
+def stop_step_motors():
+    if rear_mirror_motor_devices: _set_motor_pins(rear_mirror_motor_devices, 0, 0, 0, 0)
+    if front_scan_motor_devices: _set_motor_pins(front_scan_motor_devices, 0, 0, 0, 0)
+
+
 def _set_motor_pins(motor_devices, s1, s2, s3, s4):
     motor_devices[0].value, motor_devices[1].value, motor_devices[2].value, motor_devices[3].value = bool(s1), bool(
         s2), bool(s3), bool(s4)
-
-
-# YENİ FONKSİYON: Step motorların gücünü keser
-def stop_step_motors():
-    logging.info("Step motorlar güç tasarrufu için durduruluyor...")
-    if rear_mirror_motor_devices: _set_motor_pins(rear_mirror_motor_devices, 0, 0, 0, 0)
-    if front_scan_motor_devices: _set_motor_pins(front_scan_motor_devices, 0, 0, 0, 0)
 
 
 def _step_motor(motor_devices, motor_ctx, num_steps, direction_positive, invert_direction=False):
@@ -144,8 +142,10 @@ def move_step_motor_to_angle(motor_devices, motor_ctx, target_angle_deg, invert_
 
 
 def perform_front_scan():
+    """Ön tarafı -90, 0, +90 derece açılarla tarar."""
     logging.info("Ön taraf taranıyor...")
-    scan_angles = [60, 0, -60]
+    # DÜZELTME: Tarama açıları isteğinize göre güncellendi.
+    scan_angles = [90, 0, -90]
     measurements = {}
     for angle in scan_angles:
         if stop_event.is_set(): break
@@ -159,6 +159,7 @@ def perform_front_scan():
 
 
 def check_rear():
+    """Arka tarafı SABİT bir yönde (180 derece) hızla kontrol eder."""
     logging.info("Arka taraf kontrol ediliyor ('Dikiz Aynası')...")
     move_step_motor_to_angle(rear_mirror_motor_devices, rear_mirror_motor_ctx, 180, INVERT_REAR_MOTOR_DIRECTION)
     if stop_event.is_set(): return 0
@@ -186,19 +187,19 @@ def main():
         while not stop_event.is_set():
             logging.info("\n--- YENİ DÖNGÜ: En Uygun Yolu Bul ve İlerle ---")
             stop_motors()
+            stop_step_motors()
 
             front_scan_data = perform_front_scan()
             if stop_event.is_set(): break
 
             safe_paths = {angle: dist for angle, dist in front_scan_data.items() if dist > OBSTACLE_DISTANCE_CM}
 
-            # GÜÇ YÖNETİMİ: Hareket etmeden hemen önce step motorları kapat
             stop_step_motors()
 
             if not safe_paths:
                 logging.warning("Önde güvenli bir yol bulunamadı! Arka taraf kontrol ediliyor...")
-                rear_distance = check_rear()  # Bu fonksiyon çağrıldığında step motorlar tekrar çalışır
-                stop_step_motors()  # Arka kontrol sonrası tekrar kapat
+                rear_distance = check_rear()
+                stop_step_motors()
                 if rear_distance > OBSTACLE_DISTANCE_CM:
                     logging.info("Karar: Arka taraf açık. Geri gidilecek.")
                     move_backward()
@@ -209,10 +210,11 @@ def main():
                 best_angle = max(safe_paths, key=safe_paths.get)
                 logging.info(f"Karar: En uygun yol {best_angle}° yönünde. Mesafe: {safe_paths[best_angle]:.1f} cm")
 
-                if best_angle == 60:
+                # DÜZELTME: Karar mantığı yeni açılara göre güncellendi.
+                if best_angle == 90:
                     logging.info("Eylem: Sağa dönülüyor.")
                     turn_right()
-                elif best_angle == -60:
+                elif best_angle == -90:
                     logging.info("Eylem: Sola dönülüyor.")
                     turn_left()
 

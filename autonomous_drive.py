@@ -5,10 +5,8 @@ import sys
 import time
 import logging
 import atexit
-import signal  # DÜZELTME: Sinyal yönetimi için import edildi
-import threading  # DÜZELTME: Güvenli durdurma için import edildi
-import traceback
-
+import signal
+import threading
 from gpiozero import Motor, DistanceSensor, OutputDevice
 from gpiozero.pins.pigpio import PiGPIOFactory
 from gpiozero import Device
@@ -32,10 +30,13 @@ MOTOR_LEFT_BACKWARD = 9
 MOTOR_RIGHT_FORWARD = 8
 MOTOR_RIGHT_BACKWARD = 7
 
-# Dikey duran ve ÖN TARAFI TARAYAN motorun pinleri
-FRONT_MOTOR_IN1, FRONT_MOTOR_IN2, FRONT_MOTOR_IN3, FRONT_MOTOR_IN4 = 21, 20, 16, 12
-# Yatay duran ve ARKAYI KONTROL EDEN motorun pinleri
-REAR_MOTOR_IN1, REAR_MOTOR_IN2, REAR_MOTOR_IN3, REAR_MOTOR_IN4 = 26, 19, 13, 6
+# DÜZELTME: Değişken adları ve yorumlar, kafa karışıklığını önlemek için
+# motorların fiziksel duruşu yerine yaptıkları GÖREVİ yansıtacak şekilde değiştirildi.
+
+# Fiziksel olarak DİKEY duran ve ÖN TARAFI TARAYAN motorun pinleri
+FRONT_SCAN_MOTOR_IN1, FRONT_SCAN_MOTOR_IN2, FRONT_SCAN_MOTOR_IN3, FRONT_SCAN_MOTOR_IN4 = 26, 19, 13, 6
+# Fiziksel olarak YATAY duran ve ARKAYI KONTROL EDEN motorun pinleri
+REAR_MIRROR_MOTOR_IN1, REAR_MIRROR_MOTOR_IN2, REAR_MIRROR_MOTOR_IN3, REAR_MIRROR_MOTOR_IN4 = 21, 20, 16, 12
 
 # Ultrasonik Sensör Pinleri
 TRIG_PIN_1, ECHO_PIN_1 = 23, 24
@@ -59,7 +60,6 @@ front_scan_motor_ctx = {'current_angle': 0.0, 'sequence_index': 0}
 step_sequence = [[1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0], [0, 1, 1, 0],
                  [0, 0, 1, 0], [0, 0, 1, 1], [0, 0, 0, 1], [1, 0, 0, 1]]
 
-# DÜZELTME: Güvenli durdurma için bir event flag oluşturuldu
 stop_event = threading.Event()
 
 
@@ -100,8 +100,8 @@ def setup_hardware():
     left_motors = Motor(forward=MOTOR_LEFT_FORWARD, backward=MOTOR_LEFT_BACKWARD)
     right_motors = Motor(forward=MOTOR_RIGHT_FORWARD, backward=MOTOR_RIGHT_BACKWARD)
     sensor = DistanceSensor(echo=ECHO_PIN_1, trigger=TRIG_PIN_1)
-    rear_mirror_motor_devices = (OutputDevice(REAR_MOTOR_IN1), OutputDevice(REAR_MOTOR_IN2),
-                                 OutputDevice(REAR_MOTOR_IN3), OutputDevice(REAR_MOTOR_IN4))
+    rear_mirror_motor_devices = (OutputDevice(REAR_MIRROR_MOTOR_IN1), OutputDevice(REAR_MIRROR_MOTOR_IN2),
+                                 OutputDevice(REAR_MIRROR_MOTOR_IN3), OutputDevice(REAR_MIRROR_MOTOR_IN4))
     front_scan_motor_devices = (OutputDevice(FRONT_MOTOR_IN1), OutputDevice(FRONT_MOTOR_IN2),
                                 OutputDevice(FRONT_MOTOR_IN3), OutputDevice(FRONT_MOTOR_IN4))
     logging.info("Tüm donanım nesneleri başarıyla oluşturuldu.")
@@ -145,7 +145,7 @@ def _set_motor_pins(motor_devices, s1, s2, s3, s4):
 def _step_motor(motor_devices, motor_ctx, num_steps, direction_positive):
     step_increment = 1 if direction_positive else -1
     for _ in range(int(num_steps)):
-        if stop_event.is_set(): break  # Adım atarken bile durdurma sinyalini kontrol et
+        if stop_event.is_set(): break
         motor_ctx['sequence_index'] = (motor_ctx['sequence_index'] + step_increment) % len(step_sequence)
         _set_motor_pins(motor_devices, *step_sequence[motor_ctx['sequence_index']]);
         time.sleep(STEP_MOTOR_INTER_STEP_DELAY)
@@ -157,11 +157,10 @@ def move_step_motor_to_angle(motor_devices, motor_ctx, target_angle_deg):
     if abs(angle_diff) < deg_per_step: return
     num_steps = round(abs(angle_diff) / deg_per_step)
     _step_motor(motor_devices, motor_ctx, num_steps, (angle_diff > 0))
-    if not stop_event.is_set():  # Eğer durdurma sinyali gelmediyse açıyı güncelle
+    if not stop_event.is_set():
         motor_ctx['current_angle'] = target_angle_deg
 
 
-# --- YENİ MANTIĞA GÖRE GÜNCELLENMİŞ FONKSİYONLAR ---
 def check_rear_trigger():
     move_step_motor_to_angle(rear_mirror_motor_devices, rear_mirror_motor_ctx, 180)
     if stop_event.is_set(): return False
@@ -197,9 +196,7 @@ def find_best_path(front_scan):
     return best_angle
 
 
-# --- ANA ÇALIŞMA DÖNGÜSÜ ---
 def main():
-    # DÜZELTME: Sinyal dinleyicisini ve temizleme fonksiyonunu kaydet
     atexit.register(cleanup_on_exit)
     signal.signal(signal.SIGTERM, signal_handler)
     create_pid_file()
@@ -211,7 +208,6 @@ def main():
 
         logging.info("Otonom sürüş modu başlatıldı. Arkadan bir nesne yaklaştırılması bekleniyor...")
 
-        # DÜZELTME: Ana döngü artık stop_event bayrağını kontrol ediyor
         while not stop_event.is_set():
             if check_rear_trigger():
                 if stop_event.is_set(): break
@@ -233,7 +229,7 @@ def main():
             else:
                 stop_motors()
                 logging.info("Arkada tetikleyici bekleniyor...")
-                time.sleep(1)  # Daha az log üretmek için bekleme süresi
+                time.sleep(1)
 
     except KeyboardInterrupt:
         print("\nProgram kullanıcı tarafından sonlandırıldı (CTRL+C).")
@@ -241,7 +237,6 @@ def main():
         logging.error(f"KRİTİK BİR HATA OLUŞTU: {e}")
         traceback.print_exc()
     finally:
-        # cleanup_on_exit fonksiyonu atexit tarafından otomatik olarak çağrılacak
         logging.info("Ana döngüden çıkıldı.")
 
 

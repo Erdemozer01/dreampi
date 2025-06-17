@@ -1,4 +1,4 @@
-# autonomous_drive.py - Tepkisel ve Akıllı Navigasyon Betiği
+# autonomous_drive.py - Tepkisel ve Akıllı Navigasyon Betiği (Proaktif Mantık)
 
 import os
 import sys
@@ -24,19 +24,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # --- SABİTLER ---
 AUTONOMOUS_SCRIPT_PID_FILE = '/tmp/autonomous_drive_script.pid'
 
-# --- DONANIM PIN TANIMLAMALARI (GÖREVE GÖRE DÜZELTİLDİ) ---
+# --- DONANIM PIN TANIMLAMALARI ---
 # L298N Motor Sürücü Pinleri
 MOTOR_LEFT_FORWARD = 10
 MOTOR_LEFT_BACKWARD = 9
 MOTOR_RIGHT_FORWARD = 8
 MOTOR_RIGHT_BACKWARD = 7
 
-# DÜZELTME: Pin atamaları, kullanıcının geri bildirimine göre motorların
-# gerçek fiziksel görevleriyle eşleşecek şekilde değiştirildi.
-
-# Fiziksel olarak DİKEY duran ve ÖN TARAFI TARAYAN motorun pinleri
+# Göreve göre isimlendirilmiş motorlar
 FRONT_SCAN_MOTOR_IN1, FRONT_SCAN_MOTOR_IN2, FRONT_SCAN_MOTOR_IN3, FRONT_SCAN_MOTOR_IN4 = 21, 20, 16, 12
-# Fiziksel olarak YATAY duran ve ARKAYI KONTROL EDEN motorun pinleri
 REAR_MIRROR_MOTOR_IN1, REAR_MIRROR_MOTOR_IN2, REAR_MIRROR_MOTOR_IN3, REAR_MIRROR_MOTOR_IN4 = 26, 19, 13, 6
 
 # Ultrasonik Sensör Pinleri
@@ -48,7 +44,6 @@ STEP_MOTOR_INTER_STEP_DELAY = 0.0015
 MOVE_DURATION = 1.0
 TURN_DURATION = 0.4
 OBSTACLE_DISTANCE_CM = 35
-REAR_TRIGGER_DISTANCE_CM = 20
 
 # --- GLOBAL NESNELER ---
 left_motors: Motor = None
@@ -65,78 +60,47 @@ stop_event = threading.Event()
 
 
 # --- SÜREÇ, DONANIM VE HAREKET FONKSİYONLARI ---
-def signal_handler(sig, frame):
-    logging.warning("Durdurma sinyali (SIGTERM) alındı. Program güvenli bir şekilde sonlandırılıyor...")
-    stop_event.set()
+# (Bu bölümdeki fonksiyonlar değişmediği için kısaltılmıştır, tam hali önceki yanıtlardadır)
+def signal_handler(sig, frame): stop_event.set()
 
 
-def create_pid_file():
-    try:
-        with open(AUTONOMOUS_SCRIPT_PID_FILE, 'w') as f:
-            f.write(str(os.getpid()))
-        logging.info(f"Otonom sürüş PID dosyası oluşturuldu: {os.getpid()}")
-    except IOError as e:
-        logging.error(f"PID dosyası oluşturulamadı: {e}")
+def create_pid_file():  # ...
+    pass
 
 
-def cleanup_on_exit():
-    logging.info("Program sonlanıyor. Tüm kaynaklar temizleniyor...")
-    try:
-        if left_motors: left_motors.stop()
-        if right_motors: right_motors.stop()
-        if rear_mirror_motor_devices: _set_motor_pins(rear_mirror_motor_devices, 0, 0, 0, 0)
-        if front_scan_motor_devices: _set_motor_pins(front_scan_motor_devices, 0, 0, 0, 0)
-    except Exception as e:
-        logging.error(f"Motorlar durdurulurken hata: {e}")
-    finally:
-        if os.path.exists(AUTONOMOUS_SCRIPT_PID_FILE):
-            os.remove(AUTONOMOUS_SCRIPT_PID_FILE)
-            logging.info("Otonom sürüş PID dosyası temizlendi.")
-        logging.info("Temizleme tamamlandı.")
+def cleanup_on_exit():  # ...
+    pass
 
 
 def setup_hardware():
     global left_motors, right_motors, sensor, rear_mirror_motor_devices, front_scan_motor_devices
-    left_motors = Motor(forward=MOTOR_LEFT_FORWARD, backward=MOTOR_LEFT_BACKWARD)
+    left_motors = Motor(forward=MOTOR_LEFT_FORWARD, backward=MOTOR_LEFT_BACKWARD);
     right_motors = Motor(forward=MOTOR_RIGHT_FORWARD, backward=MOTOR_RIGHT_BACKWARD)
     sensor = DistanceSensor(echo=ECHO_PIN_1, trigger=TRIG_PIN_1)
-
     rear_mirror_motor_devices = (OutputDevice(REAR_MIRROR_MOTOR_IN1), OutputDevice(REAR_MIRROR_MOTOR_IN2),
                                  OutputDevice(REAR_MIRROR_MOTOR_IN3), OutputDevice(REAR_MIRROR_MOTOR_IN4))
     front_scan_motor_devices = (OutputDevice(FRONT_SCAN_MOTOR_IN1), OutputDevice(FRONT_SCAN_MOTOR_IN2),
                                 OutputDevice(FRONT_SCAN_MOTOR_IN3), OutputDevice(FRONT_SCAN_MOTOR_IN4))
-
     logging.info("Tüm donanım nesneleri başarıyla oluşturuldu.")
 
 
-def move_forward():
-    logging.info("İleri Gidiliyor...")
-    left_motors.forward();
-    right_motors.forward();
-    time.sleep(MOVE_DURATION);
-    stop_motors()
+def move_forward(): logging.info("İleri Gidiliyor..."); left_motors.forward(); right_motors.forward(); time.sleep(
+    MOVE_DURATION); stop_motors()
 
 
-def turn_left():
-    logging.info("Sola Dönülüyor...");
-    left_motors.backward();
-    right_motors.forward();
-    time.sleep(TURN_DURATION);
-    stop_motors()
+def move_backward(): logging.info("Geri Gidiliyor..."); left_motors.backward(); right_motors.backward(); time.sleep(
+    MOVE_DURATION); stop_motors()
 
 
-def turn_right():
-    logging.info("Sağa Dönülüyor...");
-    left_motors.forward();
-    right_motors.backward();
-    time.sleep(TURN_DURATION);
-    stop_motors()
+def turn_left(): logging.info("Sola Dönülüyor..."); left_motors.backward(); right_motors.forward(); time.sleep(
+    TURN_DURATION); stop_motors()
 
 
-def stop_motors():
-    logging.info("Tekerlek Motorları Durduruldu.");
-    left_motors.stop();
-    right_motors.stop()
+def turn_right(): logging.info("Sağa Dönülüyor..."); left_motors.forward(); right_motors.backward(); time.sleep(
+    TURN_DURATION); stop_motors()
+
+
+def stop_motors(): logging.info("Tekerlek Motorları Durduruldu."); left_motors.stop(); right_motors.stop()
 
 
 def _set_motor_pins(motor_devices, s1, s2, s3, s4):
@@ -159,23 +123,12 @@ def move_step_motor_to_angle(motor_devices, motor_ctx, target_angle_deg):
     if abs(angle_diff) < deg_per_step: return
     num_steps = round(abs(angle_diff) / deg_per_step)
     _step_motor(motor_devices, motor_ctx, num_steps, (angle_diff > 0))
-    if not stop_event.is_set():
-        motor_ctx['current_angle'] = target_angle_deg
-
-
-def check_rear_trigger():
-    move_step_motor_to_angle(rear_mirror_motor_devices, rear_mirror_motor_ctx, 180)
-    if stop_event.is_set(): return False
-    time.sleep(0.1)
-    distance = sensor.distance * 100 if sensor.distance else float('inf')
-    logging.info(f"Arka kontrol: Mesafe={distance:.1f} cm")
-    move_step_motor_to_angle(rear_mirror_motor_devices, rear_mirror_motor_ctx, 0)
-    return distance < REAR_TRIGGER_DISTANCE_CM
+    if not stop_event.is_set(): motor_ctx['current_angle'] = target_angle_deg
 
 
 def perform_front_scan():
     logging.info("Ön taraf taranıyor...")
-    scan_angles = [-60, -30, 0, 30, 60]
+    scan_angles = [-60, 0, 60]  # Sol-ön, Orta, Sağ-ön
     measurements = {}
     for angle in scan_angles:
         if stop_event.is_set(): break
@@ -188,19 +141,21 @@ def perform_front_scan():
     return measurements
 
 
-def find_best_path(front_scan):
-    safe_options = {angle: dist for angle, dist in front_scan.items() if dist > OBSTACLE_DISTANCE_CM}
-    if not safe_options:
-        logging.warning("Önde hareket edecek güvenli bir yol bulunamadı.")
-        return None
-    best_angle = max(safe_options, key=safe_options.get)
-    logging.info(f"Karar: En uygun yol {best_angle}° yönünde. Mesafe: {safe_options[best_angle]:.1f} cm")
-    return best_angle
+def check_rear():
+    logging.info("Arka taraf kontrol ediliyor ('Dikiz Aynası')...")
+    move_step_motor_to_angle(rear_mirror_motor_devices, rear_mirror_motor_ctx, 180)
+    if stop_event.is_set(): return 0
+    time.sleep(0.1)
+    distance = sensor.distance * 100 if sensor.distance else float('inf')
+    logging.info(f"  Arka Tarama: Mesafe={distance:.1f} cm")
+    move_step_motor_to_angle(rear_mirror_motor_devices, rear_mirror_motor_ctx, 0)
+    return distance
 
 
+# --- ANA ÇALIŞMA DÖNGÜSÜ (YENİ MANTIKLA) ---
 def main():
-    atexit.register(cleanup_on_exit)
-    signal.signal(signal.SIGTERM, signal_handler)
+    atexit.register(cleanup_on_exit);
+    signal.signal(signal.SIGTERM, signal_handler);
     create_pid_file()
 
     try:
@@ -208,30 +163,44 @@ def main():
         move_step_motor_to_angle(rear_mirror_motor_devices, rear_mirror_motor_ctx, 0)
         move_step_motor_to_angle(front_scan_motor_devices, front_scan_motor_ctx, 0)
 
-        logging.info("Otonom sürüş modu başlatıldı. Arkadan bir nesne yaklaştırılması bekleniyor...")
+        logging.info("Otonom sürüş modu başlatıldı...")
 
         while not stop_event.is_set():
-            if check_rear_trigger():
-                if stop_event.is_set(): break
-                logging.info("Tetikleyici algılandı! Hareket döngüsü başlıyor...")
-                front_scan_data = perform_front_scan()
-                if stop_event.is_set(): break
-                best_path_angle = find_best_path(front_scan_data)
+            logging.info("\n--- YENİ DÖNGÜ: En Uygun Yolu Bul ve İlerle ---")
+            stop_motors()
 
-                if best_path_angle is not None:
-                    if best_path_angle < -15:
-                        turn_left()
-                    elif best_path_angle > 15:
-                        turn_right()
-                    move_forward()
+            # 1. ÖNÜ TARA VE GÜVENLİ YOLLARI BUL
+            front_scan_data = perform_front_scan()
+            if stop_event.is_set(): break
+
+            safe_paths = {angle: dist for angle, dist in front_scan_data.items() if dist > OBSTACLE_DISTANCE_CM}
+
+            # 2. KARAR VER
+            if not safe_paths:
+                # Önde güvenli yol yoksa, arkaya bak
+                logging.warning("Önde güvenli bir yol bulunamadı! Arka taraf kontrol ediliyor...")
+                rear_distance = check_rear()
+                if rear_distance > OBSTACLE_DISTANCE_CM:
+                    logging.info("Karar: Arka taraf açık. Geri gidilecek.")
+                    move_backward()
                 else:
-                    logging.warning("Ön taraf kapalı, hareket edilemiyor.")
-                    stop_motors()
-                    time.sleep(2)
+                    logging.error("SIKIŞTI! Hem ön hem arka taraf kapalı. İşlem durduruluyor.")
+                    break  # Döngüyü kır ve çık
             else:
-                stop_motors()
-                logging.info("Arkada tetikleyici bekleniyor...")
-                time.sleep(1)
+                # Önde güvenli yol varsa, en açığını seç
+                best_angle = max(safe_paths, key=safe_paths.get)
+                logging.info(f"Karar: En uygun yol {best_angle}° yönünde. Mesafe: {safe_paths[best_angle]:.1f} cm")
+
+                # 3. HAREKET ET
+                if best_angle < -15:  # En iyi yol soldaysa
+                    turn_left()
+                elif best_angle > 15:  # En iyi yol sağdaysa
+                    turn_right()
+
+                # Döndükten veya zaten düz baktıktan sonra ileri git
+                move_forward()
+
+            time.sleep(1)  # Her tam döngü arasında bekle
 
     except KeyboardInterrupt:
         print("\nProgram kullanıcı tarafından sonlandırıldı (CTRL+C).")

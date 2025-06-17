@@ -1,10 +1,8 @@
-import threading
 import time
+import threading
 from gpiozero import Motor
 from gpiozero.pins.pigpio import PiGPIOFactory
 from gpiozero import Device
-
-stop_event = threading.Event()
 
 # pigpio'yu kullanmayı dene
 try:
@@ -13,24 +11,26 @@ try:
 except Exception as e:
     print(f"UYARI: pigpio kullanılamadı: {e}. Varsayılan pin factory kullanılıyor.")
 
-# --- PIN TANIMLAMALARI (GÜNCELLENDİ) ---
+# --- PIN TANIMLAMALARI ---
 # L298N Motor Sürücü Pinleri
 MOTOR_LEFT_FORWARD = 10
 MOTOR_LEFT_BACKWARD = 9
 MOTOR_RIGHT_FORWARD = 8
 MOTOR_RIGHT_BACKWARD = 7
 
-# DÜZELTME: Hız kontrolü için Enable pinleri eklendi
-# Lütfen bu GPIO pinlerini L298N'deki ENA ve ENB pinlerine bağlayın
-ENA_PIN_LEFT = 14  # Sol motorlar için ENA
-ENB_PIN_RIGHT = 15  # Sağ motorlar için ENB
+# Hız kontrolü için Enable pinleri
+ENA_PIN_LEFT = 14
+ENB_PIN_RIGHT = 15
 
 # --- HIZ AYARLARI ---
 MOVE_SPEED = 0.8  # İleri/geri hareket hızı (%80 güç)
-TURN_MAX_SPEED = 1.0  # Dönüşlerin ulaşacağı maksimum hız (%100 güç)
+TURN_SPEED = 1.0  # Dönüşlerin daha net olması için tam güç
 
-print("--- PWM Hız Kontrollü DC Motor Testi Başlatılıyor ---")
+print("--- Pivot Dönüşlü DC Motor Testi Başlatılıyor ---")
 print("Çıkmak için CTRL+C tuşlarına basın.")
+
+# Güvenli durdurma için bir event flag
+stop_event = threading.Event()
 
 left_motors = None
 right_motors = None
@@ -49,23 +49,31 @@ try:
     print("-> Durduruldu.")
     time.sleep(1)
 
-    print("\n[TEST 2/2] Sola Yumuşak Dönüş Testi (Soft Start)...")
-    print("Hız yavaşça artırılıyor...")
+    # DÜZELTME: Dönüş mantığı isteğinize göre güncellendi.
 
-    # Hızı 0.3'ten başlayarak yavaşça artır
-    for speed_step in [0.3, 0.5, 0.7, 0.9, TURN_MAX_SPEED]:
-        if stop_event.is_set(): break
-        print(f"--> Dönüş Hızı: %{int(speed_step * 100)}")
-        left_motors.backward(speed=speed_step)  # Sol tekerlek geri
-        right_motors.forward(speed=speed_step)  # Sağ tekerlek ileri
-        time.sleep(0.5)  # Her hız adımında yarım saniye bekle
+    print("\n[TEST 2/4] Sola Dönüş (Pivot) Testi (2 saniye)...")
+    print("--> Sadece SAĞ motorlar İLERİ çalışacak.")
+    right_motors.forward(speed=TURN_SPEED)  # Sağ tekerlek ileri
+    left_motors.stop()  # Sol tekerlek duruyor
+    time.sleep(2)
+    left_motors.stop();
+    right_motors.stop()
+    print("-> Durduruldu.")
+    time.sleep(1)
 
+    print("\n[TEST 3/4] Sağa Dönüş (Pivot) Testi (2 saniye)...")
+    print("--> Sadece SOL motorlar İLERİ çalışacak.")
+    left_motors.forward(speed=TURN_SPEED)  # Sol tekerlek ileri
+    right_motors.stop()  # Sağ tekerlek duruyor
+    time.sleep(2)
     left_motors.stop();
     right_motors.stop()
     print("-> Durduruldu.")
 
     print("\n--- TÜM TESTLER BAŞARIYLA TAMAMLANDI ---")
 
+except KeyboardInterrupt:
+    print("\nKullanıcı tarafından durduruldu.")
 except Exception as e:
     print(f"\n!!! TEST SIRASINDA KRİTİK BİR HATA OLUŞTU: {e}")
     print("Lütfen pin numaralarınızı ve donanım bağlantılarınızı (Güç ve GND) kontrol edin.")

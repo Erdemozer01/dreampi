@@ -7,6 +7,7 @@ import logging
 import atexit
 import signal
 import threading
+import traceback  # DÜZELTME: Eksik olan import eklendi
 from gpiozero import Motor, DistanceSensor, OutputDevice
 from gpiozero.pins.pigpio import PiGPIOFactory
 from gpiozero import Device
@@ -23,15 +24,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # --- SABİTLER ---
 AUTONOMOUS_SCRIPT_PID_FILE = '/tmp/autonomous_drive_script.pid'
 
-# --- DONANIM PIN TANIMLAMALARI (GÖREVE GÖRE YENİDEN İSİMLENDİRİLDİ) ---
+# --- DONANIM PIN TANIMLAMALARI (GÖREVE GÖRE İSİMLENDİRİLMİŞ) ---
 # L298N Motor Sürücü Pinleri
 MOTOR_LEFT_FORWARD = 10
 MOTOR_LEFT_BACKWARD = 9
 MOTOR_RIGHT_FORWARD = 8
 MOTOR_RIGHT_BACKWARD = 7
-
-# DÜZELTME: Değişken adları ve yorumlar, kafa karışıklığını önlemek için
-# motorların fiziksel duruşu yerine yaptıkları GÖREVİ yansıtacak şekilde değiştirildi.
 
 # Fiziksel olarak DİKEY duran ve ÖN TARAFI TARAYAN motorun pinleri
 FRONT_SCAN_MOTOR_IN1, FRONT_SCAN_MOTOR_IN2, FRONT_SCAN_MOTOR_IN3, FRONT_SCAN_MOTOR_IN4 = 26, 19, 13, 6
@@ -46,10 +44,10 @@ STEPS_PER_REVOLUTION = 4096
 STEP_MOTOR_INTER_STEP_DELAY = 0.0015
 MOVE_DURATION = 1.0
 TURN_DURATION = 0.4
-OBSTACLE_DISTANCE_CM = 35  # Öndeki engel mesafesi
-REAR_TRIGGER_DISTANCE_CM = 20  # Arkadaki tetikleyici nesne mesafesi
+OBSTACLE_DISTANCE_CM = 35
+REAR_TRIGGER_DISTANCE_CM = 20
 
-# --- GLOBAL NESNELER (YENİ İSİMLENDİRME) ---
+# --- GLOBAL NESNELER ---
 left_motors: Motor = None
 right_motors: Motor = None
 sensor: DistanceSensor = None
@@ -65,7 +63,6 @@ stop_event = threading.Event()
 
 # --- SÜREÇ, DONANIM VE HAREKET FONKSİYONLARI ---
 def signal_handler(sig, frame):
-    """Sinyal alındığında stop_event'i ayarlayarak ana döngüyü sonlandırır."""
     logging.warning("Durdurma sinyali (SIGTERM) alındı. Program güvenli bir şekilde sonlandırılıyor...")
     stop_event.set()
 
@@ -100,10 +97,13 @@ def setup_hardware():
     left_motors = Motor(forward=MOTOR_LEFT_FORWARD, backward=MOTOR_LEFT_BACKWARD)
     right_motors = Motor(forward=MOTOR_RIGHT_FORWARD, backward=MOTOR_RIGHT_BACKWARD)
     sensor = DistanceSensor(echo=ECHO_PIN_1, trigger=TRIG_PIN_1)
+
+    # DÜZELTME: Değişken adları, dosyanın en üstündeki tanımlarla eşleşecek şekilde düzeltildi.
     rear_mirror_motor_devices = (OutputDevice(REAR_MIRROR_MOTOR_IN1), OutputDevice(REAR_MIRROR_MOTOR_IN2),
                                  OutputDevice(REAR_MIRROR_MOTOR_IN3), OutputDevice(REAR_MIRROR_MOTOR_IN4))
-    front_scan_motor_devices = (OutputDevice(FRONT_MOTOR_IN1), OutputDevice(FRONT_MOTOR_IN2),
-                                OutputDevice(FRONT_MOTOR_IN3), OutputDevice(FRONT_MOTOR_IN4))
+    front_scan_motor_devices = (OutputDevice(FRONT_SCAN_MOTOR_IN1), OutputDevice(FRONT_SCAN_MOTOR_IN2),
+                                OutputDevice(FRONT_SCAN_MOTOR_IN3), OutputDevice(FRONT_SCAN_MOTOR_IN4))
+
     logging.info("Tüm donanım nesneleri başarıyla oluşturuldu.")
 
 

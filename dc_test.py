@@ -1,9 +1,10 @@
+import threading
 import time
 from gpiozero import Motor
 from gpiozero.pins.pigpio import PiGPIOFactory
 from gpiozero import Device
 
-from autonomous_drive import stop_event
+stop_event = threading.Event()
 
 # pigpio'yu kullanmayı dene
 try:

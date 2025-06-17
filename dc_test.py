@@ -32,8 +32,8 @@ right_motors = None
 
 try:
     # Motor nesnelerini oluştur
-    left_motors = Motor(forward=MOTOR_LEFT_FORWARD, backward=MOTOR_LEFT_BACKWARD)
-    right_motors = Motor(forward=MOTOR_RIGHT_FORWARD, backward=MOTOR_RIGHT_BACKWARD)
+    left_motors = Motor(forward=MOTOR_LEFT_FORWARD, backward=MOTOR_LEFT_BACKWARD, enable=14)
+    right_motors = Motor(forward=MOTOR_RIGHT_FORWARD, backward=MOTOR_RIGHT_BACKWARD, enable=15)
 
     print("\n[TEST 1/4] İleri Hareket (2 saniye)...")
     left_motors.forward(speed=MOVE_SPEED)

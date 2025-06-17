@@ -2,40 +2,44 @@ import time
 from gpiozero import Motor
 from gpiozero.pins.pigpio import PiGPIOFactory
 from gpiozero import Device
-import RPi.GPIO as GPIO
 
-# pigpio'yu kullanmayı dene, bu daha stabil bir kontrol sağlar
+from autonomous_drive import stop_event
+
+# pigpio'yu kullanmayı dene
 try:
     Device.pin_factory = PiGPIOFactory()
     print("✓ pigpio pin factory başarıyla ayarlandı.")
 except Exception as e:
     print(f"UYARI: pigpio kullanılamadı: {e}. Varsayılan pin factory kullanılıyor.")
 
-# --- PIN TANIMLAMALARI ---
-# L298N Motor Sürücü Pinleri (Lütfen kendi bağlantılarınızı doğrulayın)
+# --- PIN TANIMLAMALARI (GÜNCELLENDİ) ---
+# L298N Motor Sürücü Pinleri
 MOTOR_LEFT_FORWARD = 10
 MOTOR_LEFT_BACKWARD = 9
 MOTOR_RIGHT_FORWARD = 8
 MOTOR_RIGHT_BACKWARD = 7
 
-# --- HIZ AYARLARI (DÜZELTME) ---
-# İsteğiniz üzerine tüm hareketler tam güçte yapılacak şekilde ayarlandı.
-MOVE_SPEED = 1.0  # İleri/geri hareket hızı (%100 güç)
-TURN_SPEED = 1.0  # Dönüş hızı (%100 güç)
+# DÜZELTME: Hız kontrolü için Enable pinleri eklendi
+# Lütfen bu GPIO pinlerini L298N'deki ENA ve ENB pinlerine bağlayın
+ENA_PIN_LEFT = 14  # Sol motorlar için ENA
+ENB_PIN_RIGHT = 15  # Sağ motorlar için ENB
 
-print("--- Kapsamlı DC Motor Donanım Testi Başlatılıyor ---")
+# --- HIZ AYARLARI ---
+MOVE_SPEED = 0.8  # İleri/geri hareket hızı (%80 güç)
+TURN_MAX_SPEED = 1.0  # Dönüşlerin ulaşacağı maksimum hız (%100 güç)
+
+print("--- PWM Hız Kontrollü DC Motor Testi Başlatılıyor ---")
 print("Çıkmak için CTRL+C tuşlarına basın.")
 
-# Motor nesnelerini başlangıçta None olarak ayarlıyoruz
 left_motors = None
 right_motors = None
 
 try:
-    # Motor nesnelerini oluştur
-    left_motors = Motor(forward=MOTOR_LEFT_FORWARD, backward=MOTOR_LEFT_BACKWARD, enable=14)
-    right_motors = Motor(forward=MOTOR_RIGHT_FORWARD, backward=MOTOR_RIGHT_BACKWARD, enable=15)
+    # Motor nesnelerini, enable pinlerini de belirterek oluştur
+    left_motors = Motor(forward=MOTOR_LEFT_FORWARD, backward=MOTOR_LEFT_BACKWARD, enable=ENA_PIN_LEFT)
+    right_motors = Motor(forward=MOTOR_RIGHT_FORWARD, backward=MOTOR_RIGHT_BACKWARD, enable=ENB_PIN_RIGHT)
 
-    print("\n[TEST 1/4] İleri Hareket (2 saniye)...")
+    print("\n[TEST 1/2] İleri Hareket Testi (2 saniye)...")
     left_motors.forward(speed=MOVE_SPEED)
     right_motors.forward(speed=MOVE_SPEED)
     time.sleep(2)
@@ -44,28 +48,17 @@ try:
     print("-> Durduruldu.")
     time.sleep(1)
 
-    print("\n[TEST 2/4] Geri Hareket (2 saniye)...")
-    left_motors.backward(speed=MOVE_SPEED)
-    right_motors.backward(speed=MOVE_SPEED)
-    time.sleep(2)
-    left_motors.stop();
-    right_motors.stop()
-    print("-> Durduruldu.")
-    time.sleep(1)
+    print("\n[TEST 2/2] Sola Yumuşak Dönüş Testi (Soft Start)...")
+    print("Hız yavaşça artırılıyor...")
 
-    print("\n[TEST 3/4] Sola Dönüş (2 saniye)...")
-    left_motors.backward(speed=TURN_SPEED)  # Sol tekerlek geri
-    right_motors.forward(speed=TURN_SPEED)  # Sağ tekerlek ileri
-    time.sleep(2)
-    left_motors.stop();
-    right_motors.stop()
-    print("-> Durduruldu.")
-    time.sleep(1)
+    # Hızı 0.3'ten başlayarak yavaşça artır
+    for speed_step in [0.3, 0.5, 0.7, 0.9, TURN_MAX_SPEED]:
+        if stop_event.is_set(): break
+        print(f"--> Dönüş Hızı: %{int(speed_step * 100)}")
+        left_motors.backward(speed=speed_step)  # Sol tekerlek geri
+        right_motors.forward(speed=speed_step)  # Sağ tekerlek ileri
+        time.sleep(0.5)  # Her hız adımında yarım saniye bekle
 
-    print("\n[TEST 4/4] Sağa Dönüş (2 saniye)...")
-    left_motors.forward(speed=TURN_SPEED)  # Sol tekerlek ileri
-    right_motors.backward(speed=TURN_SPEED)  # Sağ tekerlek geri
-    time.sleep(2)
     left_motors.stop();
     right_motors.stop()
     print("-> Durduruldu.")
@@ -77,19 +70,9 @@ except Exception as e:
     print("Lütfen pin numaralarınızı ve donanım bağlantılarınızı (Güç ve GND) kontrol edin.")
 
 finally:
-    # Programdan çıkarken tüm gpiozero nesnelerini güvenli bir şekilde kapat
     print("Tüm motor nesneleri kapatılıyor...")
     if left_motors:
         left_motors.close()
     if right_motors:
         right_motors.close()
-
-
-    # GPIO pinlerini serbest bırak
-    # Bazen gpiozero'dan sonra ek bir temizlik gerekebilir
-    try:
-        GPIO.setmode(GPIO.BCM)
-        GPIO.cleanup()
-        print("GPIO temizliği tamamlandı.")
-    except:
-        pass
+    print("Temizleme tamamlandı.")

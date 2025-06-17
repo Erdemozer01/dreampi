@@ -1,5 +1,3 @@
-# motor_testi.py - Raspberry Pi 5 için lgpio ile Geliştirilmiş Test
-
 import time
 import threading
 from gpiozero import Motor
@@ -28,7 +26,7 @@ ENA_PIN_LEFT = 14
 ENB_PIN_RIGHT = 15
 
 # --- HIZ AYARLARI ---
-MOVE_SPEED = 1.0  # İleri/geri hareket hızı (%80 güç)
+MOVE_SPEED = 0.8  # İleri/geri hareket hızı (%80 güç)
 TURN_SPEED = 1.0  # Dönüşlerin daha net olması için tam güç
 
 print("--- Pivot Dönüşlü DC Motor Testi Başlatılıyor ---")

@@ -1,15 +1,20 @@
+# motor_testi.py - Raspberry Pi 5 için lgpio ile Geliştirilmiş Test
+
 import time
 import threading
 from gpiozero import Motor
-from gpiozero.pins.pigpio import PiGPIOFactory
 from gpiozero import Device
+# DÜZELTME: Pi 5 için modern ve uyumlu olan lgpio kütüphanesi import ediliyor.
+from gpiozero.pins.lgpio import LGPIOFactory
 
-# pigpio'yu kullanmayı dene
+# DÜZELTME: Pin factory'yi doğrudan lgpio olarak ayarlıyoruz.
+# Bu, 'pigpiod' servisine olan ihtiyacı ortadan kaldırır.
 try:
-    Device.pin_factory = PiGPIOFactory()
-    print("✓ pigpio pin factory başarıyla ayarlandı.")
+    Device.pin_factory = LGPIOFactory()
+    print("✓ lgpio pin factory (Raspberry Pi 5 uyumlu) başarıyla ayarlandı.")
 except Exception as e:
-    print(f"UYARI: pigpio kullanılamadı: {e}. Varsayılan pin factory kullanılıyor.")
+    print(f"UYARI: lgpio pin factory ayarlanamadı: {e}")
+    print("Lütfen 'sudo apt-get install python3-lgpio' komutuyla kütüphanenin yüklü olduğundan emin olun.")
 
 # --- PIN TANIMLAMALARI ---
 # L298N Motor Sürücü Pinleri
@@ -23,7 +28,7 @@ ENA_PIN_LEFT = 14
 ENB_PIN_RIGHT = 15
 
 # --- HIZ AYARLARI ---
-MOVE_SPEED = 1  # İleri/geri hareket hızı (%80 güç)
+MOVE_SPEED = 0.8  # İleri/geri hareket hızı (%80 güç)
 TURN_SPEED = 1.0  # Dönüşlerin daha net olması için tam güç
 
 print("--- Pivot Dönüşlü DC Motor Testi Başlatılıyor ---")
@@ -40,7 +45,7 @@ try:
     left_motors = Motor(forward=MOTOR_LEFT_FORWARD, backward=MOTOR_LEFT_BACKWARD, enable=ENA_PIN_LEFT)
     right_motors = Motor(forward=MOTOR_RIGHT_FORWARD, backward=MOTOR_RIGHT_BACKWARD, enable=ENB_PIN_RIGHT)
 
-    print("\n[TEST 1/2] İleri Hareket Testi (2 saniye)...")
+    print("\n[TEST 1/4] İleri Hareket Testi (2 saniye)...")
     left_motors.forward(speed=MOVE_SPEED)
     right_motors.forward(speed=MOVE_SPEED)
     time.sleep(2)
@@ -48,8 +53,6 @@ try:
     right_motors.stop()
     print("-> Durduruldu.")
     time.sleep(1)
-
-    # DÜZELTME: Dönüş mantığı isteğinize göre güncellendi.
 
     print("\n[TEST 2/4] Sola Dönüş (Pivot) Testi (2 saniye)...")
     print("--> Sadece SAĞ motorlar İLERİ çalışacak.")

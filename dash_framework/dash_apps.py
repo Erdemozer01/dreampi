@@ -1,4 +1,5 @@
 # Standart ve Django'ya bağımlı olmayan kütüphaneler
+import atexit
 import logging
 import os
 import sys
@@ -18,7 +19,6 @@ import json
 from scipy.spatial import ConvexHull
 from sklearn.cluster import DBSCAN
 from sklearn.linear_model import RANSACRegressor
-
 
 # Dash ve Plotly Kütüphaneleri
 from django_plotly_dash import DjangoDash
@@ -41,9 +41,11 @@ load_dotenv()
 # --- SABİTLER VE UYGULAMA BAŞLATMA ---
 SENSOR_SCRIPT_FILENAME = 'sensor_script.py'
 SENSOR_SCRIPT_PATH = os.path.join(os.getcwd(), SENSOR_SCRIPT_FILENAME)
-SENSOR_SCRIPT_PID_FILE = '/tmp/sensor_scan_script.pid'
 AUTONOMOUS_SCRIPT_FILENAME = 'autonomous_drive.py'
 AUTONOMOUS_SCRIPT_PATH = os.path.join(os.getcwd(), AUTONOMOUS_SCRIPT_FILENAME)
+
+SENSOR_SCRIPT_PID_FILE = '/tmp/sensor_scan_script.pid'
+AUTONOMOUS_SCRIPT_PID_FILE = '/tmp/autonomous_drive_script.pid'
 
 FONT_AWESOME = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
 
@@ -60,6 +62,14 @@ navbar = dbc.NavbarSimple(
 
 
 # --- YARDIMCI FONKSİYONLAR ---
+def is_process_running(pid):
+    if pid is None: return False
+    try:
+        return psutil.pid_exists(pid)
+    except Exception:
+        return False
+
+
 def get_ai_model_options():
     try:
         from scanner.models import AIModelConfiguration
@@ -80,27 +90,39 @@ def get_latest_scan():
         return None
 
 
-def is_process_running(pid):
-    if pid is None: return False
-    try:
-        return psutil.pid_exists(pid)
-    except Exception:
-        return False
-
-
 def stop_all_scripts():
+    """
+    Bilinen tüm betik PID dosyalarını kontrol eder ve çalışan işlemleri sonlandırır.
+    """
     print("Tüm aktif betikler durduruluyor...")
-    if os.path.exists(SENSOR_SCRIPT_PID_FILE):
-        try:
-            with open(SENSOR_SCRIPT_PID_FILE, 'r') as f:
-                pid_to_kill = int(f.read().strip())
-            if is_process_running(pid_to_kill):
-                os.kill(pid_to_kill, signal.SIGTERM);
-                time.sleep(1)
-        except (IOError, ValueError, ProcessLookupError, Exception) as e:
-            print(f"PID dosyası işlenirken hata: {e}")
-        finally:
-            if os.path.exists(SENSOR_SCRIPT_PID_FILE): os.remove(SENSOR_SCRIPT_PID_FILE)
+    all_pid_files = [SENSOR_SCRIPT_PID_FILE, AUTONOMOUS_SCRIPT_PID_FILE]
+
+    for pid_file in all_pid_files:
+        if os.path.exists(pid_file):
+            pid_to_kill = None
+            try:
+                with open(pid_file, 'r') as f:
+                    content = f.read().strip()
+                    if content: pid_to_kill = int(content)
+
+                if pid_to_kill and is_process_running(pid_to_kill):
+                    print(f"Çalışan işlem bulundu (PID: {pid_to_kill}). Durduruluyor...")
+                    os.kill(pid_to_kill, signal.SIGTERM)
+                    time.sleep(0.5)  # İşlemin kapanması için kısa bir süre bekle
+            except (IOError, ValueError, ProcessLookupError, Exception) as e:
+                print(f"PID dosyası işlenirken hata: {e}")
+            finally:
+                # Script kendi PID dosyasını temizleyeceği için burada silmek şart değil,
+                # ama bir güvenlik önlemi olarak kalabilir.
+                if os.path.exists(pid_file):
+                    try:
+                        os.remove(pid_file)
+                    except OSError:
+                        pass
+
+
+# DÜZELTME: Ana uygulama kapandığında tüm betikleri durdurmak için atexit kaydedildi.
+atexit.register(stop_all_scripts)
 
 
 def stop_current_operation(mode):
@@ -247,6 +269,7 @@ def start_autonomous_mode():
     except Exception as e:
         print(f"Otonom sürüş başlatma hatası: {e}")
         return html.Span([html.I(className="fa-solid fa-xmark me-2"), "Hata"]), False, True
+
 
 # --- ARAYÜZ BİLEŞENLERİ (LAYOUT) ---
 control_panel = dbc.Card([
@@ -658,6 +681,7 @@ def update_all_graphs_and_analytics(scan_json, points_json):
 
     return fig_3d, fig_2d, fig_polar, est_text, store_data, area, perim, width, depth
 
+
 # 12. 2D haritadaki bir noktaya tıklandığında kümeleme bilgilerini gösterir
 @app.callback(
     [Output("cluster-info-modal", "is_open"), Output("modal-title", "children"), Output("modal-body", "children")],
@@ -681,7 +705,6 @@ def display_cluster_info(clickData, stored_data_json):
         return True, title, body
     except (KeyError, IndexError, Exception) as e:
         return True, "Hata", f"Küme bilgisi gösterilemedi: {e}"
-
 
 
 # 13. Seçilen AI modelini kullanarak tarama verilerini yorumlar ve resim oluşturur
@@ -749,9 +772,3 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
         safe_error_message = str(e).encode('ascii', 'ignore').decode('ascii')
         return dbc.Alert(f"Yapay zeka işlemi sırasında beklenmedik bir hata oluştu: {safe_error_message}",
                          color="danger"), None
-
-
-
-
-
-

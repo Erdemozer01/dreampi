@@ -121,7 +121,6 @@ def stop_all_scripts():
                         pass
 
 
-# DÜZELTME: Ana uygulama kapandığında tüm betikleri durdurmak için atexit kaydedildi.
 atexit.register(stop_all_scripts)
 
 

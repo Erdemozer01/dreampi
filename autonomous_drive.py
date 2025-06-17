@@ -1,4 +1,4 @@
-# autonomous_drive.py - Proaktif ve Geniş Açılı Akıllı Navigasyon Betiği
+# autonomous_drive.py - Proaktif ve Akıllı Navigasyon Betiği
 
 import os
 import sys
@@ -142,9 +142,7 @@ def move_step_motor_to_angle(motor_devices, motor_ctx, target_angle_deg, invert_
 
 
 def perform_front_scan():
-    """Ön tarafı -90, 0, +90 derece açılarla tarar."""
     logging.info("Ön taraf taranıyor...")
-    # DÜZELTME: Tarama açıları isteğinize göre güncellendi.
     scan_angles = [90, 0, -90]
     measurements = {}
     for angle in scan_angles:
@@ -159,7 +157,6 @@ def perform_front_scan():
 
 
 def check_rear():
-    """Arka tarafı SABİT bir yönde (180 derece) hızla kontrol eder."""
     logging.info("Arka taraf kontrol ediliyor ('Dikiz Aynası')...")
     move_step_motor_to_angle(rear_mirror_motor_devices, rear_mirror_motor_ctx, 180, INVERT_REAR_MOTOR_DIRECTION)
     if stop_event.is_set(): return 0
@@ -168,6 +165,33 @@ def check_rear():
     logging.info(f"  Arka Tarama: Mesafe={distance:.1f} cm")
     move_step_motor_to_angle(rear_mirror_motor_devices, rear_mirror_motor_ctx, 0, INVERT_REAR_MOTOR_DIRECTION)
     return distance
+
+
+# DÜZELTME: Karar verme mantığı daha net ve robust hale getirildi.
+def analyze_and_decide(front_scan, rear_distance):
+    """Tüm tarama verilerini birleştirir, en iyi ve en güvenli yolu seçer."""
+    logging.info("Tüm yönler analiz ediliyor...")
+
+    # Olası tüm yönleri ve mesafelerini bir sözlükte topla
+    all_options = {
+        "TURN_RIGHT": front_scan.get(90, 0),
+        "FORWARD": front_scan.get(0, 0),
+        "TURN_LEFT": front_scan.get(-90, 0),
+        "BACKWARD": rear_distance
+    }
+    logging.info(f"Tüm Yönler ve Mesafeler: {all_options}")
+
+    # Sadece engel mesafesinden daha uzak olan güvenli yolları değerlendir
+    safe_options = {direction: dist for direction, dist in all_options.items() if dist > OBSTACLE_DISTANCE_CM}
+
+    if not safe_options:
+        logging.warning("Tüm yönler kapalı veya engel mesafesinden yakın. Durulacak.")
+        return "STOP"
+
+    # En uzun mesafeye sahip olan en iyi yönü seç
+    best_direction = max(safe_options, key=safe_options.get)
+    logging.info(f"Karar: En uygun yol {best_direction} yönünde. Mesafe: {safe_options[best_direction]:.1f} cm")
+    return best_direction
 
 
 # --- ANA ÇALIŞMA DÖNGÜSÜ ---
@@ -187,39 +211,31 @@ def main():
         while not stop_event.is_set():
             logging.info("\n--- YENİ DÖNGÜ: En Uygun Yolu Bul ve İlerle ---")
             stop_motors()
-            stop_step_motors()
 
+            # 1. DÜŞÜN: Önü ve arkayı tara
             front_scan_data = perform_front_scan()
             if stop_event.is_set(): break
 
-            safe_paths = {angle: dist for angle, dist in front_scan_data.items() if dist > OBSTACLE_DISTANCE_CM}
+            rear_distance = check_rear()
+            if stop_event.is_set(): break
 
             stop_step_motors()
 
-            if not safe_paths:
-                logging.warning("Önde güvenli bir yol bulunamadı! Arka taraf kontrol ediliyor...")
-                rear_distance = check_rear()
-                stop_step_motors()
-                if rear_distance > OBSTACLE_DISTANCE_CM:
-                    logging.info("Karar: Arka taraf açık. Geri gidilecek.")
-                    move_backward()
-                else:
-                    logging.error("SIKIŞTI! Hem ön hem arka taraf kapalı. İşlem durduruluyor.")
-                    break
-            else:
-                best_angle = max(safe_paths, key=safe_paths.get)
-                logging.info(f"Karar: En uygun yol {best_angle}° yönünde. Mesafe: {safe_paths[best_angle]:.1f} cm")
+            # 2. KARAR VER
+            decision = analyze_and_decide(front_scan_data, rear_distance)
 
-                # DÜZELTME: Karar mantığı yeni açılara göre güncellendi.
-                if best_angle == 90:
-                    logging.info("Eylem: Sağa dönülüyor.")
-                    turn_right()
-                elif best_angle == -90:
-                    logging.info("Eylem: Sola dönülüyor.")
-                    turn_left()
-
-                logging.info("Eylem: İleri hareket ediliyor.")
+            # 3. HAREKET ET
+            if decision == "FORWARD":
                 move_forward()
+            elif decision == "BACKWARD":
+                move_backward()
+            elif decision == "TURN_LEFT":
+                turn_left()
+            elif decision == "TURN_RIGHT":
+                turn_right()
+            elif decision == "STOP":
+                logging.error("SIKIŞTI! Hareket edecek güvenli bir yol yok. İşlem durduruluyor.")
+                break
 
             time.sleep(1)
 

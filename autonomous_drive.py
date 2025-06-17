@@ -5,6 +5,8 @@ import sys
 import time
 import logging
 import atexit
+import traceback
+
 from gpiozero import Motor, DistanceSensor, OutputDevice
 from gpiozero.pins.pigpio import PiGPIOFactory
 from gpiozero import Device

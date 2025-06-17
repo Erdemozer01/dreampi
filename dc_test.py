@@ -1,5 +1,3 @@
-# motor_testi.py - DC Motorlar için İleri, Geri, Sağ ve Sol Dönüş Testi
-
 import time
 from gpiozero import Motor
 from gpiozero.pins.pigpio import PiGPIOFactory
@@ -20,9 +18,10 @@ MOTOR_LEFT_BACKWARD = 9
 MOTOR_RIGHT_FORWARD = 8
 MOTOR_RIGHT_BACKWARD = 7
 
-# --- HIZ AYARLARI ---
-MOVE_SPEED = 0.8  # İleri/geri hareket hızı (%80 güç)
-TURN_SPEED = 0.7  # Dönüş hızı (%70 güç)
+# --- HIZ AYARLARI (DÜZELTME) ---
+# İsteğiniz üzerine tüm hareketler tam güçte yapılacak şekilde ayarlandı.
+MOVE_SPEED = 1.0  # İleri/geri hareket hızı (%100 güç)
+TURN_SPEED = 1.0  # Dönüş hızı (%100 güç)
 
 print("--- Kapsamlı DC Motor Donanım Testi Başlatılıyor ---")
 print("Çıkmak için CTRL+C tuşlarına basın.")

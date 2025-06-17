@@ -1,18 +1,17 @@
+# motor_testi.py - İleri, Geri ve Pivot Dönüş Mantığı ile Geliştirilmiş Test
+
 import time
 import threading
 from gpiozero import Motor
+from gpiozero.pins.pigpio import PiGPIOFactory
 from gpiozero import Device
-# DÜZELTME: Pi 5 için modern ve uyumlu olan lgpio kütüphanesi import ediliyor.
-from gpiozero.pins.lgpio import LGPIOFactory
 
-# DÜZELTME: Pin factory'yi doğrudan lgpio olarak ayarlıyoruz.
-# Bu, 'pigpiod' servisine olan ihtiyacı ortadan kaldırır.
+# pigpio'yu kullanmayı dene
 try:
-    Device.pin_factory = LGPIOFactory()
-    print("✓ lgpio pin factory (Raspberry Pi 5 uyumlu) başarıyla ayarlandı.")
+    Device.pin_factory = PiGPIOFactory()
+    print("✓ pigpio pin factory başarıyla ayarlandı.")
 except Exception as e:
-    print(f"UYARI: lgpio pin factory ayarlanamadı: {e}")
-    print("Lütfen 'sudo apt-get install python3-lgpio' komutuyla kütüphanenin yüklü olduğundan emin olun.")
+    print(f"UYARI: pigpio kullanılamadı: {e}. Varsayılan pin factory kullanılıyor.")
 
 # --- PIN TANIMLAMALARI ---
 # L298N Motor Sürücü Pinleri
@@ -29,7 +28,7 @@ ENB_PIN_RIGHT = 15
 MOVE_SPEED = 1.0  # İleri/geri hareket hızı (%80 güç)
 TURN_SPEED = 1.0  # Dönüşlerin daha net olması için tam güç
 
-print("--- Pivot Dönüşlü DC Motor Testi Başlatılıyor ---")
+print("--- Kapsamlı DC Motor Donanım Testi Başlatılıyor ---")
 print("Çıkmak için CTRL+C tuşlarına basın.")
 
 # Güvenli durdurma için bir event flag
@@ -52,7 +51,17 @@ try:
     print("-> Durduruldu.")
     time.sleep(1)
 
-    print("\n[TEST 2/4] Sola Dönüş (Pivot) Testi (2 saniye)...")
+    # DÜZELTME: Geri hareket testi eklendi.
+    print("\n[TEST 2/4] Geri Hareket Testi (2 saniye)...")
+    left_motors.backward(speed=MOVE_SPEED)
+    right_motors.backward(speed=MOVE_SPEED)
+    time.sleep(2)
+    left_motors.stop();
+    right_motors.stop()
+    print("-> Durduruldu.")
+    time.sleep(1)
+
+    print("\n[TEST 3/4] Sola Dönüş (Pivot) Testi (2 saniye)...")
     print("--> Sadece SAĞ motorlar İLERİ çalışacak.")
     right_motors.forward(speed=TURN_SPEED)  # Sağ tekerlek ileri
     left_motors.stop()  # Sol tekerlek duruyor
@@ -62,7 +71,7 @@ try:
     print("-> Durduruldu.")
     time.sleep(1)
 
-    print("\n[TEST 3/4] Sağa Dönüş (Pivot) Testi (2 saniye)...")
+    print("\n[TEST 4/4] Sağa Dönüş (Pivot) Testi (2 saniye)...")
     print("--> Sadece SOL motorlar İLERİ çalışacak.")
     left_motors.forward(speed=TURN_SPEED)  # Sol tekerlek ileri
     right_motors.stop()  # Sağ tekerlek duruyor

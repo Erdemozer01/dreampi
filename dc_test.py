@@ -64,7 +64,7 @@ try:
     print("\n[TEST 3/4] Sola Dönüş (Pivot) Testi (2 saniye)...")
     print("--> Sadece SAĞ motorlar İLERİ çalışacak.")
     right_motors.forward(speed=TURN_SPEED)  # Sağ tekerlek ileri
-    left_motors.backward(speed=1.0)  # Sol tekerlek duruyor
+    left_motors.forward(speed=1.0)  # Sol tekerlek duruyor
     time.sleep(2)
     left_motors.stop();
     right_motors.stop()
@@ -74,7 +74,7 @@ try:
     print("\n[TEST 4/4] Sağa Dönüş (Pivot) Testi (2 saniye)...")
     print("--> Sadece SOL motorlar İLERİ çalışacak.")
     left_motors.forward(speed=TURN_SPEED)  # Sol tekerlek ileri
-    right_motors.backward(speed=1.0)  # Sağ tekerlek duruyor
+    right_motors.forward(speed=1.0)  # Sağ tekerlek duruyor
     time.sleep(2)
     left_motors.stop();
     right_motors.stop()

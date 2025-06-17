@@ -84,6 +84,7 @@ finally:
     if right_motors:
         right_motors.close()
 
+
     # GPIO pinlerini serbest bırak
     # Bazen gpiozero'dan sonra ek bir temizlik gerekebilir
     try:

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VR Sahnesi</title>
+    <title>AI Üretimi VR Sahnesi</title>
     <style>
         body, html { margin: 0; padding: 0; overflow: hidden; background-color: #101010; }
         canvas { display: block; }
@@ -26,15 +26,14 @@
         import { VRButton } from 'three/addons/webxr/VRButton.js';
 
         let camera, scene, renderer, controls;
-        let pointCloud = null;
+        let activeObject = null; // Sahnede gösterilen mevcut nesneyi (nokta bulutu veya küre) tutar
 
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x101010);
-            scene.fog = new THREE.Fog(0x101010, 200, 1000);
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 50, 150);
+            camera.position.set(0, 0.1, 0.1); // Kürenin içinden başlamak için merkeze yakın bir nokta
             camera.lookAt(0, 0, 0);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -46,14 +45,9 @@
 
             controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
-            controls.minDistance = 10;
-            controls.maxDistance = 500;
-
-            const gridHelper = new THREE.GridHelper(1000, 20, 0x888888, 0x444444);
-            scene.add(gridHelper);
+            controls.target.set(0, 0, -1); // Kontrollerin başlangıçta ileriye bakmasını sağla
 
             window.addEventListener('resize', onWindowResize);
-            // Dash uygulamasından gelecek veriyi dinle
             window.addEventListener('message', handleDataFromDash);
         }
 
@@ -64,31 +58,71 @@
         }
 
         function handleDataFromDash(event) {
-            // Güvenlik için, mesajın doğru kaynaktan geldiğini kontrol edebilirsiniz.
-            // if (event.origin !== "http://127.0.0.1:8000") return;
+            // Gelen verinin bir JSON string olduğunu ve içinde 'type' ve 'payload' anahtarları olduğunu varsayıyoruz
+            try {
+                const message = JSON.parse(event.data);
 
-            const points_json = event.data;
-            if (points_json) {
-                updatePointCloud(points_json);
+                if (message.type === 'image') {
+                    // Eğer gelen veri bir resim ise, fotoğraf küresini oluştur
+                    createPhotosphere(message.payload);
+                } else if (message.type === 'points') {
+                    // Eğer gelen veri nokta bulutu ise, onu göster
+                    updatePointCloud(message.payload);
+                }
+            } catch(e) {
+                console.warn("Gelen veri JSON formatında değil, eski nokta bulutu verisi olabilir:", event.data);
+                // Eski sistemle uyumluluk için, eğer JSON değilse nokta bulutu olarak işlemeyi dene
+                updatePointCloud(event.data);
             }
         }
 
+        function clearScene() {
+            // Yeni bir nesne eklemeden önce sahnedeki eski nesneyi temizle
+            if (activeObject) {
+                scene.remove(activeObject);
+                if (activeObject.geometry) activeObject.geometry.dispose();
+                if (activeObject.material) activeObject.material.dispose();
+            }
+        }
+
+        function createPhotosphere(imageUrl) {
+            clearScene();
+
+            // 360 derece görüntü için bir küre geometrisi oluştur
+            const geometry = new THREE.SphereGeometry(500, 60, 40);
+            // Kürenin iç yüzeyini görebilmek için ters çevir
+            geometry.scale(-1, 1, 1);
+
+            // Görüntü URL'ini doku olarak yükle
+            const texture = new THREE.TextureLoader().load(imageUrl,
+                () => { console.log("AI resmi başarıyla yüklendi."); },
+                undefined,
+                (err) => { console.error("Resim yüklenirken hata oluştu:", err); }
+            );
+
+            // Dokuya renk uzayı ayarı yap
+            texture.colorSpace = THREE.SRGBColorSpace;
+
+            // Malzemeyi oluştur ve dokuyu ata
+            const material = new THREE.MeshBasicMaterial({ map: texture });
+
+            const photosphere = new THREE.Mesh(geometry, material);
+            scene.add(photosphere);
+            activeObject = photosphere;
+        }
+
         function updatePointCloud(jsonText) {
+            clearScene();
+
             try {
                 const data = JSON.parse(jsonText);
                 const columns = data.columns;
                 const rows = data.data;
 
-                // Sütunların index'lerini bul (daha sağlam bir yöntem)
                 const x_idx = columns.indexOf('x_cm');
                 const y_idx = columns.indexOf('y_cm');
                 const z_idx = columns.indexOf('z_cm');
                 const dist_idx = columns.indexOf('mesafe_cm');
-
-                if(x_idx === -1 || y_idx === -1 || z_idx === -1 || dist_idx === -1) {
-                    console.error("Gerekli sütunlar bulunamadı: x_cm, y_cm, z_cm, mesafe_cm");
-                    return;
-                }
 
                 const points = [];
                 const colors = [];
@@ -103,18 +137,11 @@
                     if (isNaN(x) || isNaN(y) || isNaN(z) || isNaN(distance)) continue;
                     if (distance <= 0.1 || distance >= 400.0) continue;
 
-                    // x, y, z koordinatlarını ekle (Three.js için Y-up varsayımı yerine Z-up)
                     points.push(y, z, x);
 
-                    const hue = THREE.MathUtils.lerp(0.7, 0.0, distance / 400.0); // Mor -> Kırmızı
+                    const hue = THREE.MathUtils.lerp(0.7, 0.0, distance / 400.0);
                     color.setHSL(hue, 1.0, 0.5);
                     colors.push(color.r, color.g, color.b);
-                }
-
-                if (pointCloud) {
-                    scene.remove(pointCloud);
-                    pointCloud.geometry.dispose();
-                    pointCloud.material.dispose();
                 }
 
                 const geometry = new THREE.BufferGeometry();
@@ -123,10 +150,11 @@
 
                 const material = new THREE.PointsMaterial({ size: 1.5, vertexColors: true });
 
-                pointCloud = new THREE.Points(geometry, material);
+                const pointCloud = new THREE.Points(geometry, material);
                 scene.add(pointCloud);
+                activeObject = pointCloud;
             } catch (e) {
-                console.error("Veri işlenirken hata oluştu:", e);
+                console.error("Nokta bulutu verisi işlenirken hata oluştu:", e);
             }
         }
 

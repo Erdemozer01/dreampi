@@ -46,8 +46,9 @@ try:
     time.sleep(1)
 
     print("\n[TEST 2/4] Geri Hareket Testi (2 saniye)...")
-    left_motors.backward(speed=MOVE_SPEED)
-    right_motors.backward(speed=MOVE_SPEED)
+    for i in range(10):
+        left_motors.backward(speed=MOVE_SPEED)
+        right_motors.backward(speed=MOVE_SPEED)
     time.sleep(2)
     left_motors.stop()
     right_motors.stop()
@@ -56,9 +57,11 @@ try:
 
     print("\n[TEST 3/4] Sola Dönüş (Tank) Testi (2 saniye)...")
     print("--> Sağ motorlar İLERİ, Sol motorlar GERİ çalışacak.")
-    right_motors.forward(speed=TURN_SPEED)
-    left_motors.backward(speed=TURN_SPEED)
-    time.sleep(15)
+
+    for i in range(0, 10):
+        right_motors.forward(speed=TURN_SPEED)
+        left_motors.backward(speed=TURN_SPEED)
+
     left_motors.stop()
     right_motors.stop()
     print("-> Durduruldu.")

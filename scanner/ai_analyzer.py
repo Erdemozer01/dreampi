@@ -54,15 +54,13 @@ class AIAnalyzerService:
 
         # DÜZELTME: Prompt, yapay zekayı önce analiz yapıp sonra bu analizi özetlemeye yönlendiriyor.
         full_prompt = (
-            f"You are a 3D Scene Analysis expert. Your task is to perform a two-step process on the following sensor data. "
-            f"The scan was performed with a horizontal angle of {h_angle} degrees and a vertical angle of {v_angle} degrees. "
-            f"Your output MUST be a valid JSON object with two keys: 'turkish_analysis' and 'english_image_prompt'.\n\n"
-            f"STEP 1: DETAILED ANALYSIS (for 'turkish_analysis' key, in TURKISH)\n"
-            f"Analyze the point cloud data thoroughly. Identify key features like large planes (walls, floor), clusters of points (potential objects), and empty zones. Based on the data patterns, deduce what the objects are (e.g., 'A flat horizontal cluster at 75cm height is likely a desk.'). Explain your reasoning in a technical report format.\n\n"
-            f"STEP 2: VISUAL SUMMARY (for 'english_image_prompt' key, in ENGLISH)\n"
-            f"Based on YOUR OWN analysis from Step 1, create a concise and effective summary prompt for an image generation AI. Do not describe the data, describe the final scene. This summary should focus on the main objects and the overall atmosphere. Example: 'A modern office space with a large work desk in the center, an ergonomic chair, and a laptop. A large window on the left wall fills the room with soft daylight.'\n\n"
+            f"You are a visionary artist who can see entire worlds in sparse data. Your task is to interpret the following 3D sensor data. "
+            f"From these abstract points, dream up a complete, immersive, 360-degree panoramic scene. "
+            f"Your output MUST be a valid JSON object with two keys: 'turkish_analysis' and 'english_image_prompt'.\n"
+            f"1. For 'turkish_analysis' (in TURKISH): Describe your vision with poetic and artistic language. What does this space feel like? What story does it tell?\n"
+            f"2. For 'english_image_prompt' (in ENGLISH): Provide a rich, detailed description of the full 360-degree scene. This will be used to generate an equirectangular panorama for a VR experience.\n\n"
             f"--- Sensor Data ---\n{data_string}\n\n"
-            f"--- Generate JSON Report ---\n"
+            f"--- Generate Visionary JSON Report ---\n"
         )
 
         try:

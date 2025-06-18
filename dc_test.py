@@ -55,10 +55,9 @@ try:
     print("Hız yavaşça artırılıyor...")
 
     # Hızı 0'dan başlayarak yavaşça artırarak ani akım çekişini önlüyoruz.
-    for speed_step in [0.4, 0.6, 0.8, TURN_MAX_SPEED]:
+    for speed_step in [1, 0.8, 0.6, 0.6, TURN_MAX_SPEED]:
         # stop_event kontrolü, CTRL+C ile çıkışta döngünün kırılmasını sağlar
-        if stop_event.is_set():
-            break
+
         print(f"--> Dönüş Hızı: %{int(speed_step * 100)}")
         right_motors.forward(speed=speed_step)
         left_motors.backward(speed=speed_step)

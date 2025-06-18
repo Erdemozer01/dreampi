@@ -26,7 +26,7 @@ ENB_PIN_RIGHT = 15
 MOVE_SPEED = 0.8
 TURN_SPEED = 1.0  # Dönüşlerin net olması için tam güç
 
-print("--- Pivot Dönüşlü DC Motor Testi Başlatılıyor ---")
+print("--- Kapsamlı DC Motor Testi Başlatılıyor ---")
 print("Çıkmak için CTRL+C tuşlarına basın.")
 
 left_motors = None
@@ -54,29 +54,29 @@ try:
     print("-> Durduruldu.")
     time.sleep(1)
 
-    # DÜZELTME: Daha az güç gerektiren pivot dönüş mantığına geçildi.
-    print("\n[TEST 3/4] Sola Dönüş (Pivot) Testi (2 saniye)...")
-    print("--> Sadece SAĞ motorlar İLERİ çalışacak.")
-    right_motors.forward(speed=TURN_SPEED)  # Sağ tekerlek ileri
-    left_motors.stop()  # Sol tekerlek duruyor
+    print("\n[TEST 3/4] Sola Dönüş (Tank) Testi (2 saniye)...")
+    print("--> Sağ motorlar İLERİ, Sol motorlar GERİ çalışacak.")
+    right_motors.forward(speed=TURN_SPEED)
+    left_motors.backward(speed=TURN_SPEED)
     time.sleep(2)
     left_motors.stop();
     right_motors.stop()
     print("-> Durduruldu.")
     time.sleep(1)
 
-    print("\n[TEST 4/4] Sağa Dönüş (Pivot) Testi (2 saniye)...")
-    print("--> Sadece SOL motorlar İLERİ çalışacak.")
+    # DÜZELTME: Sağa dönüş testi, "tank dönüşü" mantığıyla 10 saniye çalışacak şekilde güncellendi.
+    print("\n[TEST 4/4] Sağa Dönüş (Tank) Testi (10 saniye)...")
+    print("--> Sol motorlar İLERİ, Sağ motorlar GERİ çalışacak.")
     left_motors.forward(speed=TURN_SPEED)  # Sol tekerlek ileri
-    right_motors.stop()  # Sağ tekerlek duruyor
-    time.sleep(2)
+    right_motors.backward(speed=TURN_SPEED)  # Sağ tekerlek geri
+    time.sleep(10)
     left_motors.stop();
     right_motors.stop()
     print("-> Durduruldu.")
 
     print("\n--- TÜM TESTLER BAŞARIYLA TAMAMLANDI ---")
     print(
-        "\nEğer bu testte dönüşler yine de çalışmıyorsa, sorun kesinlikle harici güç kaynağınızın (pillerin) yetersizliğidir.")
+        "\nEğer bu testte dönüşler sırasında motorlar duruyorsa veya kilitleniyorsa, sorun kesinlikle harici güç kaynağınızın (pillerin) yetersizliğidir.")
 
 
 except KeyboardInterrupt:

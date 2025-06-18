@@ -1,4 +1,3 @@
-
 import atexit
 import logging
 import os
@@ -372,6 +371,14 @@ estimation_card = dbc.Card(
 visualization_tabs = dbc.Tabs([
     dbc.Tab(dcc.Graph(id='scan-map-graph-3d', style={'height': '75vh'}), label="3D Harita", tab_id="tab-3d"),
     dbc.Tab(dcc.Graph(id='scan-map-graph-2d', style={'height': '75vh'}), label="2D Harita", tab_id="tab-2d"),
+    dbc.Tab(html.Iframe(
+        id='vr-iframe',
+        src='/static/scanner/vr_view.html',  # Bu yol, Django'nun static file ayarlarına göre değişebilir
+        style={'width': '100%', 'height': '75vh', 'border': 'none'}
+    ),
+        label="VR Sahnesi",
+        tab_id="tab-vr"
+    ),
     dbc.Tab(dcc.Graph(id='polar-graph', style={'height': '75vh'}), label="Polar Grafik", tab_id="tab-polar"),
     dbc.Tab(dcc.Loading(children=[html.Div(id='tab-content-datatable')]), label="Veri Tablosu",
             tab_id="tab-datatable")],
@@ -402,6 +409,7 @@ app.layout = html.Div(style={'padding': '20px'}, children=[
     dcc.Interval(id='interval-component-system', interval=3000, n_intervals=0),
     dbc.Modal([dbc.ModalHeader(dbc.ModalTitle(id="modal-title")), dbc.ModalBody(id="modal-body")],
               id="cluster-info-modal", is_open=False, centered=True),
+    html.Div(id='dummy-clientside-output', style={'display': 'none'})
 ])
 
 
@@ -615,7 +623,7 @@ def update_all_graphs_and_analytics(scan_json, points_json):
     df_valid.dropna(subset=['x_cm', 'y_cm', 'z_cm'], inplace=True)
 
     # Figürleri ve varsayılan değerleri başlat
-    # DÜZELTME: Başlık dinamik hale getirildi
+
     fig_3d = go.Figure(
         layout=dict(title=f'3D Tarama Görüntüsü - Tarama ID: {scan_id}', margin=dict(l=0, r=0, b=0, t=40)))
     fig_2d = go.Figure(layout=dict(title='2D Harita (Üstten Görünüm)', margin=dict(l=20, r=20, b=20, t=40)))
@@ -626,7 +634,7 @@ def update_all_graphs_and_analytics(scan_json, points_json):
 
     if len(df_valid) > 3:
         # --- 3D Grafik ---
-        # DÜZELTME: Noktalar artık 'z_cm' yerine 'mesafe_cm' değerine göre renklendiriliyor.
+
         fig_3d.add_trace(go.Scatter3d(
             x=df_valid['y_cm'], y=df_valid['x_cm'], z=df_valid['z_cm'],
             mode='markers',
@@ -674,7 +682,6 @@ def update_all_graphs_and_analytics(scan_json, points_json):
             html.P(f"2D Kümeleme: {clustering_desc}")
         ])
 
-    # Her figüre sensör pozisyonunu ekle
     add_sensor_position(fig_2d)
     fig_3d.add_trace(go.Scatter3d(x=[0], y=[0], z=[0], mode='markers', marker=dict(size=5, color='red'), name='Sensör'))
 
@@ -716,16 +723,12 @@ def display_cluster_info(clickData, stored_data_json):
     prevent_initial_call=True
 )
 def yorumla_model_secimi(selected_config_id, scan_json, points_json):
-    """
-    Kullanıcı arayüzden bir AI yapılandırması seçtiğinde tetiklenir.
-    Önce Türkçe metinsel yorum üretir, sonra bu yoruma dayalı İngilizce
-    bir komut ile resim oluşturur.
-    """
+
     # Gerekli modüller, sadece bu callback çalıştığında import ediliyor.
     from scanner.models import AIModelConfiguration, Scan
     from scanner.ai_analyzer import AIAnalyzerService
 
-    # Gerekli girdilerin olup olmadığını kontrol et
+
     if not selected_config_id:
         return html.P("Yorum almak için yukarıdan bir AI yapılandırması seçin."), None
     if not scan_json or not points_json:
@@ -741,18 +744,17 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
         analyzer = AIAnalyzerService(config=config)
 
         # ADIM 1: Metinsel yorumu ve resim prompt'unu al (Encoder)
-        # get_text_interpretation fonksiyonu artık (türkçe_analiz, ingilizce_prompt) şeklinde bir tuple döndürüyor.
+
         turkish_analysis, english_image_prompt = analyzer.get_text_interpretation(scan=scan_to_analyze)
 
         # Arayüzde kullanıcıya gösterilecek olan Türkçe analizi hazırla
         text_component = dcc.Markdown(turkish_analysis, dangerously_allow_html=True, link_target="_blank")
 
         # ADIM 2: Üretilen İngilizce prompt'tan resim oluştur (Decoder)
-        # Resim oluşturma fonksiyonuna, özel olarak bu iş için üretilmiş İngilizce metni gönder
+
         image_data_uri = analyzer.generate_image_with_imagen(english_image_prompt)
 
-        # ADIM 3: Resmi arayüzde göster
-        # Eğer bir hata mesajı döndüyse, onu bir Alert olarak göster
+
         if image_data_uri.startswith("data:image/png;base64,"):
             image_component = html.Div([
                 html.Hr(),
@@ -761,7 +763,7 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
                     style={'maxWidth': '100%', 'height': 'auto', 'borderRadius': '10px', 'marginTop': '15px'}
                 ))
             ])
-        else:  # Hata mesajı döndüyse
+        else:
             image_component = dbc.Alert(f"Resim oluşturulamadı: {image_data_uri}", color="warning", className="mt-3")
 
         return text_component, image_component
@@ -771,3 +773,25 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
         safe_error_message = str(e).encode('ascii', 'ignore').decode('ascii')
         return dbc.Alert(f"Yapay zeka işlemi sırasında beklenmedik bir hata oluştu: {safe_error_message}",
                          color="danger"), None
+
+
+app.clientside_callback(
+    """
+    function(data) {
+        if (data) {
+            // iframe elementini bul
+            var iframe = document.getElementById('vr-iframe');
+
+            // iframe ve içeriği yüklendiyse, veriyi gönder
+            if (iframe && iframe.contentWindow) {
+                // Güvenlik için normalde hedef origin belirtilir: 'http://127.0.0.1:8000'
+                iframe.contentWindow.postMessage(data, '*');
+            }
+        }
+        // Bu callback'in bir çıktısı olmadığı için boş döndürüyoruz
+        return '';
+    }
+    """,
+    Output('dummy-clientside-output', 'children'),
+    Input('latest-scan-points-store', 'data')
+)

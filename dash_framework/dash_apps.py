@@ -716,82 +716,59 @@ def display_cluster_info(clickData, stored_data_json):
 # 13. Seçilen AI modelini kullanarak tarama verilerini yorumlar ve resim oluşturur
 @app.callback(
     [Output('ai-yorum-sonucu', 'children'),
-     Output('ai-image', 'children')],
+     Output('vr-image-data-store', 'data')],  # Artık bir dcc.Store'u güncelliyor
     Input('ai-model-dropdown', 'value'),
     [State('latest-scan-object-store', 'data'),
      State('latest-scan-points-store', 'data')],
     prevent_initial_call=True
 )
 def yorumla_model_secimi(selected_config_id, scan_json, points_json):
-
-    # Gerekli modüller, sadece bu callback çalıştığında import ediliyor.
     from scanner.models import AIModelConfiguration, Scan
     from scanner.ai_analyzer import AIAnalyzerService
 
-
-    if not selected_config_id:
-        return html.P("Yorum almak için yukarıdan bir AI yapılandırması seçin."), None
-    if not scan_json or not points_json:
-        return dbc.Alert("Analiz edilecek tarama verisi bulunamadı.", color="warning"), None
+    if not selected_config_id or not scan_json or not points_json:
+        return "Analiz için bir model seçin ve tarama verisinin yüklendiğinden emin olun.", None
 
     try:
-        # 1. Gerekli verileri ve yapılandırmayı al
         config = AIModelConfiguration.objects.get(id=selected_config_id)
         scan_id = json.loads(scan_json).get('id')
         scan_to_analyze = Scan.objects.get(id=scan_id)
 
-        # 2. AI servisini başlat
         analyzer = AIAnalyzerService(config=config)
 
-        # ADIM 1: Metinsel yorumu ve resim prompt'unu al (Encoder)
+        # Encoder: Türkçe yorumu ve İngilizce prompt'u al
+        turkish_analysis, english_prompt = analyzer.get_text_interpretation(scan=scan_to_analyze)
 
-        turkish_analysis, english_image_prompt = analyzer.get_text_interpretation(scan=scan_to_analyze)
+        # Decoder: İngilizce prompt ile 360 derece VR görüntüsü oluştur
+        image_data_uri = analyzer.generate_image_with_imagen(english_prompt)
 
-        # Arayüzde kullanıcıya gösterilecek olan Türkçe analizi hazırla
-        text_component = dcc.Markdown(turkish_analysis, dangerously_allow_html=True, link_target="_blank")
-
-        # ADIM 2: Üretilen İngilizce prompt'tan resim oluştur (Decoder)
-
-        image_data_uri = analyzer.generate_image_with_imagen(english_image_prompt)
-
-
-        if image_data_uri.startswith("data:image/png;base64,"):
-            image_component = html.Div([
-                html.Hr(),
-                dbc.Spinner(html.Img(
-                    src=image_data_uri,
-                    style={'maxWidth': '100%', 'height': 'auto', 'borderRadius': '10px', 'marginTop': '15px'}
-                ))
-            ])
-        else:
-            image_component = dbc.Alert(f"Resim oluşturulamadı: {image_data_uri}", color="warning", className="mt-3")
-
-        return text_component, image_component
+        # Türkçe analizi metin kutusuna, resim URI'ını ise Store'a gönder
+        return dcc.Markdown(turkish_analysis, dangerously_allow_html=True), image_data_uri
 
     except Exception as e:
         traceback.print_exc()
         safe_error_message = str(e).encode('ascii', 'ignore').decode('ascii')
-        return dbc.Alert(f"Yapay zeka işlemi sırasında beklenmedik bir hata oluştu: {safe_error_message}",
-                         color="danger"), None
+        return dbc.Alert(f"Hata: {safe_error_message}", color="danger"), None
 
 
+# 14. YENİ CLIENTSIDE CALLBACK: VR Sahnesini Güncelleme
 app.clientside_callback(
     """
-    function(data) {
-        if (data) {
-            // iframe elementini bul
+    function(imageData) {
+        if (imageData) {
             var iframe = document.getElementById('vr-iframe');
-
-            // iframe ve içeriği yüklendiyse, veriyi gönder
             if (iframe && iframe.contentWindow) {
-                // Güvenlik için normalde hedef origin belirtilir: 'http://127.0.0.1:8000'
-                iframe.contentWindow.postMessage(data, '*');
+                // iframe'e gönderilecek mesajı yapılandır
+                const message = {
+                    type: 'image',
+                    payload: imageData // Bu, "data:image/png;base64,..." veya bir URL olabilir
+                };
+                iframe.contentWindow.postMessage(JSON.stringify(message), '*');
             }
         }
-        // Bu callback'in bir çıktısı olmadığı için boş döndürüyoruz
-        return '';
+        return ''; // Bu callback'in bir çıktısı yok
     }
     """,
     Output('dummy-clientside-output', 'children'),
-    Input('latest-scan-points-store', 'data')
+    Input('vr-image-data-store', 'data')
 )

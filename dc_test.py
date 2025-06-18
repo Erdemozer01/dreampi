@@ -34,7 +34,7 @@ try:
     print("\n[TEST 1/4] İleri Hareket Testi (2 saniye)...")
     left_motors.forward()
     right_motors.forward()
-    time.sleep(2)
+    time.sleep(1)
     left_motors.stop()
     right_motors.stop()
     print("-> Durduruldu.")
@@ -43,7 +43,7 @@ try:
     print("\n[TEST 2/4] Geri Hareket Testi (2 saniye)...")
     left_motors.backward()
     right_motors.backward()
-    time.sleep(2)
+    time.sleep(1)
     left_motors.stop()
     right_motors.stop()
     print("-> Durduruldu.")
@@ -53,7 +53,7 @@ try:
     print("--> Sağ motorlar İLERİ, Sol motorlar GERİ çalışacak.")
     right_motors.forward()  # Tam güç
     left_motors.backward()  # Tam güç
-    time.sleep(20)
+    time.sleep(10)
     left_motors.stop()
     right_motors.stop()
     print("-> Durduruldu.")
@@ -63,7 +63,7 @@ try:
     print("--> Sol motorlar İLERİ, Sağ motorlar GERİ çalışacak.")
     left_motors.forward()  # Tam güç
     right_motors.backward()  # Tam güç
-    time.sleep(20)
+    time.sleep(10)
     left_motors.stop()
     right_motors.stop()
     print("-> Durduruldu.")

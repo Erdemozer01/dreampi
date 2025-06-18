@@ -1,20 +1,18 @@
-# motor_testi.py - Tank Dönüşlerini Yumuşak Kalkış ile Test Etme
-
 import time
-import threading
+import threading  # DÜZELTME: stop_event için gerekli kütüphane import edildi
 from gpiozero import Motor
-from gpiozero.pins.lgpio import LGPIOFactory
 from gpiozero import Device
+from gpiozero.pins.lgpio import LGPIOFactory
 
-# pigpio'yu kullanmayı dene, bu PWM kontrolü için daha stabildir
+# Pin factory'yi doğrudan lgpio olarak ayarlıyoruz.
 try:
     Device.pin_factory = LGPIOFactory()
-    print("✓ pigpio pin factory başarıyla ayarlandı.")
+    print("✓ lgpio pin factory (Raspberry Pi 5 uyumlu) başarıyla ayarlandı.")
 except Exception as e:
-    print(f"UYARI: pigpio kullanılamadı: {e}. Varsayılan pin factory kullanılıyor.")
+    print(f"UYARI: lgpio pin factory ayarlanamadı: {e}")
+    print("Lütfen 'sudo apt-get install python3-lgpio' komutuyla kütüphanenin yüklü olduğundan emin olun.")
 
 # --- PIN TANIMLAMALARI ---
-# L298N Motor Sürücü Pinleri
 MOTOR_LEFT_FORWARD = 10
 MOTOR_LEFT_BACKWARD = 9
 MOTOR_RIGHT_FORWARD = 8
@@ -25,17 +23,19 @@ ENA_PIN_LEFT = 14
 ENB_PIN_RIGHT = 15
 
 # --- HIZ AYARLARI ---
-MOVE_SPEED = 0.8  # İleri/geri hareket hızı (%80 güç)
-TURN_MAX_SPEED = 1.0  # Dönüşlerin ulaşacağı maksimum hız
+MOVE_SPEED = 0.8
+TURN_MAX_SPEED = 1.0
 
 print("--- Yumuşak Kalkışlı Dönüş Testi Başlatılıyor ---")
 print("Çıkmak için CTRL+C tuşlarına basın.")
+
+# DÜZELTME: Güvenli durdurma için stop_event nesnesi oluşturuldu
+stop_event = threading.Event()
 
 left_motors = None
 right_motors = None
 
 try:
-    # Motor nesnelerini, enable pinlerini de belirterek oluştur
     left_motors = Motor(forward=MOTOR_LEFT_FORWARD, backward=MOTOR_LEFT_BACKWARD, enable=ENA_PIN_LEFT)
     right_motors = Motor(forward=MOTOR_RIGHT_FORWARD, backward=MOTOR_RIGHT_BACKWARD, enable=ENB_PIN_RIGHT)
 
@@ -51,12 +51,15 @@ try:
     print("\n[TEST 2/2] Sola Yumuşak Dönüş Testi (Soft Start)...")
     print("Hız yavaşça artırılıyor...")
 
-    # DÜZELTME: Hızı 0'dan başlayarak yavaşça artırarak ani akım çekişini önlüyoruz.
+    # Hızı 0'dan başlayarak yavaşça artırarak ani akım çekişini önlüyoruz.
     for speed_step in [0.4, 0.6, 0.8, TURN_MAX_SPEED]:
+        # stop_event kontrolü, CTRL+C ile çıkışta döngünün kırılmasını sağlar
+        if stop_event.is_set():
+            break
         print(f"--> Dönüş Hızı: %{int(speed_step * 100)}")
-        right_motors.forward(speed=speed_step)  # Sağ tekerlek ileri
-        left_motors.backward(speed=speed_step)  # Sol tekerlek geri
-        time.sleep(0.7)  # Her hız adımında biraz bekle
+        right_motors.forward(speed=speed_step)
+        left_motors.backward(speed=speed_step)
+        time.sleep(0.7)
 
     time.sleep(1)  # Tam hızda 1 saniye daha dön
 
@@ -65,11 +68,10 @@ try:
     print("-> Durduruldu.")
 
     print("\n--- TÜM TESTLER BAŞARIYLA TAMAMLANDI ---")
-    print(
-        "\nEğer bu testte dönüşler yine olmadıysa, sorun kesinlikle harici güç kaynağınızın (pillerin) yetersiz olmasından kaynaklanmaktadır.")
 
 except KeyboardInterrupt:
     print("\nKullanıcı tarafından durduruldu.")
+    stop_event.set()  # Döngünün durmasını garanti et
 except Exception as e:
     print(f"\n!!! TEST SIRASINDA KRİTİK BİR HATA OLUŞTU: {e}")
     print("Lütfen pin numaralarınızı ve donanım bağlantılarınızı kontrol edin.")

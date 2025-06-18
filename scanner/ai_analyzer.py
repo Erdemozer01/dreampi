@@ -53,13 +53,15 @@ class AIAnalyzerService:
         v_angle = scan.v_scan_angle_setting
 
         full_prompt = (
-            f"You are a 3D data visualizer. Your task is to interpret sparse sensor data and conceptualize a vivid, colorful scene for an image generation AI. "
+            f"You are a 3D Scene Reconstruction Analyst. Your task is to interpret the following sparse 3D sensor data with a structured, step-by-step logical process. "
             f"The scan was performed with a horizontal angle of {h_angle} degrees and a vertical angle of {v_angle} degrees. "
-            f"Your output MUST be a valid JSON object with two keys: 'turkish_analysis' and 'english_image_prompt'.\n"
-            f"1. For 'turkish_analysis' (in TURKISH): Describe the scene you are imagining based on the data. What objects are present? What is the overall layout? Keep it descriptive.\n"
-            f"2. For 'english_image_prompt' (in ENGLISH): Create a rich, descriptive paragraph for an image generation AI. Crucially, instruct the AI to render the scene with VIBRANT, BOLD, and SURREAL colors. Think neon lights, glowing elements, and a fantasy art style.\n\n"
+            f"Your output MUST be a valid JSON object with two keys: 'turkish_analysis' and 'english_image_prompt'.\n\n"
+            f"STEP 1: ENVIRONMENT ANALYSIS (for 'turkish_analysis', in TURKISH)\n"
+            f"First, determine if the data suggests an 'indoor' or 'outdoor' space by analyzing the distance range. Then, identify distinct clusters of points and deduce what common objects they could be (e.g., 'a flat plane at z=0 is the floor', 'a cluster at 80cm height is a table'). Finally, based on the point cloud's footprint, provide a rough estimation of the scanned 2D area (in square meters) and perimeter (in meters). Explain your reasoning in a technical report format.\n\n"
+            f"STEP 2: VISUAL PROMPT CREATION (for 'english_image_prompt', in ENGLISH)\n"
+            f"Based on your analysis from Step 1, create a concise but descriptive prompt for an image generation AI. The prompt must clearly list the detected objects and the environment type. Crucially, the final image should be rendered in a VIBRANT, COLORFUL, and slightly surreal style.\n\n"
             f"--- Sensor Data ---\n{data_string}\n\n"
-            f"--- Generate Visionary JSON Report ---\n"
+            f"--- Generate Analytical JSON Report ---\n"
         )
 
         try:

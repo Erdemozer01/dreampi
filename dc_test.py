@@ -53,7 +53,7 @@ try:
     print("--> Sağ motorlar İLERİ, Sol motorlar GERİ çalışacak.")
     right_motors.forward()  # Tam güç
     left_motors.stop()  # Tam güç
-    time.sleep(2)
+    time.sleep(10)
     left_motors.stop()
     right_motors.stop()
     print("-> Durduruldu.")
@@ -63,7 +63,7 @@ try:
     print("--> Sol motorlar İLERİ, Sağ motorlar GERİ çalışacak.")
     left_motors.forward()  # Tam güç
     right_motors.stop()  # Tam güç
-    time.sleep(2)
+    time.sleep(10)
     left_motors.stop()
     right_motors.stop()
     print("-> Durduruldu.")

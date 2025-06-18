@@ -1,5 +1,5 @@
 import time
-import threading  # DÜZELTME: stop_event için gerekli kütüphane import edildi
+import threading
 from gpiozero import Motor
 from gpiozero import Device
 from gpiozero.pins.lgpio import LGPIOFactory
@@ -7,10 +7,13 @@ from gpiozero.pins.lgpio import LGPIOFactory
 # Pin factory'yi doğrudan lgpio olarak ayarlıyoruz.
 try:
     Device.pin_factory = LGPIOFactory()
-    print("✓ lgpio pin factory (Raspberry Pi 5 uyumlu) başarıyla ayarlandı.")
+    # DÜZELTME: Unicode karakterleri kaldırıldı, ASCII uyumlu hale getirildi.
+    print("[OK] lgpio pin factory (Raspberry Pi 5 uyumlu) basariyla ayarlandi.")
 except Exception as e:
-    print(f"UYARI: lgpio pin factory ayarlanamadı: {e}")
-    print("Lütfen 'sudo apt-get install python3-lgpio' komutuyla kütüphanenin yüklü olduğundan emin olun.")
+    # Hata mesajındaki olası unicode karakterler de temizlendi.
+    safe_error_message = str(e).encode('ascii', 'ignore').decode('ascii')
+    print(f"UYARI: lgpio pin factory ayarlanamadi: {safe_error_message}")
+    print("Lutfen 'sudo apt-get install python3-lgpio' komutuyla kutuphanenin yuklu oldugundan emin olun.")
 
 # --- PIN TANIMLAMALARI ---
 MOTOR_LEFT_FORWARD = 10
@@ -29,7 +32,7 @@ TURN_MAX_SPEED = 1.0
 print("--- Yumuşak Kalkışlı Dönüş Testi Başlatılıyor ---")
 print("Çıkmak için CTRL+C tuşlarına basın.")
 
-# DÜZELTME: Güvenli durdurma için stop_event nesnesi oluşturuldu
+# Güvenli durdurma için stop_event nesnesi oluşturuldu
 stop_event = threading.Event()
 
 left_motors = None
@@ -73,7 +76,8 @@ except KeyboardInterrupt:
     print("\nKullanıcı tarafından durduruldu.")
     stop_event.set()  # Döngünün durmasını garanti et
 except Exception as e:
-    print(f"\n!!! TEST SIRASINDA KRİTİK BİR HATA OLUŞTU: {e}")
+    safe_error_message = str(e).encode('ascii', 'ignore').decode('ascii')
+    print(f"\n!!! TEST SIRASINDA KRİTİK BİR HATA OLUŞTU: {safe_error_message}")
     print("Lütfen pin numaralarınızı ve donanım bağlantılarınızı kontrol edin.")
 
 finally:

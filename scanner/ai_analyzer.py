@@ -57,10 +57,9 @@ class AIAnalyzerService:
             f"The scan was performed with a horizontal angle of {h_angle} degrees and a vertical angle of {v_angle} degrees. "
             f"Your output MUST be a valid JSON object with two keys: 'turkish_analysis' and 'english_image_prompt'.\n\n"
             f"STEP 1: CONTEXTUAL ANALYSIS (for 'turkish_analysis', in TURKISH)\n"
-            f"First, analyze the data to determine if it represents an 'indoor' or 'outdoor' space. Justify your conclusion (e.g., 'mesafe aralığı ve nokta dağılımı kapalı bir odayı andırıyor'). "
-            f"Then, based on your context (indoor/outdoor), deduce the most likely objects. If indoor, look for furniture like desks, chairs, walls. If outdoor, look for trees, benches, buildings. Explain your reasoning in a technical report format.\n\n"
+            f"First, determine if it is an 'indoor' or 'outdoor' space. Then, based on this context, deduce the most likely objects and *also infer their common, realistic colors and materials* (e.g., 'ahşap bir masa', 'siyah bir ofis koltuğu', 'beton duvar'). Explain your reasoning.\n\n"
             f"STEP 2: VISUAL PROMPT CREATION (for 'english_image_prompt', in ENGLISH)\n"
-            f"Based on your analysis from Step 1, create a concise but descriptive prompt for an image generation AI. The prompt must clearly state the environment type and list the detected objects. The final image should be rendered in a REALISTIC, well-lit, and clean style.\n\n"
+            f"Based on your analysis from Step 1, create a concise but descriptive prompt for an image generation AI. This prompt must clearly list the detected objects *with their inferred colors and materials*. The final image should be rendered in a PHOTOREALISTIC style.\n\n"
             f"--- Sensor Data ---\n{data_string}\n\n"
             f"--- Generate Analytical JSON Report ---\n"
         )

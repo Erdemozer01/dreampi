@@ -52,13 +52,12 @@ class AIAnalyzerService:
         h_angle = scan.h_scan_angle_setting
         v_angle = scan.v_scan_angle_setting
 
-        # DÜZELTME: Prompt, yapay zekayı önce analiz yapıp sonra bu analizi özetlemeye yönlendiriyor.
         full_prompt = (
             f"You are a visionary artist who can see entire worlds in sparse data. Your task is to interpret the following 3D sensor data. "
-            f"From these abstract points, dream up a complete, immersive, 360-degree panoramic scene. "
+            f"The scan was performed with a horizontal angle of {h_angle} degrees and a vertical angle of {v_angle} degrees. "
             f"Your output MUST be a valid JSON object with two keys: 'turkish_analysis' and 'english_image_prompt'.\n"
-            f"1. For 'turkish_analysis' (in TURKISH): Describe your vision with poetic and artistic language. What does this space feel like? What story does it tell?\n"
-            f"2. For 'english_image_prompt' (in ENGLISH): Provide a rich, detailed description of the full 360-degree scene. This will be used to generate an equirectangular panorama for a VR experience.\n\n"
+            f"1. For 'turkish_analysis' (in TURKISH): Describe your vision with poetic and artistic language. What does this space feel like? What story does it tell? Use your imagination to fill in the blanks left by the sparse data.\n"
+            f"2. For 'english_image_prompt' (in ENGLISH): Based on your artistic vision from Step 1, create a single, rich, descriptive paragraph for an image generation AI. Describe the objects, their placement, the lighting, and the overall atmosphere of the scene you imagined.\n\n"
             f"--- Sensor Data ---\n{data_string}\n\n"
             f"--- Generate Visionary JSON Report ---\n"
         )

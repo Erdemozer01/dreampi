@@ -3,12 +3,12 @@
 import time
 import threading
 from gpiozero import Motor
-from gpiozero.pins.pigpio import PiGPIOFactory
+from gpiozero.pins.lgpio import LGPIOFactory
 from gpiozero import Device
 
 # pigpio'yu kullanmayı dene, bu PWM kontrolü için daha stabildir
 try:
-    Device.pin_factory = PiGPIOFactory()
+    Device.pin_factory = LGPIOFactory()
     print("✓ pigpio pin factory başarıyla ayarlandı.")
 except Exception as e:
     print(f"UYARI: pigpio kullanılamadı: {e}. Varsayılan pin factory kullanılıyor.")

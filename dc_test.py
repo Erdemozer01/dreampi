@@ -1,5 +1,4 @@
 import time
-import threading
 from gpiozero import Motor
 from gpiozero import Device
 from gpiozero.pins.lgpio import LGPIOFactory
@@ -7,10 +6,8 @@ from gpiozero.pins.lgpio import LGPIOFactory
 # Pin factory'yi doğrudan lgpio olarak ayarlıyoruz.
 try:
     Device.pin_factory = LGPIOFactory()
-    # DÜZELTME: Unicode karakterleri kaldırıldı, ASCII uyumlu hale getirildi.
     print("[OK] lgpio pin factory (Raspberry Pi 5 uyumlu) basariyla ayarlandi.")
 except Exception as e:
-    # Hata mesajındaki olası unicode karakterler de temizlendi.
     safe_error_message = str(e).encode('ascii', 'ignore').decode('ascii')
     print(f"UYARI: lgpio pin factory ayarlanamadi: {safe_error_message}")
     print("Lutfen 'sudo apt-get install python3-lgpio' komutuyla kutuphanenin yuklu oldugundan emin olun.")
@@ -27,13 +24,10 @@ ENB_PIN_RIGHT = 15
 
 # --- HIZ AYARLARI ---
 MOVE_SPEED = 0.8
-TURN_MAX_SPEED = 1.0
+TURN_SPEED = 1.0  # Dönüşlerin net olması için tam güç
 
-print("--- Yumuşak Kalkışlı Dönüş Testi Başlatılıyor ---")
+print("--- Pivot Dönüşlü DC Motor Testi Başlatılıyor ---")
 print("Çıkmak için CTRL+C tuşlarına basın.")
-
-# Güvenli durdurma için stop_event nesnesi oluşturuldu
-stop_event = threading.Event()
 
 left_motors = None
 right_motors = None
@@ -42,7 +36,7 @@ try:
     left_motors = Motor(forward=MOTOR_LEFT_FORWARD, backward=MOTOR_LEFT_BACKWARD, enable=ENA_PIN_LEFT)
     right_motors = Motor(forward=MOTOR_RIGHT_FORWARD, backward=MOTOR_RIGHT_BACKWARD, enable=ENB_PIN_RIGHT)
 
-    print("\n[TEST 1/2] İleri Hareket Testi (2 saniye)...")
+    print("\n[TEST 1/4] İleri Hareket Testi (2 saniye)...")
     left_motors.forward(speed=MOVE_SPEED)
     right_motors.forward(speed=MOVE_SPEED)
     time.sleep(2)
@@ -51,29 +45,42 @@ try:
     print("-> Durduruldu.")
     time.sleep(1)
 
-    print("\n[TEST 2/2] Sola Yumuşak Dönüş Testi (Soft Start)...")
-    print("Hız yavaşça artırılıyor...")
+    print("\n[TEST 2/4] Geri Hareket Testi (2 saniye)...")
+    left_motors.backward(speed=MOVE_SPEED)
+    right_motors.backward(speed=MOVE_SPEED)
+    time.sleep(2)
+    left_motors.stop();
+    right_motors.stop()
+    print("-> Durduruldu.")
+    time.sleep(1)
 
-    # Hızı 0'dan başlayarak yavaşça artırarak ani akım çekişini önlüyoruz.
-    for speed_step in [1, 0.8, 0.8, 0.8, 0.8, 0.6, TURN_MAX_SPEED]:
-        # stop_event kontrolü, CTRL+C ile çıkışta döngünün kırılmasını sağlar
+    # DÜZELTME: Daha az güç gerektiren pivot dönüş mantığına geçildi.
+    print("\n[TEST 3/4] Sola Dönüş (Pivot) Testi (2 saniye)...")
+    print("--> Sadece SAĞ motorlar İLERİ çalışacak.")
+    right_motors.forward(speed=TURN_SPEED)  # Sağ tekerlek ileri
+    left_motors.stop()  # Sol tekerlek duruyor
+    time.sleep(2)
+    left_motors.stop();
+    right_motors.stop()
+    print("-> Durduruldu.")
+    time.sleep(1)
 
-        print(f"--> Dönüş Hızı: %{int(speed_step * 100)}")
-        right_motors.forward(speed=speed_step)
-        left_motors.backward(speed=speed_step)
-        time.sleep(0.7)
-
-    time.sleep(1)  # Tam hızda 1 saniye daha dön
-
+    print("\n[TEST 4/4] Sağa Dönüş (Pivot) Testi (2 saniye)...")
+    print("--> Sadece SOL motorlar İLERİ çalışacak.")
+    left_motors.forward(speed=TURN_SPEED)  # Sol tekerlek ileri
+    right_motors.stop()  # Sağ tekerlek duruyor
+    time.sleep(2)
     left_motors.stop();
     right_motors.stop()
     print("-> Durduruldu.")
 
     print("\n--- TÜM TESTLER BAŞARIYLA TAMAMLANDI ---")
+    print(
+        "\nEğer bu testte dönüşler yine de çalışmıyorsa, sorun kesinlikle harici güç kaynağınızın (pillerin) yetersizliğidir.")
+
 
 except KeyboardInterrupt:
     print("\nKullanıcı tarafından durduruldu.")
-    stop_event.set()  # Döngünün durmasını garanti et
 except Exception as e:
     safe_error_message = str(e).encode('ascii', 'ignore').decode('ascii')
     print(f"\n!!! TEST SIRASINDA KRİTİK BİR HATA OLUŞTU: {safe_error_message}")

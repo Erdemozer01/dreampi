@@ -373,7 +373,7 @@ visualization_tabs = dbc.Tabs([
     dbc.Tab(dcc.Graph(id='scan-map-graph-2d', style={'height': '75vh'}), label="2D Harita", tab_id="tab-2d"),
     dbc.Tab(html.Iframe(
         id='vr-iframe',
-        src='/static/scanner/vr_view.html',  # Bu yol, Django'nun static file ayarlarına göre değişebilir
+        src='/static/scanner/vr_view.html',
         style={'width': '100%', 'height': '75vh', 'border': 'none'}
     ),
         label="VR Sahnesi",

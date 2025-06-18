@@ -49,7 +49,7 @@ try:
     left_motors.backward(speed=MOVE_SPEED)
     right_motors.backward(speed=MOVE_SPEED)
     time.sleep(2)
-    left_motors.stop();
+    left_motors.stop()
     right_motors.stop()
     print("-> Durduruldu.")
     time.sleep(1)
@@ -58,8 +58,8 @@ try:
     print("--> Sağ motorlar İLERİ, Sol motorlar GERİ çalışacak.")
     right_motors.forward(speed=TURN_SPEED)
     left_motors.backward(speed=TURN_SPEED)
-    time.sleep(2)
-    left_motors.stop();
+    time.sleep(15)
+    left_motors.stop()
     right_motors.stop()
     print("-> Durduruldu.")
     time.sleep(1)
@@ -69,8 +69,8 @@ try:
     print("--> Sol motorlar İLERİ, Sağ motorlar GERİ çalışacak.")
     left_motors.forward(speed=TURN_SPEED)  # Sol tekerlek ileri
     right_motors.backward(speed=TURN_SPEED)  # Sağ tekerlek geri
-    time.sleep(10)
-    left_motors.stop();
+    time.sleep(15)
+    left_motors.stop()
     right_motors.stop()
     print("-> Durduruldu.")
 

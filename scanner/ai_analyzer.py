@@ -53,11 +53,11 @@ class AIAnalyzerService:
         v_angle = scan.v_scan_angle_setting
 
         full_prompt = (
-            f"You are a visionary artist who can see entire worlds in sparse data. Your task is to interpret the following 3D sensor data. "
+            f"You are a 3D data visualizer. Your task is to interpret sparse sensor data and conceptualize a vivid, colorful scene for an image generation AI. "
             f"The scan was performed with a horizontal angle of {h_angle} degrees and a vertical angle of {v_angle} degrees. "
             f"Your output MUST be a valid JSON object with two keys: 'turkish_analysis' and 'english_image_prompt'.\n"
-            f"1. For 'turkish_analysis' (in TURKISH): Describe your vision with poetic and artistic language. What does this space feel like? What story does it tell? Use your imagination to fill in the blanks left by the sparse data.\n"
-            f"2. For 'english_image_prompt' (in ENGLISH): Based on your artistic vision from Step 1, create a single, rich, descriptive paragraph for an image generation AI. Describe the objects, their placement, the lighting, and the overall atmosphere of the scene you imagined.\n\n"
+            f"1. For 'turkish_analysis' (in TURKISH): Describe the scene you are imagining based on the data. What objects are present? What is the overall layout? Keep it descriptive.\n"
+            f"2. For 'english_image_prompt' (in ENGLISH): Create a rich, descriptive paragraph for an image generation AI. Crucially, instruct the AI to render the scene with VIBRANT, BOLD, and SURREAL colors. Think neon lights, glowing elements, and a fantasy art style.\n\n"
             f"--- Sensor Data ---\n{data_string}\n\n"
             f"--- Generate Visionary JSON Report ---\n"
         )

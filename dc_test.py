@@ -28,8 +28,8 @@ right_motors = None
 
 try:
     # Motor nesneleri, enable pinleri OLMADAN oluşturuluyor.
-    left_motors = Motor(forward=MOTOR_LEFT_FORWARD, backward=MOTOR_LEFT_BACKWARD)
-    right_motors = Motor(forward=MOTOR_RIGHT_FORWARD, backward=MOTOR_RIGHT_BACKWARD)
+    left_motors = Motor(forward=MOTOR_LEFT_FORWARD, backward=MOTOR_LEFT_BACKWARD, enable=None, pin_factory=LGPIOFactory())
+    right_motors = Motor(forward=MOTOR_RIGHT_FORWARD, backward=MOTOR_RIGHT_BACKWARD, enable=None, pin_factory=LGPIOFactory())
 
     print("\n[TEST 1/4] İleri Hareket Testi (2 saniye)...")
     left_motors.forward()
@@ -51,9 +51,9 @@ try:
 
     print("\n[TEST 3/4] Sola Dönüş (Tank) Testi (2 saniye)...")
     print("--> Sağ motorlar İLERİ, Sol motorlar GERİ çalışacak.")
-    right_motors.forward()  # Tam güç
+    right_motors.forward(speed=1)  # Tam güç
     left_motors.stop()  # Tam güç
-    time.sleep(10)
+    time.sleep(20)
     left_motors.stop()
     right_motors.stop()
     print("-> Durduruldu.")
@@ -61,9 +61,9 @@ try:
 
     print("\n[TEST 4/4] Sağa Dönüş (Tank) Testi (2 saniye)...")
     print("--> Sol motorlar İLERİ, Sağ motorlar GERİ çalışacak.")
-    left_motors.forward()  # Tam güç
+    left_motors.forward(speed=1)  # Tam güç
     right_motors.stop()  # Tam güç
-    time.sleep(10)
+    time.sleep(20)
     left_motors.stop()
     right_motors.stop()
     print("-> Durduruldu.")

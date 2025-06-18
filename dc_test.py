@@ -31,23 +31,7 @@ try:
     left_motors = Motor(forward=MOTOR_LEFT_FORWARD, backward=MOTOR_LEFT_BACKWARD)
     right_motors = Motor(forward=MOTOR_RIGHT_FORWARD, backward=MOTOR_RIGHT_BACKWARD)
 
-    print("\n[TEST 1/4] İleri Hareket Testi (2 saniye)...")
-    left_motors.forward()
-    right_motors.forward()
-    time.sleep(1)
-    left_motors.stop()
-    right_motors.stop()
-    print("-> Durduruldu.")
-    time.sleep(1)
 
-    print("\n[TEST 2/4] Geri Hareket Testi (2 saniye)...")
-    left_motors.backward()
-    right_motors.backward()
-    time.sleep(1)
-    left_motors.stop()
-    right_motors.stop()
-    print("-> Durduruldu.")
-    time.sleep(1)
 
     print("\n[TEST 3/4] Sola Dönüş (Tank) Testi (2 saniye)...")
     print("--> Sağ motorlar İLERİ, Sol motorlar GERİ çalışacak.")

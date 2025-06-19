@@ -688,11 +688,14 @@ def update_all_graphs_and_analytics(scan_json, points_json):
             )
 
                 name = 'Gürültü'
+
             else:
+
                 norm_k = k / (num_clusters_3d - 1) if num_clusters_3d > 1 else 0.0
                 rc = colors_3d(np.clip(norm_k, 0.0, 1.0))
                 marker_dict = dict(size=3, color=f'rgb({rc[0] * 255}, {rc[1] * 255}, {rc[2] * 255})')
                 name = f'Küme {k}'
+
             fig_3d.add_trace(
                 go.Scatter3d(x=cluster_df['y_cm'], y=cluster_df['x_cm'], z=cluster_df['z_cm'], mode='markers',
                              marker=marker_dict, name=name))

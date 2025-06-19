@@ -57,7 +57,7 @@ try:
         print(f"--> Dönüş Hızı: %{int(speed_step * 100)}")
         right_motors.forward(speed=speed_step)
         left_motors.backward(speed=speed_step)
-        time.sleep(0.7)  # Her hız adımında biraz bekle
+        time.sleep(3)  # Her hız adımında biraz bekle
 
     time.sleep(1)  # Tam hızda 1 saniye daha dön
 

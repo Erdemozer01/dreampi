@@ -304,7 +304,7 @@ control_panel = dbc.Card([
                 dbc.Col([html.Label(
                     [html.I(className="fa-solid fa-shoe-prints fa-rotate-90 me-2"), "Dikey Adım Açısı (°):"],
                     className="fw-bold"),
-                    dbc.Input(id='v-step-angle-input', type='number', value=10.0, step=1)], width=6)],
+                    dbc.Input(id='v-step-angle-input', type='number', value=20.0, step=1)], width=6)],
                 className="mb-2"),
 
             # DİĞER AYARLAR

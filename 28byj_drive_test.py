@@ -122,4 +122,4 @@ except Exception as e:
     print(f"\n!!! TEST SIRASINDA KRİTİK BİR HATA OLUŞTU: {e}")
 
 finally:
-    cleanup()
+    pass

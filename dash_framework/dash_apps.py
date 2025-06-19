@@ -780,6 +780,7 @@ def update_all_graphs_and_analytics(scan_json, points_json):
     return fig_3d, fig_2d, fig_polar, analysis_report_component, store_data, area, perim, width, depth
 
 
+
 # 12. 2D haritadaki bir noktaya tıklandığında kümeleme bilgilerini gösterir
 @app.callback(
     [Output("cluster-info-modal", "is_open"), Output("modal-title", "children"), Output("modal-body", "children")],

@@ -125,28 +125,20 @@ atexit.register(stop_all_scripts)
 
 def stop_current_operation(mode):
     stop_all_scripts()
-    return html.Span([html.I(className="fa-solid fa-play me-2"), "Başlat"]), False, True
-
+    # DÜZELTME: Callback artık 4 değer beklediği için dördüncü değeri ekliyoruz (interval'i durdur).
+    return html.Span([html.I(className="fa-solid fa-play me-2"), "Başlat"]), False, True, True
 
 def start_mapping_mode(h_angle, h_step, v_angle, v_step, buzzer_dist):
     try:
         stop_all_scripts()
-        cmd = [
-            sys.executable,
-            SENSOR_SCRIPT_PATH,
-            "--h-angle", str(h_angle),
-            "--h-step", str(h_step),
-            "--v-angle", str(v_angle),
-            "--v-step", str(v_step),
-            "--buzzer-distance", str(buzzer_dist)
-            # Gerekirse --steps-per-rev de buradan gönderilebilir
-        ]
+        cmd = [sys.executable, SENSOR_SCRIPT_PATH, "--h-angle", str(h_angle), "--h-step", str(h_step), "--v-angle", str(v_angle), "--v-step", str(v_step), "--buzzer-distance", str(buzzer_dist)]
         log_file = open("sensor_script_live.log", "w")
         subprocess.Popen(cmd, stdout=log_file, stderr=log_file, start_new_session=True)
-        return html.Span([html.I(className="fa-solid fa-spinner fa-spin me-2"), "Haritalama..."]), True, False
+        # DÜZELTME: Callback artık 4 değer beklediği için dördüncü değeri ekliyoruz (interval'i başlat).
+        return html.Span([html.I(className="fa-solid fa-spinner fa-spin me-2"), "Haritalama..."]), True, False, False
     except Exception as e:
         print(f"Haritalama başlatma hatası: {e}")
-        return html.Span([html.I(className="fa-solid fa-xmark me-2"), "Hata"]), False, True
+        return html.Span([html.I(className="fa-solid fa-xmark me-2"), "Hata"]), False, True, True
 
 
 def analyze_environment_shape(fig, df_valid_input):
@@ -346,20 +338,15 @@ def analyze_3d_clusters(df_3d):
 
 
 def start_autonomous_mode():
-    """Otonom sürüş modunu başlatır."""
     try:
-        stop_all_scripts()  # Diğer betikleri durdur
+        stop_all_scripts()
         cmd = [sys.executable, AUTONOMOUS_SCRIPT_PATH]
-
-        # Otonom sürüş betiğinin loglarını ayrı bir dosyada tutmak iyi bir pratiktir
         log_file = open("autonomous_drive_live.log", "w")
         subprocess.Popen(cmd, stdout=log_file, stderr=log_file, start_new_session=True)
-
-        # Buton metnini ve durumunu güncelle
-        return html.Span([html.I(className="fa-solid fa-robot fa-spin me-2"), "Otonom Sürüş..."]), True, False
+        return html.Span([html.I(className="fa-solid fa-robot fa-spin me-2"), "Otonom Sürüş..."]), True, False, False
     except Exception as e:
         print(f"Otonom sürüş başlatma hatası: {e}")
-        return html.Span([html.I(className="fa-solid fa-xmark me-2"), "Hata"]), False, True
+        return html.Span([html.I(className="fa-solid fa-xmark me-2"), "Hata"]), False, True, True
 
 
 # --- ARAYÜZ BİLEŞENLERİ (LAYOUT) ---

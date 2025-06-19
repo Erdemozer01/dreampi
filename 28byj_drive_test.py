@@ -14,18 +14,20 @@ except Exception as e:
 
 # --- PIN TANIMLAMALARI ---
 # Sol Motor Sürücüsü Pinleri
-LEFT_IN1 = OutputDevice(26)
-LEFT_IN2 = OutputDevice(19)
-LEFT_IN3 = OutputDevice(13)
-LEFT_IN4 = OutputDevice(6)
+LEFT_IN1 = OutputDevice(21)
+LEFT_IN2 = OutputDevice(20)
+LEFT_IN3 = OutputDevice(16)
+LEFT_IN4 = OutputDevice(12)
 left_motor_pins = [LEFT_IN1, LEFT_IN2, LEFT_IN3, LEFT_IN4]
 
+
 # Sağ Motor Sürücüsü Pinleri
-RIGHT_IN1 = OutputDevice(21)
-RIGHT_IN2 = OutputDevice(20)
-RIGHT_IN3 = OutputDevice(16)
-RIGHT_IN4 = OutputDevice(12)
+RIGHT_IN1 = OutputDevice(26)
+RIGHT_IN2 = OutputDevice(19)
+RIGHT_IN3 = OutputDevice(13)
+RIGHT_IN4 = OutputDevice(6)
 right_motor_pins = [RIGHT_IN1, RIGHT_IN2, RIGHT_IN3, RIGHT_IN4]
+
 
 # --- PARAMETRELER ---
 STEP_DELAY = 0.002  # Hızı belirler. Değeri küçülttükçe motor hızlanır.

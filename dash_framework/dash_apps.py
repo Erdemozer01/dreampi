@@ -244,7 +244,9 @@ def classify_environment_and_get_report(df):
         suggestion = " (Duvar, masa, sandalye gibi nesneler beklenir)"
 
     geometric_estimation = estimate_geometric_shape(df)
-    report = html.Div([
+
+    # DÜZELTME: `html.Div` yerine, `flush` argümanını destekleyen `dbc.ListGroup` kullanıldı.
+    report = dbc.ListGroup([
         dbc.ListGroupItem([html.I(className="fa-solid fa-mountain-sun me-2"), f"Ortam Tahmini: {env_type}"],
                           className="d-flex align-items-center"),
         dbc.ListGroupItem([html.I(className="fa-solid fa-ruler-combined me-2"), f"Geometri: {geometric_estimation}"],

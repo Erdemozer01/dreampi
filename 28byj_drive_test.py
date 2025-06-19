@@ -33,16 +33,12 @@ right_motor_pins = [RIGHT_IN1, RIGHT_IN2, RIGHT_IN3, RIGHT_IN4]
 STEP_DELAY = 0.002  # Hızı belirler. Değeri küçülttükçe motor hızlanır.
 STEPS_PER_MOVE = 4096  # Her harekette atılacak adım sayısı (yaklaşık çeyrek tur)
 
-# Yarım adım (half-step) sekansı
+
 step_sequence = [
-    [1, 0, 0, 1],
-    [0, 0, 0, 1],
-    [0, 0, 1, 1],
-    [0, 0, 1, 0],
-    [0, 1, 1, 0],
-    [0, 1, 0, 0],
-    [1, 1, 0, 0],
-    [1, 0, 0, 0]
+    [1,1,0,0],
+    [0,1,1,0],
+    [0,0,1,1],
+    [1,0,0,1]
 ]
 sequence_count = len(step_sequence)
 left_step_index = 0

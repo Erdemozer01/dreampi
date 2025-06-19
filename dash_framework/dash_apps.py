@@ -371,14 +371,7 @@ estimation_card = dbc.Card(
 visualization_tabs = dbc.Tabs([
     dbc.Tab(dcc.Graph(id='scan-map-graph-3d', style={'height': '75vh'}), label="3D Harita", tab_id="tab-3d"),
     dbc.Tab(dcc.Graph(id='scan-map-graph-2d', style={'height': '75vh'}), label="2D Harita", tab_id="tab-2d"),
-    dbc.Tab(html.Iframe(
-        id='vr-iframe',
-        src='/static/scanner/vr_view.html',
-        style={'width': '100%', 'height': '75vh', 'border': 'none'}
-    ),
-        label="VR Sahnesi",
-        tab_id="tab-vr"
-    ),
+
     dbc.Tab(dcc.Graph(id='polar-graph', style={'height': '75vh'}), label="Polar Grafik", tab_id="tab-polar"),
     dbc.Tab(dcc.Loading(children=[html.Div(id='tab-content-datatable')]), label="Veri Tablosu",
             tab_id="tab-datatable")],
@@ -409,7 +402,7 @@ app.layout = html.Div(style={'padding': '20px'}, children=[
     dcc.Interval(id='interval-component-system', interval=3000, n_intervals=0),
     dbc.Modal([dbc.ModalHeader(dbc.ModalTitle(id="modal-title")), dbc.ModalBody(id="modal-body")],
               id="cluster-info-modal", is_open=False, centered=True),
-    dcc.Store(id='vr-image-data-store'),
+
     html.Div(id='dummy-clientside-output', style={'display': 'none'})
 ])
 

@@ -687,24 +687,28 @@ def render_and_update_data_table(active_tab, points_json):
      Input('latest-scan-points-store', 'data')]
 )
 def update_all_graphs_and_analytics(scan_json, points_json):
+    # Başlangıç durumu için boş figürler ve varsayılan metinler
     empty_fig = go.Figure(layout=dict(title='Veri Bekleniyor...',
                                       annotations=[dict(text="Tarama başlatın.", showarrow=False, font=dict(size=16))]))
     default_return = (empty_fig,) * 3 + (html.Div("Analiz için veri bekleniyor."), None) + ("--",) * 4
     if not scan_json or not points_json: return default_return
 
+    # Veriyi yükle ve işle
     scan_data = json.loads(scan_json)
     scan_id = scan_data.get('id', 'Bilinmiyor')
     df = pd.read_json(io.StringIO(points_json), orient='split')
     if df.empty:
-        return (go.Figure(layout=dict(title=f'Tarama #{scan_id} için Nokta Verisi Yok...')),) * 3 + (
-            html.Div("Analiz için veri bekleniyor."), None) + ("--",) * 4
+        empty_fig = go.Figure(layout=dict(title=f'Tarama #{scan_id} için Nokta Verisi Yok...'))
+        return (empty_fig,) * 3 + (html.Div("Analiz için veri bekleniyor."), None) + ("--",) * 4
 
     df_valid = df[(df['mesafe_cm'] > 0.1) & (df['mesafe_cm'] < 400.0)].copy()
     df_valid.dropna(subset=['x_cm', 'y_cm', 'z_cm'], inplace=True)
 
+    # Figürleri ve varsayılan değerleri başlat
     fig_3d = go.Figure(layout=dict(title=f'3D Ortam Analizi - Tarama ID: {scan_id}', margin=dict(l=0, r=0, b=0, t=40)))
     fig_2d = go.Figure(layout=dict(title='2D Harita (Üstten Görünüm)', margin=dict(l=20, r=20, b=20, t=40)))
     fig_polar = go.Figure(layout=dict(title='Polar Grafik', margin=dict(l=40, r=40, b=40, t=40)))
+
     analysis_report_component = html.Div("Analiz için yetersiz veri.")
     store_data = None
     area, perim, width, depth = "-- cm²", "-- cm", "-- cm", "-- cm"
@@ -726,8 +730,8 @@ def update_all_graphs_and_analytics(scan_json, points_json):
         # Her kümeyi sınıflandır ve ortama göre çiz
         for k in unique_clusters_3d:
             cluster_df = df_clustered_3d[df_clustered_3d['cluster'] == k]
+            if cluster_df.empty: continue
 
-            # Ortak renk ve isimler
             marker_dict = {};
             name = ""
 
@@ -750,17 +754,17 @@ def update_all_graphs_and_analytics(scan_json, points_json):
             else:  # AÇIK ALAN RENKLENDİRMESİ
                 avg_z = cluster_df['z_cm'].mean()
                 if k != -1:
-                    if avg_z < 10:  # Yere yakın
+                    if avg_z < 10:
                         marker_dict = dict(size=3, color='saddlebrown');
                         name = f'Zemin/Toprak (Küme {k})'
-                    elif avg_z > 150:  # Yüksekte
+                    elif avg_z > 150:
                         marker_dict = dict(size=3, color='skyblue');
                         name = f'Üst Kısım/Gökyüzü (Küme {k})'
-                    else:  # Aradaki nesneler
+                    else:
                         rc = object_color_map.get(k, (0, 0, 0, 1));
                         marker_dict = dict(size=4, color=f'rgb({rc[0] * 255}, {rc[1] * 255}, {rc[2] * 255})');
                         name = f'Nesne {k} (Ağaç/Yapı)'
-                else:  # Gürültü
+                else:
                     marker_dict = dict(size=1.5, color='rgba(200, 200, 200, 0.4)');
                     name = 'Gürültü'
 
@@ -768,7 +772,40 @@ def update_all_graphs_and_analytics(scan_json, points_json):
                 go.Scatter3d(x=cluster_df['y_cm'], y=cluster_df['x_cm'], z=cluster_df['z_cm'], mode='markers',
                              marker=marker_dict, name=name))
 
-        # ... (Diğer tüm grafik ve analiz kodları aynı kalır)
+        fig_3d.add_trace(
+            go.Scatter3d(x=[0], y=[0], z=[0], mode='markers', marker=dict(size=6, color='red', symbol='diamond'),
+                         name='Sensör'))
+        fig_3d.update_layout(
+            scene=dict(xaxis_title='Y Ekseni (cm)', yaxis_title='X Ekseni (cm)', zaxis_title='Z Ekseni (cm)',
+                       aspectmode='data'), legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01))
+
+        # --- 2D GRAFİK ---
+        clustering_desc_2d, df_clus_2d = analyze_environment_shape(fig_2d, df_valid.copy())
+        store_data = df_clus_2d.to_json(orient='split')
+        add_scan_rays(fig_2d, df_valid)
+        add_sector_area(fig_2d, df_valid)
+        add_sensor_position(fig_2d)
+        fig_2d.update_layout(xaxis_title="Yanal Mesafe (cm)", yaxis_title="İleri Mesafe (cm)", yaxis_scaleanchor="x",
+                             yaxis_scaleratio=1,
+                             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+
+        # --- POLAR GRAFİK ---
+        fig_polar.add_trace(
+            go.Scatterpolar(r=df_valid['mesafe_cm'], theta=df_valid['derece'], mode='lines+markers', name='Mesafe'))
+        fig_polar.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 400]), angularaxis=dict(direction="clockwise")))
+
+        # --- SAYISAL ANALİZLER ---
+        try:
+            hull_points = df_valid[['y_cm', 'x_cm']].values
+            if len(hull_points) >= 3:
+                hull = ConvexHull(hull_points)
+                area = f"{hull.volume:.1f} cm²"
+                perim = f"{hull.area:.1f} cm"
+        except (QhullError, ValueError) as e:
+            print(f"ConvexHull hatası: {e}")
+        width = f"{df_valid['y_cm'].max() - df_valid['y_cm'].min():.1f} cm"
+        depth = f"{df_valid['x_cm'].max():.1f} cm"
 
     return fig_3d, fig_2d, fig_polar, analysis_report_component, store_data, area, perim, width, depth
 

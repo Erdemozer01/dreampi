@@ -478,7 +478,7 @@ app.layout = html.Div(style={'padding': '20px'}, children=[
     dcc.Store(id='latest-scan-object-store'),
     dcc.Store(id='latest-scan-points-store'),
     dcc.Store(id='clustered-data-store'),
-    dcc.Interval(id='interval-component-main', interval=2500, n_intervals=0),
+    dcc.Interval(id='interval-component-main', interval=2500, n_intervals=0, disabled=True),
     dcc.Interval(id='interval-component-system', interval=3000, n_intervals=0),
     dbc.Modal([dbc.ModalHeader(dbc.ModalTitle(id="modal-title")), dbc.ModalBody(id="modal-body")],
               id="cluster-info-modal", is_open=False, centered=True),

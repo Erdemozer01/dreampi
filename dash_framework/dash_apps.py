@@ -15,7 +15,7 @@ import base64
 import json
 
 # Analiz kütüphaneleri
-from scipy.spatial import ConvexHull
+from scipy.spatial import ConvexHull, QhullError
 from sklearn.cluster import DBSCAN
 from sklearn.linear_model import RANSACRegressor
 
@@ -186,18 +186,59 @@ def analyze_environment_shape(fig, df_valid_input):
 def estimate_geometric_shape(df):
     if len(df) < 15: return "Şekil tahmini için yetersiz nokta."
     try:
-        hull = ConvexHull(df[['x_cm', 'y_cm']].values)
-        width, depth = df['y_cm'].max() - df['y_cm'].min(), df['x_cm'].max()
+        hull = ConvexHull(df[['y_cm', 'x_cm']].values)
+        width = df['y_cm'].max() - df['y_cm'].min()
+        depth = df['x_cm'].max()
         if width < 1 or depth < 1: return "Algılanan şekil çok küçük."
+
         fill_factor = hull.volume / (depth * width) if (depth * width) > 0 else 0
-        if depth > 150 and width < 50 and fill_factor < 0.3: return "Tahmin: Dar ve derin bir boşluk (Koridor)."
-        if fill_factor > 0.7 and (
-                0.8 < (width / depth if depth > 0 else 0) < 1.2): return "Tahmin: Dolgun, kutu/dairesel bir nesne."
-        if fill_factor > 0.6 and width > depth * 2.5: return "Tahmin: Geniş bir yüzey (Duvar)."
-        if fill_factor < 0.4: return "Tahmin: İçbükey bir yapı veya dağınık nesneler."
-        return "Tahmin: Düzensiz veya karmaşık bir yapı."
-    except Exception as e:
+        aspect_ratio = width / depth if depth > 0 else 0
+
+        if depth > 150 and aspect_ratio < 0.4:
+            return f"Dar ve Derin Boşluk (Genişlik: {width:.1f}cm, Derinlik: {depth:.1f}cm)"
+        if fill_factor > 0.7 and 0.8 < aspect_ratio < 1.2:
+            return f"Kutu/Dairesel Nesne (Doluluk: %{fill_factor * 100:.0f})"
+        if aspect_ratio > 2.5:
+            return f"Geniş Yüzey/Duvar (Genişlik: {width:.1f}cm)"
+        if fill_factor < 0.4:
+            return "İçbükey Yapı veya Dağınık Nesneler"
+
+        return "Düzensiz veya Karmaşık Yapı"
+    except (QhullError, ValueError) as e:
         return f"Geometrik analiz hatası: {e}"
+
+def contextual_environment_analysis(df):
+    """
+    Veri setini analiz ederek ortamın iç mekan mı yoksa dış mekan mı olduğunu
+    tahmin eder ve bu bağlama göre bir rapor oluşturur.
+    """
+    if df.empty or len(df) < 15:
+        return "Analiz için yetersiz veri."
+
+    # Basit bir sezgisel yöntem: Eğer ölçümlerin çoğu çok uzaksa, dış mekan olabilir.
+    max_distance = df['mesafe_cm'].max()
+    median_distance = df['mesafe_cm'].median()
+
+    if max_distance > 350 and median_distance > 200:
+        environment_type = "Açık Alan"
+        suggestion = " (Ağaç, bina yüzeyi gibi büyük nesneler beklenir)"
+    else:
+        environment_type = "Kapalı Alan"
+        suggestion = " (Duvar, masa, sandalye gibi nesneler beklenir)"
+
+    # Geometrik analizi yap
+    geometric_estimation = estimate_geometric_shape(df)
+
+    # İki bilgiyi birleştirerek bir rapor oluştur
+    report = html.Div([
+        html.Span(f"Ortam Tahmini: {environment_type}", className="fw-bold"),
+        html.Br(),
+        html.Small(f"Geometri: {geometric_estimation}", className="text-muted"),
+        html.Br(),
+        html.Small(f"Not: {suggestion}", className="text-muted fst-italic")
+    ])
+
+    return report
 
 
 def find_clearest_path(df_valid):
@@ -580,8 +621,6 @@ def render_and_update_data_table(active_tab, points_json):
                                 style_cell={'textAlign': 'left'}, style_header={'fontWeight': 'bold'})
 
 
-# 10. ANA GRAFİK VE ANALİZ GÜNCELLEME FONKSİYONU (3D KÜMELEME EKLENDİ)
-# ANA GRAFİK VE ANALİZ GÜNCELLEME FONKSİYONU (Görsel İsteğine Göre Güncellendi)
 @app.callback(
     [Output('scan-map-graph-3d', 'figure'),
      Output('scan-map-graph-2d', 'figure'),
@@ -592,14 +631,14 @@ def render_and_update_data_table(active_tab, points_json):
      Output('perimeter-length', 'children'),
      Output('max-width', 'children'),
      Output('max-depth', 'children')],
-    [Input('latest-scan-object-store', 'data'),  # Scan ID için bu input eklendi
+    [Input('latest-scan-object-store', 'data'),
      Input('latest-scan-points-store', 'data')]
 )
 def update_all_graphs_and_analytics(scan_json, points_json):
-    # Boş figürler ve varsayılan değerler
+    # Başlangıç durumu için boş figürler ve varsayılan metinler
     empty_fig = go.Figure(layout=dict(title='Veri Bekleniyor...',
                                       annotations=[dict(text="Tarama başlatın.", showarrow=False, font=dict(size=16))]))
-    default_return = (empty_fig,) * 3 + ("Analiz için veri bekleniyor.", None) + ("--",) * 4
+    default_return = (empty_fig,) * 3 + (html.Div("Analiz için veri bekleniyor."), None) + ("--",) * 4
 
     if not scan_json or not points_json:
         return default_return
@@ -611,44 +650,56 @@ def update_all_graphs_and_analytics(scan_json, points_json):
 
     if df.empty:
         empty_fig = go.Figure(layout=dict(title=f'Tarama #{scan_id} için Nokta Verisi Yok...'))
-        return (empty_fig,) * 3 + ("Analiz için veri bekleniyor.", None) + ("--",) * 4
+        return (empty_fig,) * 3 + (html.Div("Analiz için veri bekleniyor."), None) + ("--",) * 4
 
+    # Sadece geçerli aralıktaki verileri kullan
     df_valid = df[(df['mesafe_cm'] > 0.1) & (df['mesafe_cm'] < 400.0)].copy()
     df_valid.dropna(subset=['x_cm', 'y_cm', 'z_cm'], inplace=True)
 
     # Figürleri ve varsayılan değerleri başlat
-
     fig_3d = go.Figure(
         layout=dict(title=f'3D Tarama Görüntüsü - Tarama ID: {scan_id}', margin=dict(l=0, r=0, b=0, t=40)))
     fig_2d = go.Figure(layout=dict(title='2D Harita (Üstten Görünüm)', margin=dict(l=20, r=20, b=20, t=40)))
     fig_polar = go.Figure(layout=dict(title='Polar Grafik', margin=dict(l=40, r=40, b=40, t=40)))
 
-    est_text, store_data = "Analiz için yetersiz veri.", None
+    analysis_report_component = html.Div("Analiz için yetersiz veri.")
+    store_data = None
     area, perim, width, depth = "-- cm²", "-- cm", "-- cm", "-- cm"
 
-    if len(df_valid) > 3:
+    # Analiz ve görselleştirme için yeterli nokta var mı kontrol et
+    if len(df_valid) > 10:
         # --- 3D Grafik ---
+        df_clustered_3d = analyze_3d_clusters(df_valid.copy())
+        unique_clusters_3d = sorted(df_clustered_3d['cluster'].unique())
+        num_clusters_3d = len(unique_clusters_3d) - (1 if -1 in unique_clusters_3d else 0)
+        colors_3d = plt.cm.get_cmap('jet', num_clusters_3d if num_clusters_3d > 0 else 1)
 
-        fig_3d.add_trace(go.Scatter3d(
-            x=df_valid['y_cm'], y=df_valid['x_cm'], z=df_valid['z_cm'],
-            mode='markers',
-            marker=dict(
-                size=2,
-                color=df_valid['mesafe_cm'],  # Renk kaynağı olarak mesafe kullanılıyor
-                colorscale='Viridis',  # Resimdeki gibi 'viridis' renk skalası
-                showscale=True,
-                colorbar_title='Mesafe (cm)'  # Renk barı başlığı güncellendi
-            )
-        ))
+        for k in unique_clusters_3d:
+            cluster_df = df_clustered_3d[df_clustered_3d['cluster'] == k]
+            if k == -1:
+                marker_dict = dict(size=2, color='rgba(150, 150, 150, 0.5)')
+                name = 'Gürültü'
+            else:
+                norm_k = k / (num_clusters_3d - 1) if num_clusters_3d > 1 else 0.0
+                rc = colors_3d(np.clip(norm_k, 0.0, 1.0))
+                marker_dict = dict(size=3, color=f'rgb({rc[0] * 255}, {rc[1] * 255}, {rc[2] * 255})')
+                name = f'Küme {k}'
+            fig_3d.add_trace(
+                go.Scatter3d(x=cluster_df['y_cm'], y=cluster_df['x_cm'], z=cluster_df['z_cm'], mode='markers',
+                             marker=marker_dict, name=name))
+
+        fig_3d.add_trace(
+            go.Scatter3d(x=[0], y=[0], z=[0], mode='markers', marker=dict(size=5, color='red'), name='Sensör'))
         fig_3d.update_layout(
             scene=dict(xaxis_title='Y Ekseni (cm)', yaxis_title='X Ekseni (cm)', zaxis_title='Z Ekseni (cm)',
                        aspectmode='data'))
 
         # --- 2D Grafik ---
-        clustering_desc, df_clus = analyze_environment_shape(fig_2d, df_valid.copy())
-        store_data = df_clus.to_json(orient='split')
+        clustering_desc_2d, df_clus_2d = analyze_environment_shape(fig_2d, df_valid.copy())
+        store_data = df_clus_2d.to_json(orient='split')
         add_scan_rays(fig_2d, df_valid)
         add_sector_area(fig_2d, df_valid)
+        add_sensor_position(fig_2d)
         fig_2d.update_layout(xaxis_title="Yanal Mesafe (cm)", yaxis_title="İleri Mesafe (cm)", yaxis_scaleanchor="x",
                              yaxis_scaleratio=1,
                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
@@ -659,27 +710,22 @@ def update_all_graphs_and_analytics(scan_json, points_json):
         fig_polar.update_layout(
             polar=dict(radialaxis=dict(visible=True, range=[0, 400]), angularaxis=dict(direction="clockwise")))
 
-        # --- Analizler ---
+        # --- Analiz Raporu ---
+        analysis_report_component = contextual_environment_analysis(df_valid)
+
+        # Sayısal analizler
         try:
             hull_points = df_valid[['y_cm', 'x_cm']].values
             if len(hull_points) >= 3:
                 hull = ConvexHull(hull_points)
                 area = f"{hull.volume:.1f} cm²"
                 perim = f"{hull.area:.1f} cm"
-        except Exception as e:
+        except (QhullError, ValueError) as e:
             print(f"ConvexHull hatası: {e}")
         width = f"{df_valid['y_cm'].max() - df_valid['y_cm'].min():.1f} cm"
         depth = f"{df_valid['x_cm'].max():.1f} cm"
-        est_text = html.Div([
-            html.P(estimate_geometric_shape(df_valid), className="fw-bold"), html.Hr(),
-            html.P(find_clearest_path(df_valid), className="fw-bold text-primary"), html.Hr(),
-            html.P(f"2D Kümeleme: {clustering_desc}")
-        ])
 
-    add_sensor_position(fig_2d)
-    fig_3d.add_trace(go.Scatter3d(x=[0], y=[0], z=[0], mode='markers', marker=dict(size=5, color='red'), name='Sensör'))
-
-    return fig_3d, fig_2d, fig_polar, est_text, store_data, area, perim, width, depth
+    return fig_3d, fig_2d, fig_polar, analysis_report_component, store_data, area, perim, width, depth
 
 
 # 12. 2D haritadaki bir noktaya tıklandığında kümeleme bilgilerini gösterir

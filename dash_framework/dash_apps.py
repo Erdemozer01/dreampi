@@ -679,6 +679,7 @@ def update_all_graphs_and_analytics(scan_json, points_json):
             cluster_df = df_clustered_3d[df_clustered_3d['cluster'] == k]
 
             if k == -1:
+
                 marker_dict = dict(
                 size=2,
                 color=df_valid['mesafe_cm'],

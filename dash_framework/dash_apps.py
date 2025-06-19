@@ -677,7 +677,14 @@ def update_all_graphs_and_analytics(scan_json, points_json):
         for k in unique_clusters_3d:
             cluster_df = df_clustered_3d[df_clustered_3d['cluster'] == k]
             if k == -1:
-                marker_dict = dict(size=2, color='rgba(150, 150, 150, 0.5)')
+                marker_dict = dict(
+                size=2,
+                color=df_valid['mesafe_cm'],  # Renk kaynağı olarak mesafe kullanılıyor
+                colorscale='Viridis',       # Renk skalası
+                showscale=True,
+                colorbar_title='Mesafe (cm)' # Renk barı başlığı
+            )
+
                 name = 'Gürültü'
             else:
                 norm_k = k / (num_clusters_3d - 1) if num_clusters_3d > 1 else 0.0

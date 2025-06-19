@@ -710,7 +710,7 @@ def display_cluster_info(clickData, stored_data_json):
 # 13. Seçilen AI modelini kullanarak tarama verilerini yorumlar ve resim oluşturur
 @app.callback(
     [Output('ai-yorum-sonucu', 'children'),
-     Output('vr-image-data-store', 'data')],  # Artık bir dcc.Store'u güncelliyor
+     Output('ai-image', 'children')],
     Input('ai-model-dropdown', 'value'),
     [State('latest-scan-object-store', 'data'),
      State('latest-scan-points-store', 'data')],
@@ -745,24 +745,4 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
         return dbc.Alert(f"Hata: {safe_error_message}", color="danger"), None
 
 
-# 14. YENİ CLIENTSIDE CALLBACK: VR Sahnesini Güncelleme
-app.clientside_callback(
-    """
-    function(imageData) {
-        if (imageData) {
-            var iframe = document.getElementById('vr-iframe');
-            if (iframe && iframe.contentWindow) {
-                // iframe'e gönderilecek mesajı yapılandır
-                const message = {
-                    type: 'image',
-                    payload: imageData // Bu, "data:image/png;base64,..." veya bir URL olabilir
-                };
-                iframe.contentWindow.postMessage(JSON.stringify(message), '*');
-            }
-        }
-        return ''; // Bu callback'in bir çıktısı yok
-    }
-    """,
-    Output('dummy-clientside-output', 'children'),
-    Input('vr-image-data-store', 'data')
-)
+

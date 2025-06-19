@@ -12,14 +12,13 @@ except Exception as e:
     safe_error_message = str(e).encode('ascii', 'ignore').decode('ascii')
     print(f"UYARI: lgpio pin factory ayarlanamadi: {safe_error_message}")
 
-# --- PIN TANIMLAMALARI ---
+# --- PIN TANIMLAMALARI (GÜNCELLENDİ) ---
 # Sol Motor Sürücüsü Pinleri
 LEFT_IN1 = OutputDevice(21)
 LEFT_IN2 = OutputDevice(20)
 LEFT_IN3 = OutputDevice(16)
 LEFT_IN4 = OutputDevice(12)
 left_motor_pins = [LEFT_IN1, LEFT_IN2, LEFT_IN3, LEFT_IN4]
-
 
 # Sağ Motor Sürücüsü Pinleri
 RIGHT_IN1 = OutputDevice(26)
@@ -28,17 +27,16 @@ RIGHT_IN3 = OutputDevice(13)
 RIGHT_IN4 = OutputDevice(6)
 right_motor_pins = [RIGHT_IN1, RIGHT_IN2, RIGHT_IN3, RIGHT_IN4]
 
-
 # --- PARAMETRELER ---
-STEP_DELAY = 0.001  # Hızı belirler. Değeri küçülttükçe motor hızlanır.
+STEP_DELAY = 0.002  # Hızı belirler. Değeri küçülttükçe motor hızlanır.
 STEPS_PER_MOVE = 1024  # Her harekette atılacak adım sayısı (yaklaşık çeyrek tur)
 
-
+# Daha yüksek tork için "Tam Adım" (full-step) sekansı kullanılıyor.
 step_sequence = [
-    [1,1,0,0],
-    [0,1,1,0],
-    [0,0,1,1],
-    [1,0,0,1]
+    [1, 1, 0, 0],
+    [0, 1, 1, 0],
+    [0, 0, 1, 1],
+    [1, 0, 0, 1]
 ]
 sequence_count = len(step_sequence)
 left_step_index = 0
@@ -118,4 +116,4 @@ except Exception as e:
     print(f"\n!!! TEST SIRASINDA KRİTİK BİR HATA OLUŞTU: {e}")
 
 finally:
-    pass
+    pass  # atexit modülü temizliği zaten yapıyor.

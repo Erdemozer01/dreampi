@@ -524,7 +524,8 @@ def toggle_mode_parameters(selected_mode):
 @app.callback(
     [Output("start-button", "children"),
      Output("start-button", "disabled"),
-     Output("stop-button", "disabled")],
+     Output("stop-button", "disabled"),
+     Output("interval-component-main", "disabled")], # DÜZELTME: Eksik olan çıktı eklendi
     [Input("start-button", "n_clicks"),
      Input("stop-button", "n_clicks")],
     [State("operation-mode", "value"),
@@ -537,21 +538,19 @@ def toggle_mode_parameters(selected_mode):
 def handle_start_stop_operations(start_clicks, stop_clicks, mode, h_angle, h_step, v_angle, v_step, buzzer_dist):
     ctx = dash.callback_context
     if not ctx.triggered:
-        return no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update
 
     button_id = ctx.triggered[0]["prop_id"].split(".")[0]
 
     if button_id == "start-button":
         if mode == 'mapping':
             return start_mapping_mode(h_angle, h_step, v_angle, v_step, buzzer_dist)
-        # --- YENİ EKLENEN KISIM ---
         elif mode == 'autonomous':
             return start_autonomous_mode()
-        # -------------------------
     elif button_id == "stop-button":
         return stop_current_operation(mode)
 
-    return no_update, no_update, no_update
+    return no_update, no_update, no_update, no
 
 
 # 4. AI Modeli Dropdown Doldurma

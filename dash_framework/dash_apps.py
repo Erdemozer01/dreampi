@@ -678,21 +678,26 @@ def update_all_graphs_and_analytics(scan_json, points_json):
     empty_fig = go.Figure(layout=dict(title='Veri Bekleniyor...',
                                       annotations=[dict(text="Tarama başlatın.", showarrow=False, font=dict(size=16))]))
     default_return = (empty_fig,) * 3 + (html.Div("Analiz için veri bekleniyor."), None) + ("--",) * 4
-    if not scan_json or not points_json: return default_return
+
+    if not scan_json or not points_json:
+        return default_return
 
     # Veriyi yükle ve işle
     scan_data = json.loads(scan_json)
     scan_id = scan_data.get('id', 'Bilinmiyor')
     df = pd.read_json(io.StringIO(points_json), orient='split')
+
     if df.empty:
         empty_fig = go.Figure(layout=dict(title=f'Tarama #{scan_id} için Nokta Verisi Yok...'))
         return (empty_fig,) * 3 + (html.Div("Analiz için veri bekleniyor."), None) + ("--",) * 4
 
+    # Sadece geçerli aralıktaki verileri kullan
     df_valid = df[(df['mesafe_cm'] > 0.1) & (df['mesafe_cm'] < 400.0)].copy()
-    df_valid.dropna(subset=['x_cm', 'y_cm', 'z_cm'], inplace=True)
+    df_valid.dropna(subset=['x_cm', 'y_cm', 'z_cm', 'derece', 'dikey_aci'], inplace=True)
 
     # Figürleri ve varsayılan değerleri başlat
-    fig_3d = go.Figure(layout=dict(title=f'3D Ortam Analizi - Tarama ID: {scan_id}', margin=dict(l=0, r=0, b=0, t=40)))
+    fig_3d = go.Figure(
+        layout=dict(title=f'3D Tarama Görüntüsü - Tarama ID: {scan_id}', margin=dict(l=0, r=0, b=0, t=40)))
     fig_2d = go.Figure(layout=dict(title='2D Harita (Üstten Görünüm)', margin=dict(l=20, r=20, b=20, t=40)))
     fig_polar = go.Figure(layout=dict(title='Polar Grafik', margin=dict(l=40, r=40, b=40, t=40)))
 
@@ -700,73 +705,47 @@ def update_all_graphs_and_analytics(scan_json, points_json):
     store_data = None
     area, perim, width, depth = "-- cm²", "-- cm", "-- cm", "-- cm"
 
+    # Analiz ve görselleştirme için yeterli nokta var mı kontrol et
     if len(df_valid) > 10:
-        # --- ORTAM TÜRÜNÜ BELİRLE ---
-        env_type, analysis_report_component = classify_environment_and_get_report(df_valid)
+        # --- 3D Grafik (Üzerine gelince açıları gösteren etiket ile) ---
 
-        # --- 3D KÜMELEME VE RENKLENDİRME ---
-        df_clustered_3d = analyze_3d_clusters(df_valid.copy())
-        unique_clusters_3d = sorted(df_clustered_3d['cluster'].unique())
+        # Hover etiketinde gösterilecek özel veriyi oluştur
+        custom_data_3d = np.stack((df_valid['derece'], df_valid['dikey_aci']), axis=-1)
 
-        object_clusters = [c for c in unique_clusters_3d if c != -1]
-        num_objects = len(object_clusters)
-        colors_objects = plt.cm.get_cmap('jet', num_objects if num_objects > 0 else 1)
-        object_color_map = {cluster_id: colors_objects(i / (num_objects - 1) if num_objects > 1 else 0) for
-                            i, cluster_id in enumerate(object_clusters)}
-
-        # Her kümeyi sınıflandır ve ortama göre çiz
-        for k in unique_clusters_3d:
-            cluster_df = df_clustered_3d[df_clustered_3d['cluster'] == k]
-            if cluster_df.empty: continue
-
-            marker_dict = {};
-            name = ""
-
-            if env_type == 'indoor':
-                segment_label = classify_indoor_cluster(cluster_df) if k != -1 else 'noise'
-                if segment_label == 'floor_ceiling':
-                    marker_dict = dict(size=2.5, color='rgba(100, 100, 100, 0.8)');
-                    name = 'Zemin/Tavan'
-                elif segment_label == 'wall':
-                    marker_dict = dict(size=2.5, color='rgba(160, 160, 160, 0.8)');
-                    name = 'Duvar'
-                elif segment_label == 'object':
-                    rc = object_color_map.get(k, (0, 0, 0, 1));
-                    marker_dict = dict(size=4, color=f'rgb({rc[0] * 255}, {rc[1] * 255}, {rc[2] * 255})');
-                    name = f'Nesne {k}'
-                else:  # Gürültü
-                    marker_dict = dict(size=1.5, color='rgba(200, 200, 200, 0.4)');
-                    name = 'Gürültü'
-
-            else:  # AÇIK ALAN RENKLENDİRMESİ
-                avg_z = cluster_df['z_cm'].mean()
-                if k != -1:
-                    if avg_z < 10:
-                        marker_dict = dict(size=3, color='saddlebrown');
-                        name = f'Zemin/Toprak (Küme {k})'
-                    elif avg_z > 150:
-                        marker_dict = dict(size=3, color='skyblue');
-                        name = f'Üst Kısım/Gökyüzü (Küme {k})'
-                    else:
-                        rc = object_color_map.get(k, (0, 0, 0, 1));
-                        marker_dict = dict(size=4, color=f'rgb({rc[0] * 255}, {rc[1] * 255}, {rc[2] * 255})');
-                        name = f'Nesne {k} (Ağaç/Yapı)'
-                else:
-                    marker_dict = dict(size=1.5, color='rgba(200, 200, 200, 0.4)');
-                    name = 'Gürültü'
-
-            fig_3d.add_trace(
-                go.Scatter3d(x=cluster_df['y_cm'], y=cluster_df['x_cm'], z=cluster_df['z_cm'], mode='markers',
-                             marker=marker_dict, name=name))
+        fig_3d.add_trace(go.Scatter3d(
+            x=df_valid['y_cm'],
+            y=df_valid['x_cm'],
+            z=df_valid['z_cm'],
+            mode='markers',
+            marker=dict(
+                size=2.5,
+                color=df_valid['mesafe_cm'],
+                colorscale='Viridis',
+                showscale=True,
+                colorbar_title='Mesafe (cm)'
+            ),
+            customdata=custom_data_3d,  # Özel veriyi buraya ekliyoruz
+            hovertemplate=(  # Etiketin nasıl görüneceğini burada tanımlıyoruz
+                    "<b>Nokta Bilgileri</b><br><br>" +
+                    "X (İleri): %{y:.1f} cm<br>" +
+                    "Y (Yanal): %{x:.1f} cm<br>" +
+                    "Z (Yükseklik): %{z:.1f} cm<br>" +
+                    "--------------------<br>" +
+                    "<b>Yatay Açı: %{customdata[0]:.1f}°</b><br>" +
+                    "<b>Dikey Açı: %{customdata[1]:.1f}°</b>" +
+                    "<extra></extra>"  # Plotly'nin varsayılan etiketini kaldırır
+            ),
+            name='Tarama Noktaları'
+        ))
 
         fig_3d.add_trace(
             go.Scatter3d(x=[0], y=[0], z=[0], mode='markers', marker=dict(size=6, color='red', symbol='diamond'),
                          name='Sensör'))
         fig_3d.update_layout(
             scene=dict(xaxis_title='Y Ekseni (cm)', yaxis_title='X Ekseni (cm)', zaxis_title='Z Ekseni (cm)',
-                       aspectmode='data'), legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01))
+                       aspectmode='data'))
 
-        # --- 2D GRAFİK ---
+        # --- 2D Grafik ---
         clustering_desc_2d, df_clus_2d = analyze_environment_shape(fig_2d, df_valid.copy())
         store_data = df_clus_2d.to_json(orient='split')
         add_scan_rays(fig_2d, df_valid)
@@ -776,13 +755,16 @@ def update_all_graphs_and_analytics(scan_json, points_json):
                              yaxis_scaleratio=1,
                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
 
-        # --- POLAR GRAFİK ---
+        # --- Polar Grafik ---
         fig_polar.add_trace(
             go.Scatterpolar(r=df_valid['mesafe_cm'], theta=df_valid['derece'], mode='lines+markers', name='Mesafe'))
         fig_polar.update_layout(
             polar=dict(radialaxis=dict(visible=True, range=[0, 400]), angularaxis=dict(direction="clockwise")))
 
-        # --- SAYISAL ANALİZLER ---
+        # --- Analiz Raporu ---
+        analysis_report_component = contextual_environment_analysis(df_valid)
+
+        # Sayısal analizler
         try:
             hull_points = df_valid[['y_cm', 'x_cm']].values
             if len(hull_points) >= 3:

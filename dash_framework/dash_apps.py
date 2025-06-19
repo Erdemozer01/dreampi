@@ -660,6 +660,7 @@ def render_and_update_data_table(active_tab, points_json):
                                 style_cell={'textAlign': 'left'}, style_header={'fontWeight': 'bold'})
 
 
+
 @app.callback(
     [Output('scan-map-graph-3d', 'figure'),
      Output('scan-map-graph-2d', 'figure'),

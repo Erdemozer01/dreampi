@@ -732,17 +732,27 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
 
         # Encoder: Türkçe yorumu ve İngilizce prompt'u al
         turkish_analysis, english_prompt = analyzer.get_text_interpretation(scan=scan_to_analyze)
+        text_component = dcc.Markdown(turkish_analysis, dangerously_allow_html=True)
 
-        # Decoder: İngilizce prompt ile 360 derece VR görüntüsü oluştur
+        # Decoder: İngilizce prompt ile resim oluştur
         image_data_uri = analyzer.generate_image_with_imagen(english_prompt)
 
-        # Türkçe analizi metin kutusuna, resim URI'ını ise Store'a gönder
-        return dcc.Markdown(turkish_analysis, dangerously_allow_html=True), image_data_uri
+        # Resmi doğrudan arayüzdeki html.Img bileşenine gönder
+        if image_data_uri.startswith("data:image/png;base64,"):
+            image_component = dbc.Spinner(html.Img(
+                src=image_data_uri,
+                style={'maxWidth': '100%', 'height': 'auto', 'borderRadius': '10px', 'marginTop': '15px'}
+            ))
+        else:  # Hata mesajı döndüyse
+            image_component = dbc.Alert(f"Resim oluşturulamadı: {image_data_uri}", color="warning", className="mt-3")
+
+        return text_component, image_component
 
     except Exception as e:
         traceback.print_exc()
         safe_error_message = str(e).encode('ascii', 'ignore').decode('ascii')
         return dbc.Alert(f"Hata: {safe_error_message}", color="danger"), None
+
 
 
 

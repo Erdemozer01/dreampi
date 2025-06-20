@@ -28,8 +28,8 @@ RIGHT_IN4 = OutputDevice(6)
 right_motor_pins = [RIGHT_IN1, RIGHT_IN2, RIGHT_IN3, RIGHT_IN4]
 
 # --- PARAMETRELER ---
-STEP_DELAY = 0.002  # Hızı belirler. Değeri küçülttükçe motor hızlanır.
-STEPS_PER_MOVE = 1024  # Her harekette atılacak adım sayısı (yaklaşık çeyrek tur)
+STEP_DELAY = 0.001  # Hızı belirler. Değeri küçülttükçe motor hızlanır.
+STEPS_PER_MOVE = 4096  # Her harekette atılacak adım sayısı (yaklaşık çeyrek tur)
 
 # Daha yüksek tork için "Tam Adım" (full-step) sekansı kullanılıyor.
 step_sequence = [

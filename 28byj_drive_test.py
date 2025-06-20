@@ -15,8 +15,8 @@ RIGHT_PINS = [OutputDevice(26), OutputDevice(19), OutputDevice(13), OutputDevice
 
 # --- PARAMETRELER ---
 # DÜZELTME: Hızı maksimuma çıkarmak için gecikme düşürüldü.
-STEP_DELAY = 0.001
-STEPS_PER_MOVE = 2048  # Her harekette atılacak adım sayısı (yarım tur)
+STEP_DELAY = 0.002
+STEPS_PER_MOVE = 4096  # Her harekette atılacak adım sayısı (yarım tur)
 
 # DÜZELTME: Daha yüksek tork için "Tam Adım" (full-step) sekansı kullanılıyor.
 step_sequence = [

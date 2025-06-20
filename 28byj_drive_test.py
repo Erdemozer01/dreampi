@@ -15,7 +15,7 @@ RIGHT_PINS = [OutputDevice(26), OutputDevice(19), OutputDevice(13), OutputDevice
 
 # --- PARAMETRELER ---
 STEP_DELAY = 0.002
-STEPS_TO_TEST = 512  # Kısa bir test için (1/8 tur)
+STEPS_TO_TEST = 4096  # Kısa bir test için (1/8 tur)
 
 step_sequence = [[1, 0, 0, 1], [0, 0, 0, 1], [0, 0, 1, 1], [0, 0, 1, 0], [0, 1, 1, 0], [0, 1, 0, 0], [1, 1, 0, 0],
                  [1, 0, 0, 0]]

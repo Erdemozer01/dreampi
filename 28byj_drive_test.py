@@ -14,12 +14,20 @@ LEFT_PINS = [OutputDevice(21), OutputDevice(20), OutputDevice(16), OutputDevice(
 RIGHT_PINS = [OutputDevice(26), OutputDevice(19), OutputDevice(13), OutputDevice(6)]
 
 # --- PARAMETRELER ---
-STEP_DELAY = 0.002
-STEPS_TO_TEST = 4096  # Kısa bir test için (1/8 tur)
+# DÜZELTME: Hızı maksimuma çıkarmak için gecikme düşürüldü.
+STEP_DELAY = 0.001
+STEPS_PER_MOVE = 2048  # Her harekette atılacak adım sayısı (yarım tur)
 
-step_sequence = [[1, 0, 0, 1], [0, 0, 0, 1], [0, 0, 1, 1], [0, 0, 1, 0], [0, 1, 1, 0], [0, 1, 0, 0], [1, 1, 0, 0],
-                 [1, 0, 0, 0]]
+# DÜZELTME: Daha yüksek tork için "Tam Adım" (full-step) sekansı kullanılıyor.
+step_sequence = [
+    [1, 1, 0, 0],
+    [0, 1, 1, 0],
+    [0, 0, 1, 1],
+    [1, 0, 0, 1]
+]
 sequence_count = len(step_sequence)
+left_step_index = 0
+right_step_index = 0
 
 
 def cleanup():
@@ -33,34 +41,53 @@ def cleanup():
 atexit.register(cleanup)
 
 
-def run_motor(pins, steps, is_forward):
-    current_step = 0
-    step_range = range(steps)
+def take_a_step(direction_left, direction_right):
+    global left_step_index, right_step_index
 
-    for _ in step_range:
-        if is_forward:
-            current_step = (current_step + 1) % sequence_count
-        else:
-            current_step = (current_step - 1 + sequence_count) % sequence_count
+    # Sol motor için bir adım
+    if direction_left == 'forward':
+        left_step_index = (left_step_index + 1) % sequence_count
+    elif direction_left == 'backward':
+        left_step_index = (left_step_index - 1 + sequence_count) % sequence_count
 
-        for pin_index, pin_state in enumerate(step_sequence[current_step]):
-            pins[pin_index].value = pin_state
-        time.sleep(STEP_DELAY)
+    # Sağ motor için bir adım (Ters yönde döneceği için yönler de ters)
+    if direction_right == 'forward':
+        right_step_index = (right_step_index - 1 + sequence_count) % sequence_count
+    elif direction_right == 'backward':
+        right_step_index = (right_step_index + 1) % sequence_count
+
+    # Sol ve sağ motor pinlerini ayarla
+    for i in range(4):
+        LEFT_PINS[i].value = step_sequence[left_step_index][i]
+        RIGHT_PINS[i].value = step_sequence[right_step_index][i]
+
+    time.sleep(STEP_DELAY)
 
 
 # --- ANA TEST DÖNGÜSÜ ---
 try:
-    print("--- 28BYJ-48 & ULN2003 Sıralı Motor Testi Başlatılıyor ---")
+    print("--- 28BYJ-48 & ULN2003 Diferansiyel Sürüş Testi (TAM GÜÇ) Başlatılıyor ---")
 
-    print(f"\n[TEST 1/2] Sadece SOL motor ileri hareket ettiriliyor ({STEPS_TO_TEST} adım)...")
-    run_motor(LEFT_PINS, STEPS_TO_TEST, True)
+    print(f"\n[TEST 1/4] İleri Hareket ({STEPS_PER_MOVE} adım)...")
+    for _ in range(STEPS_PER_MOVE):
+        take_a_step('forward', 'forward')
     time.sleep(1)
 
-    print(f"\n[TEST 2/2] Sadece SAĞ motor ileri hareket ettiriliyor ({STEPS_TO_TEST} adım)...")
-    run_motor(RIGHT_PINS, STEPS_TO_TEST, True)
+    print(f"\n[TEST 2/4] Geri Hareket ({STEPS_PER_MOVE} adım)...")
+    for _ in range(STEPS_PER_MOVE):
+        take_a_step('backward', 'backward')
+    time.sleep(1)
+
+    print(f"\n[TEST 3/4] Sağa Dönüş (Tank) ({STEPS_PER_MOVE} adım)...")
+    for _ in range(STEPS_PER_MOVE):
+        take_a_step('forward', 'backward')
+    time.sleep(1)
+
+    print(f"\n[TEST 4/4] Sola Dönüş (Tank) ({STEPS_PER_MOVE} adım)...")
+    for _ in range(STEPS_PER_MOVE):
+        take_a_step('backward', 'forward')
 
     print("\n--- TEST BAŞARIYLA TAMAMLANDI ---")
-    print("Eğer motorlar hala hareket etmiyorsa, aşağıdaki sorun giderme adımlarını kontrol edin.")
 
 except KeyboardInterrupt:
     print("\nKullanıcı tarafından durduruldu.")

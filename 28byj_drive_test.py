@@ -17,7 +17,7 @@ RIGHT_PINS = [OutputDevice(2), OutputDevice(3), OutputDevice(4), OutputDevice(27
 
 # --- PARAMETRELER ---
 STEP_DELAY = 0.002
-STEPS_PER_MOVE = 1024
+STEPS_PER_MOVE = 4096
 
 # Daha yüksek tork için "Tam Adım" (full-step) sekansı
 step_sequence = [

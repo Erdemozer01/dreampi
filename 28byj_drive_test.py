@@ -11,7 +11,7 @@ except Exception as e:
 
 # --- PIN TANIMLAMALARI (Sizin Belirttiğiniz Kuruluma Göre - Sol/Sağ olarak yorumlandı) ---
 LEFT_PINS = [OutputDevice(25), OutputDevice(8), OutputDevice(7), OutputDevice(5)]  # Sol Tekerlekler
-RIGHT_PINS = [OutputDevice(14), OutputDevice(15), OutputDevice(18), OutputDevice(4)]  # Sağ Tekerlekler
+RIGHT_PINS = [OutputDevice(4), OutputDevice(14), OutputDevice(15), OutputDevice(18)]  # Sağ Tekerlekler
 
 # --- PARAMETRELER ---
 STEP_DELAY = 0.002

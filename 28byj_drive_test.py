@@ -17,8 +17,8 @@ LEFT_PINS = [OutputDevice(25), OutputDevice(8), OutputDevice(7), OutputDevice(5)
 RIGHT_PINS = [OutputDevice(14), OutputDevice(15), OutputDevice(18), OutputDevice(4)] # Arka Teker
 
 # --- PARAMETRELER ---
-STEP_DELAY = 0.002
-STEPS_PER_MOVE = 4096
+STEP_DELAY = 0.001
+STEPS_PER_MOVE = 2048
 
 # Daha yüksek tork için "Tam Adım" (full-step) sekansı
 step_sequence = [[1, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 1], [1, 0, 0, 1]]

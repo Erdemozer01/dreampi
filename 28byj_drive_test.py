@@ -18,7 +18,7 @@ RIGHT_PINS = [OutputDevice(14), OutputDevice(15), OutputDevice(18), OutputDevice
 
 # --- PARAMETRELER ---
 STEP_DELAY = 0.002
-STEPS_PER_MOVE = 1024
+STEPS_PER_MOVE = 4096
 
 # Daha yüksek tork için "Tam Adım" (full-step) sekansı
 step_sequence = [[1, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 1], [1, 0, 0, 1]]
@@ -76,17 +76,17 @@ try:
     print(f"\n[TEST 2/4] Geri Hareket ({STEPS_PER_MOVE} adım)...")
     for _ in range(STEPS_PER_MOVE):
         take_a_step('backward', 'backward')
-    time.sleep(1)
+    time.sleep(3)
 
     print(f"\n[TEST 3/4] Sağa Dönüş (Tank) ({STEPS_PER_MOVE} adım)...")
     for _ in range(STEPS_PER_MOVE):
         take_a_step('forward', 'backward')  # Ön tekerler ileri, Arka tekerler geri
-    time.sleep(1)
+    time.sleep(3)
 
     print(f"\n[TEST 4/4] Sola Dönüş (Tank) ({STEPS_PER_MOVE} adım)...")
     for _ in range(STEPS_PER_MOVE):
         take_a_step('backward', 'forward')  # Ön tekerler geri, Arka tekerler ileri
-    time.sleep(1)
+    time.sleep(3)
 
     print("\n--- TEST BAŞARIYLA TAMAMLANDI ---")
 

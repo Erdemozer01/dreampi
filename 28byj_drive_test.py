@@ -16,10 +16,12 @@ MOTOR_PINS = [OutputDevice(25), OutputDevice(8), OutputDevice(7), OutputDevice(5
 # --- PARAMETRELER ---
 STEP_DELAY = 0.002
 
-# Yarım Adım Sekansı
+# Değiştirildi: Yüksek tork için "Tam Adım" (full-step) sekansı
 step_sequence = [
-    [1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0], [0, 1, 1, 0],
-    [0, 0, 1, 0], [0, 0, 1, 1], [0, 0, 0, 1], [1, 0, 0, 1]
+    [1, 1, 0, 0],
+    [0, 1, 1, 0],
+    [0, 0, 1, 1],
+    [1, 0, 0, 1]
 ]
 sequence_count = len(step_sequence)
 step_index = 0
@@ -74,10 +76,10 @@ def dur(saniye):
 
 # --- ANA TEST DÖNGÜSÜ ---
 try:
-    print("--- Arkadan İtişli Araç Kontrolü Başlatılıyor ---")
+    print("--- Arkadan İtişli Araç Kontrolü (Tam Adım Modu) Başlatılıyor ---")
 
-    # Bir tam teker turu yaklaşık 4096 adımdır.
-    bir_tur = 4096
+    # Değiştirildi: Tam adım modunda bir tam teker turu yaklaşık 2048 adımdır.
+    bir_tur = 2048
 
     ileri_git(bir_tur)  # 1 tur ileri
     dur(2)  # 2 saniye bekle

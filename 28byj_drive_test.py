@@ -82,9 +82,9 @@ try:
     bir_tur = 2048
 
     ileri_git(bir_tur)  # 1 tur ileri
-    dur(2)  # 2 saniye bekle
+    dur(4)  # 2 saniye bekle
     geri_git(bir_tur // 2)  # Yarım tur geri
-    dur(2)  # 2 saniye bekle
+    dur(4)  # 2 saniye bekle
     ileri_git(bir_tur // 4)  # Çeyrek tur ileri
 
     print("\n--- TEST BAŞARIYLA TAMAMLANDI ---")

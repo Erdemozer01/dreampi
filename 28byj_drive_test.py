@@ -74,6 +74,7 @@ def dur(saniye):
     time.sleep(saniye)
 
 
+
 # --- ANA TEST DÖNGÜSÜ ---
 try:
     print("--- Arkadan İtişli Araç Kontrolü (Tam Adım Modu) Başlatılıyor ---")

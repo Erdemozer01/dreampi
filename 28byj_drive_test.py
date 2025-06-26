@@ -79,7 +79,7 @@ try:
     print("--- Arkadan İtişli Araç Kontrolü (Tam Adım Modu) Başlatılıyor ---")
 
     # Değiştirildi: Tam adım modunda bir tam teker turu yaklaşık 2048 adımdır.
-    bir_tur = 2048
+    bir_tur = 4096
 
     ileri_git(bir_tur)  # 1 tur ileri
     dur(4)  # 2 saniye bekle

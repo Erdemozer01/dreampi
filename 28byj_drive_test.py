@@ -14,7 +14,7 @@ except Exception as e:
 MOTOR_PINS = [OutputDevice(25), OutputDevice(8), OutputDevice(7), OutputDevice(5)]
 
 # --- PARAMETRELER ---
-STEP_DELAY = 0.002
+STEP_DELAY = 0.0015
 
 # Değiştirildi: Yüksek tork için "Tam Adım" (full-step) sekansı
 step_sequence = [

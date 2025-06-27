@@ -17,7 +17,7 @@ SOL_MOTOR_PINS = [OutputDevice(25), OutputDevice(8), OutputDevice(7), OutputDevi
 # !!! KONTROL EDİLECEK YER !!!
 # Bu koddaki sıralama, FİZİKSEL olarak sürücü kartınızdaki
 # IN1, IN2, IN3, IN4 sıralamasıyla TAM OLARAK EŞLEŞMELİDİR.
-SAG_MOTOR_PINS = [OutputDevice(22), OutputDevice(14), OutputDevice(4), OutputDevice(18)]
+SAG_MOTOR_PINS = [OutputDevice(22), OutputDevice(4), OutputDevice(14), OutputDevice(18)]
 
 # --- PARAMETRELER ---
 STEP_DELAY = 0.002  # Bu değeri 0.004 yaparak yavaşlatabilir ama kararlılığı artırabilirsiniz

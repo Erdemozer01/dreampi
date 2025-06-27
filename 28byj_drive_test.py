@@ -46,39 +46,19 @@ atexit.register(cleanup)
 
 # --- DÜŞÜK SEVİYE MOTOR KONTROLÜ ---
 
+def motor_adim_at(motor_pins, current_step_index, yon):
+    """Belirtilen motor için tek bir adım atar ve yeni adım endeksini döndürür."""
+    if yon == 'ileri':
+        new_step_index = (current_step_index + 1) % sequence_count
+    elif yon == 'geri':
+        new_step_index = (current_step_index - 1 + sequence_count) % sequence_count
+    else:  # 'dur' veya geçersiz yön
+        return current_step_index
 
-# YERİNE BU YENİ FONKSİYONU EKLEYİN:
+    for i in range(4):
+        motor_pins[i].value = step_sequence[new_step_index][i]
 
-def hareket_et(sol_yon, sag_yon, adim_sayisi):
-    """Her iki motoru daha optimize bir şekilde hareket ettirir."""
-    global sol_motor_step_index, sag_motor_step_index
-
-    print(f"{adim_sayisi} adim: Sol Motor -> {sol_yon}, Sağ Motor -> {sag_yon}")
-
-    for _ in range(adim_sayisi):
-        # Önce her iki motorun bir sonraki adımını hesapla
-        if sol_yon == 'ileri':
-            sol_motor_step_index = (sol_motor_step_index + 1) % sequence_count
-        elif sol_yon == 'geri':
-            sol_motor_step_index = (sol_motor_step_index - 1 + sequence_count) % sequence_count
-
-        if sag_yon == 'ileri':
-            sag_motor_step_index = (sag_motor_step_index + 1) % sequence_count
-        elif sag_yon == 'geri':
-            sag_motor_step_index = (sag_motor_step_index - 1 + sequence_count) % sequence_count
-
-        # İlgili adım sekanslarını al
-        sol_sequence_step = step_sequence[sol_motor_step_index]
-        sag_sequence_step = step_sequence[sag_motor_step_index]
-
-        # Tek bir blokta tüm pinleri ayarla (daha verimli)
-        for i in range(4):
-            if sol_yon != 'dur':
-                SOL_MOTOR_PINS[i].value = sol_sequence_step[i]
-            if sag_yon != 'dur':
-                SAG_MOTOR_PINS[i].value = sag_sequence_step[i]
-
-        time.sleep(STEP_DELAY)
+    return new_step_index
 
 
 # --- YÜKSEK SEVİYE KONTROL FONKSİYONLARI ---

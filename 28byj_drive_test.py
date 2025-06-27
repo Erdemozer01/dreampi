@@ -1,5 +1,4 @@
 import time
-import atexit # Bu import artık gereksiz ama kalmasında sakınca yok
 from gpiozero import OutputDevice, Device
 from gpiozero.pins.lgpio import LGPIOFactory
 
@@ -14,7 +13,7 @@ except Exception as e:
 SOL_MOTOR_PINS = [OutputDevice(25), OutputDevice(8), OutputDevice(7), OutputDevice(5)]
 # UYARI: GPIO 14 bir UART pinidir. Kullanmak için `sudo raspi-config` ile seri konsolu kapatmanız gerekir.
 # Veya bu listeyi [17, 27, 22, 23] gibi güvenli pinlerle değiştirin.
-SAG_MOTOR_PINS = [OutputDevice(22), OutputDevice(14), OutputDevice(4), OutputDevice(18)]
+SAG_MOTOR_PINS = [OutputDevice(22), OutputDevice(15), OutputDevice(4), OutputDevice(18)]
 
 # --- PARAMETRELER ---
 STEP_DELAY = 0.003
@@ -29,13 +28,11 @@ def cleanup():
     print("\nMotor pinleri kapatılıyor...")
     all_pins = SOL_MOTOR_PINS + SAG_MOTOR_PINS
     for pin in all_pins:
-        # Kapalı bir pini tekrar kapatmaya çalışmamak için kontrol ekleyebiliriz (isteğe bağlı)
-        if not pin.is_closed:
+        # DÜZELTME: 'is_closed' yerine 'closed' kullanıldı.
+        if not pin.closed:
             pin.off()
             pin.close()
     print("Temizleme tamamlandı.")
-
-# atexit.register(cleanup) # <- BU SATIRI SİLDİK, çünkü 'finally' bloğu aynı işi yapıyor.
 
 # --- ANA KONTROL FONKSİYONU ---
 def hareket_et(sol_yon, sag_yon, adim_sayisi):
@@ -71,7 +68,8 @@ def sola_don(adim_sayisi):
 def dur(saniye):
     all_pins = SOL_MOTOR_PINS + SAG_MOTOR_PINS
     for pin in all_pins:
-        pin.off()
+        if not pin.closed:
+            pin.off()
     print(f"{saniye} saniye duruluyor...")
     time.sleep(saniye)
 
@@ -99,4 +97,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n!!! TEST SIRASINDA KRİTİK BİR HATA OLUŞTU: {e}")
     finally:
+        # Kod bittiğinde veya hata verdiğinde her şeyi temizle
         cleanup()

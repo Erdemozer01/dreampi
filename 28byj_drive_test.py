@@ -112,7 +112,7 @@ try:
     # Bir tekerin tam turu için gereken adım sayısı (~2048)
     bir_tur = 2048
     # Aracın 90 derece dönmesi için gereken adım sayısı. Deneyerek bulmalısınız.
-    doksan_derece_donus = 512
+    doksan_derece_donus = 1024
 
     ileri_git(bir_tur)  # 1 tur ileri
     dur(1)

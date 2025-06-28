@@ -16,7 +16,7 @@ SOL_MOTOR_PINS = [OutputDevice(25), OutputDevice(8), OutputDevice(7), OutputDevi
 SAG_MOTOR_PINS = [OutputDevice(4), OutputDevice(22), OutputDevice(10), OutputDevice(9)]
 
 # --- PARAMETRELER ---
-STEP_DELAY = 0.003
+STEP_DELAY = 0.002
 step_sequence = [[1, 1, 0, 0], [0, 1, 1, 0], [0, 0, 1, 1], [1, 0, 0, 1]]
 sequence_count = len(step_sequence)
 

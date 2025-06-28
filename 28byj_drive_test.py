@@ -13,7 +13,7 @@ except Exception as e:
 SOL_MOTOR_PINS = [OutputDevice(25), OutputDevice(8), OutputDevice(7), OutputDevice(5)]
 # UYARI: GPIO 14 bir UART pinidir. Kullanmak için `sudo raspi-config` ile seri konsolu kapatmanız gerekir.
 # Veya bu listeyi [17, 27, 22, 23] gibi güvenli pinlerle değiştirin.
-SAG_MOTOR_PINS = [OutputDevice(4), OutputDevice(22), OutputDevice(18), OutputDevice(11)]
+SAG_MOTOR_PINS = [OutputDevice(4), OutputDevice(22), OutputDevice(18), OutputDevice(9)]
 
 # --- PARAMETRELER ---
 STEP_DELAY = 0.002

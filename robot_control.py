@@ -1,5 +1,5 @@
-# robot_control_stable.py
-# This version fixes the critical bug where tty.setcbreak was called in a loop.
+# FINAL RASPBERRY PI 5 CONTROL SCRIPT
+# This version is stable and includes an auto-stop safety feature.
 
 import sys
 import tty
@@ -8,32 +8,30 @@ import serial
 import time
 import select
 
-# --- Pico Connection Setup ---
-PICO_PORT = '/dev/ttyACM0'
+# --- CONFIGURATION ---
+PICO_PORT = '/dev/ttyACM0'  # Check this with `ls /dev/ttyACM*` if it fails
 BAUD_RATE = 115200
-pico_serial = None
 
+# --- PICO CONNECTION ---
+pico_serial = None
 try:
     pico_serial = serial.Serial(PICO_PORT, BAUD_RATE, timeout=1)
     print(f"Successfully connected to Pico on port {PICO_PORT}.")
-    time.sleep(2)
+    time.sleep(2)  # Give Pico a moment to initialize
 except serial.SerialException as e:
     print(f"ERROR: Could not connect to Pico. {e}")
     exit()
 
 
+# --- FUNCTIONS ---
 def send_command(command):
     """Encodes and sends a single character command to the Pico."""
     if pico_serial and pico_serial.is_open:
         pico_serial.write(command.encode('utf-8'))
 
 
-# --- Keyboard Reading Function ---
 def get_key_press():
-    """
-    Reads a single keystroke from the terminal.
-    This function now assumes the terminal is already in cbreak mode.
-    """
+    """Reads a single keystroke, including arrows, from the terminal."""
     if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
         char = sys.stdin.read(1)
         if char == '\x1b':  # Arrow key escape sequence
@@ -44,18 +42,18 @@ def get_key_press():
     return None
 
 
-# --- Main Program ---
-print("\n--- Robot Control Panel (Stable Version) ---")
-print("   Use arrow keys to move.")
-print("   Use SPACEBAR to stop.")
+# --- MAIN PROGRAM ---
+print("\n--- Robot Control Panel (Final Version) ---")
+print("   Use arrow keys to move (robot stops on release).")
+print("   Use SPACEBAR to stop immediately.")
 print("   Press 'q' to quit.")
 print("----------------------------------------------\n")
 
-# Save original terminal settings
+# Store original terminal settings
 old_settings = termios.tcgetattr(sys.stdin)
 
 try:
-    # Set terminal to cbreak mode ONLY ONCE before the loop starts.
+    # Set terminal to cbreak mode (reads keys instantly)
     tty.setcbreak(sys.stdin.fileno())
 
     last_sent_command = None
@@ -76,21 +74,20 @@ try:
         elif key == 'q':
             print("'q' pressed, exiting.")
             break
-
-        # If no key is pressed, the robot continues its last command.
-        # To make it stop when no key is pressed, uncomment the lines below.
-        # else:
-        #     if last_sent_command != 'S\n':
-        #         current_command = 'S\n'
+        else:
+            # If no key is being pressed, send the STOP command.
+            # This ensures the robot only moves while a key is active.
+            if last_sent_command != 'S\n':
+                current_command = 'S\n'
 
         if current_command and current_command != last_sent_command:
             send_command(current_command)
             last_sent_command = current_command
 
-        time.sleep(0.02)
+        time.sleep(0.05)  # Loop delay to prevent high CPU usage
 
 finally:
-    # Always restore original terminal settings when the program exits.
+    # Always restore terminal settings and stop the robot on exit
     print("Restoring terminal settings and sending STOP command.")
     send_command('S\n')
     if pico_serial and pico_serial.is_open:

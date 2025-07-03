@@ -1,6 +1,5 @@
-# robot_control_reliable.py
-# This version uses standard libraries (tty, termios) instead of the 'keyboard' library
-# to make it more reliable when running with sudo.
+# robot_control_corrected_keys.py
+# This version fixes the arrow key mapping issue.
 
 import sys
 import tty
@@ -29,33 +28,34 @@ def send_command(command):
         pico_serial.write(command.encode('utf-8'))
 
 
-# --- Keyboard Reading Function ---
-def get_key():
-    """Reads a single keystroke from the terminal without waiting for Enter."""
+# --- Keyboard Reading Functions ---
+def get_key_press():
+    """
+    Detects single key presses, including arrow keys, and returns a
+    simple, readable string like 'up', 'down', 'left', 'right', or ' '.
+    """
+    # Put terminal in cbreak mode to read keys instantly
+    tty.setcbreak(sys.stdin.fileno())
+
     # Check if there's input waiting
     if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
-        return sys.stdin.read(1)
-    return None
+        char = sys.stdin.read(1)
 
-
-def get_arrow_key():
-    """
-    Detects arrow key presses, which are multi-byte sequences.
-    e.g., Up Arrow is '\x1b', '[', 'A'
-    """
-    # Check for the initial escape character
-    if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
-        first_char = sys.stdin.read(1)
-        if first_char == '\x1b':  # Escape character
-            # Read the next two characters for the arrow key sequence
+        # Arrow keys send 3-character escape sequences (e.g., '\x1b[A')
+        if char == '\x1b':
             sequence = sys.stdin.read(2)
+            # --- THIS IS THE CORRECTED MAPPING ---
             key_map = {'[A': 'up', '[B': 'down', '[C': 'right', '[D': 'left'}
             return key_map.get(sequence)
+
+        # For other keys like spacebar or 'q'
+        return char
+
     return None
 
 
 # --- Main Program ---
-print("\n--- Robot Control Panel (Reliable Version) ---")
+print("\n--- Robot Control Panel (Keys Corrected) ---")
 print("   Use arrow keys to move.")
 print("   Use SPACEBAR to stop.")
 print("   Press 'q' to quit.")
@@ -65,46 +65,38 @@ print("----------------------------------------------\n")
 old_settings = termios.tcgetattr(sys.stdin)
 
 try:
-    # Put terminal in cbreak mode - reads keys instantly
-    tty.setcbreak(sys.stdin.fileno())
-
     last_sent_command = None
     while True:
-        key = get_arrow_key()
-        if not key:
-            # If it wasn't an arrow key, check for regular keys
-            key = get_key()
+        key = get_key_press()  # Use the combined function
 
         current_command = None
         if key == 'up':
-            current_command = 'F\n'
+            current_command = 'F\n'  # Forward
         elif key == 'down':
-            current_command = 'B\n'
+            current_command = 'B\n'  # Backward
         elif key == 'left':
-            current_command = 'L\n'
+            current_command = 'L\n'  # Turn Left
         elif key == 'right':
-            current_command = 'R\n'
+            current_command = 'R\n'  # Turn Right
         elif key == ' ':  # Spacebar
-            current_command = 'S\n'
+            current_command = 'S\n'  # Stop
         elif key == 'q':
             print("'q' pressed, exiting.")
             break
 
-        # If no key is pressed, we don't send anything,
-        # the robot continues with its last command from Pico.
-        # To make it stop when no key is pressed, uncomment the line below.
+        # To make the robot stop when no key is pressed, uncomment the lines below
         # else:
-        #     current_command = 'S\n'
+        #     if last_sent_command != 'S\n': # Send STOP only once
+        #          current_command = 'S\n'
 
         if current_command and current_command != last_sent_command:
             send_command(current_command)
             last_sent_command = current_command
 
-        # A short sleep to prevent high CPU usage
         time.sleep(0.02)
 
 finally:
-    # Always restore original terminal settings
+    # Always restore original terminal settings and stop the robot
     print("Restoring terminal settings and sending STOP command.")
     send_command('S\n')
     if pico_serial and pico_serial.is_open:

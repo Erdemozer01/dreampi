@@ -1,117 +1,81 @@
-# stepper_uln2003_test.py (Düzeltilmiş)
-from gpiozero import OutputDevice
-import time
+# Gerekli kütüphaneleri içe aktar
+import machine
+import utime
 
-
-IN1_PIN = 5
-IN2_PIN = 6
-IN3_PIN = 13
-IN4_PIN = 19
-
-# Half-step sequence
-step_sequence = [
-    [1, 0, 0, 0],
-    [1, 1, 0, 0],
-    [0, 1, 0, 0],
-    [0, 1, 1, 0],
-    [0, 0, 1, 0],
-    [0, 0, 1, 1],
-    [0, 0, 0, 1],
-    [1, 0, 0, 1]
+# --- Motor 1 Ayarları ---
+motor1_pins = [
+    machine.Pin(2, machine.Pin.OUT),
+    machine.Pin(3, machine.Pin.OUT),
+    machine.Pin(4, machine.Pin.OUT),
+    machine.Pin(5, machine.Pin.OUT)
 ]
 
-motor_pins = []
+# --- Motor 2 Ayarları ---
+motor2_pins = [
+    machine.Pin(16, machine.Pin.OUT),
+    machine.Pin(17, machine.Pin.OUT),
+    machine.Pin(18, machine.Pin.OUT),
+    machine.Pin(19, machine.Pin.OUT)
+]
+
+# --- Sensör Ayarları ---
+# Sensör (buton) için bir GPIO pini tanımla.
+# Pin.PULL_DOWN: Butona basılmadığında pin değeri 0 (LOW) olur.
+# Butona basıldığında 3.3V'a bağlanacağı için değeri 1 (HIGH) olur.
+sensor_pin = machine.Pin(15, machine.Pin.IN, machine.Pin.PULL_DOWN)
+
+# Step motorlar için adım dizisi (yarım adım - half-step)
+step_sequence = [
+    [1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0], [0, 1, 1, 0],
+    [0, 0, 1, 0], [0, 0, 1, 1], [0, 0, 0, 1], [1, 0, 0, 1]
+]
 
 
-def initialize_motor_pins():
-    """Motor pinlerini başlatır."""
-    global motor_pins
-    # Önceki pinleri temizle (eğer varsa ve açıksa)
-    for pin_obj in motor_pins:
-        if hasattr(pin_obj, 'close') and not pin_obj.closed:
-            pin_obj.close()
-    motor_pins = [
-        OutputDevice(IN1_PIN),
-        OutputDevice(IN2_PIN),
-        OutputDevice(IN3_PIN),
-        OutputDevice(IN4_PIN)
-    ]
-    print("Motor pinleri başlatıldı.")
+def move_motor(motor_pins, steps, direction, delay_ms):
+    """
+    Belirtilen motoru, belirtilen adım sayısı ve yönde hareket ettirir.
+    """
+    steps_in_sequence = len(step_sequence)
+    current_step = 0
+
+    for _ in range(steps):
+        current_step = (current_step + direction) % steps_in_sequence
+        for i in range(len(motor_pins)):
+            motor_pins[i].value(step_sequence[current_step][i])
+        utime.sleep_ms(delay_ms)
+
+    # Motoru durdurmak için tüm pinleri kapat
+    for pin in motor_pins:
+        pin.value(0)
 
 
-def cleanup_pins():
-    """Tüm motor pinlerini kapatır."""
-    global motor_pins
-    print("Motor pinleri temizleniyor...")
-    for pin_obj in motor_pins:
-        try:
-            if not pin_obj.closed:  # Pin hala açıksa kapat
-                pin_obj.off()
-                pin_obj.close()
-        except Exception as e:
-            print(f"Pin temizlenirken hata ({pin_obj.pin if hasattr(pin_obj, 'pin') else 'bilinmiyor'}): {e}")
-    motor_pins = []  # Listeyi temizle
-    print("Motor pinleri temizlendi.")
-
-
-def motor_step(step_idx):
-    """Motoru verilen adıma göre sürer."""
-    global motor_pins
-    if not motor_pins:  # Pinler başlatılmamışsa bir şey yapma
-        print("Hata: Motor pinleri başlatılmamış!")
-        return
-
-    for i in range(4):
-        try:
-            if not motor_pins[i].closed:  # Sadece açık pinlere yaz
-                if step_sequence[step_idx][i] == 1:
-                    motor_pins[i].on()
-                else:
-                    motor_pins[i].off()
-            # else:
-            #     print(f"Uyarı: Pin {motor_pins[i].pin} kapalı, yazma atlandı.")
-        except Exception as e:
-            print(f"motor_step içinde pin {i} yazılırken hata: {e}")
-
-
-# --- Ana Test Döngüsü ---
+# --- Ana Program Döngüsü ---
 if __name__ == "__main__":
-    print("Step Motor ULN2003 Testi Başlıyor...")
-    print(f"Kullanılan GPIO Pinleri: IN1={IN1_PIN}, IN2={IN2_PIN}, IN3={IN3_PIN}, IN4={IN4_PIN}")
+    print("Sensör kontrollü motor programı başlatıldı.")
+    print("Motorları çalıştırmak için sensörü (butonu) tetikleyin...")
 
-    initialize_motor_pins()  # Pinleri burada başlat
+    motor_speed_delay = 2
+    quarter_turn = 1024
 
-    steps_per_revolution_half_step = 4096
-    step_delay = 0.0015  # Biraz yavaşlatalım, 0.001 çok hızlı olabilir
+    while True:
+        # Sensörün tetiklenmesini bekle (butonun basılmasını kontrol et)
+        if sensor_pin.value() == 1:
+            print("Sensör tetiklendi! Hareket başlıyor...")
 
-    current_step_index = 0  # Sekans içindeki adım indeksi
+            # Motor 1'i hareket ettir
+            print("--> Motor 1 saat yönünde çeyrek tur dönüyor...")
+            move_motor(motor1_pins, quarter_turn, 1, motor_speed_delay)
+            utime.sleep(0.5)  # İki motor arasında kısa bir bekleme
 
-    try:
-        print("\nMotor saat yönünde bir devir dönecek...")
-        for _ in range(steps_per_revolution_half_step):
-            motor_step(current_step_index)
-            current_step_index = (current_step_index + 1) % len(step_sequence)  # Sekans içinde dön
-            time.sleep(step_delay)
+            # Motor 2'yi hareket ettir
+            print("--> Motor 2 saat yönünde çeyrek tur dönüyor...")
+            move_motor(motor2_pins, quarter_turn, 1, motor_speed_delay)
 
-        print("Saat yönünde dönüş tamamlandı.")
-        time.sleep(1)  # İki dönüş arasında kısa bir bekleme
+            print("\nHareket tamamlandı. Yeni tetikleme bekleniyor...")
 
-        print("\nMotor saat yönünün tersine bir devir dönecek...")
-        for _ in range(steps_per_revolution_half_step):
-            # current_step_index'i azaltarak ters yönde git
-            current_step_index = (current_step_index - 1 + len(step_sequence)) % len(step_sequence)
-            motor_step(current_step_index)
-            time.sleep(step_delay)
+            # Butonun bırakılmasını bekle (çoklu tetiklemeyi önlemek için)
+            while sensor_pin.value() == 1:
+                utime.sleep_ms(50)
 
-        print("\nTest tamamlandı!")
-
-    except KeyboardInterrupt:
-        print("\nTest kullanıcı tarafından durduruldu.")
-    except Exception as e:
-        print(f"Test sırasında bir hata oluştu: {e}")
-        # Hata oluştuğunda traceback'i görmek için:
-        # import traceback
-        # traceback.print_exc()
-    finally:
-        cleanup_pins()  # Pinleri SADECE en sonda temizle
-        print("Program sonlandı.")
+        # CPU'yu yormamak için döngüde küçük bir bekleme
+        utime.sleep_ms(10)

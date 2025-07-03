@@ -38,6 +38,7 @@ except Exception as e:
     sys.exit(1)
 
 # --- DONANIM KÜTÜPHANELERİ ---
+
 try:
     from gpiozero import DistanceSensor, LED, Buzzer, OutputDevice
     from RPLCD.i2c import CharLCD

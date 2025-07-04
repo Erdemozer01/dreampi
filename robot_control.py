@@ -8,33 +8,33 @@ import serial
 import time
 import select
 
-# --- CONFIGURATION ---
-PICO_PORT = '/dev/ttyACM0'  # Check this with `ls /dev/ttyACM*` if it fails
+# --- AYARLAR (CONFIGURATION) ---
+PICO_PORT = '/dev/ttyACM0'  # Hata alırsanız `ls /dev/ttyACM*` komutuyla kontrol edin
 BAUD_RATE = 115200
 
-# --- PICO CONNECTION ---
+# --- PICO BAĞLANTISI (PICO CONNECTION) ---
 pico_serial = None
 try:
     pico_serial = serial.Serial(PICO_PORT, BAUD_RATE, timeout=1)
-    print(f"Successfully connected to Pico on port {PICO_PORT}.")
-    time.sleep(2)  # Give Pico a moment to initialize
+    print(f"Pico'ya {PICO_PORT} portundan başarıyla bağlanıldı.")
+    time.sleep(2)  # Pico'nun kendine gelmesi için kısa bir bekleme
 except serial.SerialException as e:
-    print(f"ERROR: Could not connect to Pico. {e}")
+    print(f"HATA: Pico'ya bağlanılamadı. {e}")
     exit()
 
 
-# --- FUNCTIONS ---
+# --- FONKSİYONLAR (FUNCTIONS) ---
 def send_command(command):
-    """Encodes and sends a single character command to the Pico."""
+    """Komutu Pico'ya gönderir."""
     if pico_serial and pico_serial.is_open:
         pico_serial.write(command.encode('utf-8'))
 
 
 def get_key_press():
-    """Reads a single keystroke, including arrows, from the terminal."""
+    """Terminalden ok tuşları dahil tek bir tuş basımını okur."""
     if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
         char = sys.stdin.read(1)
-        if char == '\x1b':  # Arrow key escape sequence
+        if char == '\x1b':  # Ok tuşları 3 karakterli bir kod gönderir, bu ilk karakterdir.
             sequence = sys.stdin.read(2)
             key_map = {'[A': 'up', '[B': 'down', '[C': 'right', '[D': 'left'}
             return key_map.get(sequence)
@@ -42,18 +42,18 @@ def get_key_press():
     return None
 
 
-# --- MAIN PROGRAM ---
-print("\n--- Robot Control Panel (Final Version) ---")
-print("   Use arrow keys to move (robot stops on release).")
-print("   Use SPACEBAR to stop immediately.")
-print("   Press 'q' to quit.")
+# --- ANA PROGRAM (MAIN PROGRAM) ---
+print("\n--- Robot Kontrol Paneli (Nihai Versiyon) ---")
+print("   Hareket için ok tuşlarını kullanın (tuşu bırakınca durur).")
+print("   Anında durmak için SPACEBAR tuşuna basın.")
+print("   Çıkmak için 'q' tuşuna basın.")
 print("----------------------------------------------\n")
 
-# Store original terminal settings
+# Orijinal terminal ayarlarını kaydet
 old_settings = termios.tcgetattr(sys.stdin)
 
 try:
-    # Set terminal to cbreak mode (reads keys instantly)
+    # Terminali anlık okuma moduna al (her tuş basımını anında yakalar)
     tty.setcbreak(sys.stdin.fileno())
 
     last_sent_command = None
@@ -62,33 +62,36 @@ try:
 
         current_command = None
         if key == 'up':
-            current_command = 'F\n'  # Forward
+            current_command = 'F\n'  # İleri
         elif key == 'down':
-            current_command = 'B\n'  # Backward
+            current_command = 'B\n'  # Geri
         elif key == 'left':
-            current_command = 'L\n'  # Turn Left
+            current_command = 'L\n'  # Sola Dön
         elif key == 'right':
-            current_command = 'R\n'  # Turn Right
-        elif key == ' ':  # Spacebar
-            current_command = 'S\n'  # Stop
+            current_command = 'R\n'  # Sağa Dön
+        elif key == ' ':  # Boşluk tuşu
+            current_command = 'S\n'  # Dur
         elif key == 'q':
-            print("'q' pressed, exiting.")
+            print("'q' tuşuna basıldı, çıkılıyor.")
             break
         else:
-            # If no key is being pressed, send the STOP command.
-            # This ensures the robot only moves while a key is active.
+            # ÖNEMLİ GÜVENLİK ÖZELLİĞİ: Eğer hiçbir tuşa basılmıyorsa,
+            # robota sürekli 'Dur' komutu gönderilir.
+            # Bu, robotun siz tuşu bırakınca durmasını sağlar.
             if last_sent_command != 'S\n':
                 current_command = 'S\n'
 
+        # Aynı komutu sürekli göndermemek için kontrol et
         if current_command and current_command != last_sent_command:
             send_command(current_command)
             last_sent_command = current_command
 
-        time.sleep(0.05)  # Loop delay to prevent high CPU usage
+        # İşlemciyi yormamak için kısa bir bekleme
+        time.sleep(0.05)
 
 finally:
-    # Always restore terminal settings and stop the robot on exit
-    print("Restoring terminal settings and sending STOP command.")
+    # Programdan çıkarken her zaman terminali eski haline getir ve robotu durdur
+    print("Terminal ayarları geri yükleniyor ve DUR komutu gönderiliyor.")
     send_command('S\n')
     if pico_serial and pico_serial.is_open:
         pico_serial.close()

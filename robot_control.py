@@ -1,5 +1,5 @@
 # FINAL RASPBERRY PI 5 CONTROL SCRIPT
-# This version is stable, safe, and reliable for this project.
+# This is the definitive, stable version for controlling the robot.
 
 import sys
 import tty
@@ -9,7 +9,8 @@ import time
 import select
 
 # --- CONFIGURATION ---
-PICO_PORT = '/dev/ttyACM0'  # If it fails, check with `ls /dev/ttyACM*`
+# If the script fails to connect, check this port with `ls /dev/ttyACM*`
+PICO_PORT = '/dev/ttyACM0'
 BAUD_RATE = 115200
 
 # --- PICO CONNECTION ---
@@ -19,22 +20,24 @@ try:
     print(f"Pico'ya {PICO_PORT} portundan başarıyla bağlanıldı.")
     time.sleep(2)  # Give Pico a moment to initialize
 except serial.SerialException as e:
-    print(f"HATA: Pico'ya bağlanılamadı. {e}")
+    print(f"HATA: Pico'ya bağlanılamadı. Pico'nun bağlı ve doğru portta olduğundan emin olun. {e}")
     exit()
 
 
 # --- FUNCTIONS ---
 def send_command(command):
-    """Sends the command to the Pico."""
+    """Encodes and sends the command to the Pico."""
     if pico_serial and pico_serial.is_open:
         pico_serial.write(command.encode('utf-8'))
 
 
 def get_key_press():
-    """Reads a single keystroke, including arrows, from the terminal."""
+    """Reads a single keystroke, including arrow keys, from the terminal."""
+    # Check if there is data to be read on stdin
     if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
         char = sys.stdin.read(1)
-        if char == '\x1b':  # Arrow keys send a 3-char escape sequence
+        # Arrow keys send a 3-character escape sequence (e.g., '\x1b[A')
+        if char == '\x1b':
             sequence = sys.stdin.read(2)
             key_map = {'[A': 'up', '[B': 'down', '[C': 'right', '[D': 'left'}
             return key_map.get(sequence)
@@ -43,17 +46,17 @@ def get_key_press():
 
 
 # --- MAIN PROGRAM ---
-print("\n--- Robot Control Panel (Final Version) ---")
-print("   Use arrow keys to move (robot stops on release).")
-print("   Use SPACEBAR to stop immediately.")
-print("   Press 'q' to quit.")
+print("\n--- Robot Kontrol Paneli (Nihai Versiyon) ---")
+print("   Hareket için ok tuşlarını kullanın (tuşu bırakınca durur).")
+print("   Anında durmak için SPACEBAR tuşuna basın.")
+print("   Çıkmak için 'q' tuşuna basın.")
 print("----------------------------------------------\n")
 
-# Store original terminal settings
+# Store original terminal settings to restore them on exit
 old_settings = termios.tcgetattr(sys.stdin)
 
 try:
-    # Set terminal to cbreak mode (reads keys instantly)
+    # Set terminal to cbreak mode (reads keys instantly without needing Enter)
     tty.setcbreak(sys.stdin.fileno())
 
     last_sent_command = None
@@ -76,14 +79,17 @@ try:
             break
         else:
             # Safety Feature: If no key is being pressed, send STOP.
+            # This ensures the robot only moves while a key is active.
             if last_sent_command != 'S\n':
                 current_command = 'S\n'
 
+        # Send the command only if it has changed, to avoid flooding the serial port
         if current_command and current_command != last_sent_command:
             send_command(current_command)
             last_sent_command = current_command
 
-        time.sleep(0.05)  # Loop delay to prevent high CPU usage
+        # A short delay to prevent high CPU usage
+        time.sleep(0.05)
 
 finally:
     # Always restore terminal and stop the robot on exit

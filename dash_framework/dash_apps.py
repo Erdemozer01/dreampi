@@ -40,7 +40,7 @@ load_dotenv()
 # --- SABİTLER VE UYGULAMA BAŞLATMA ---
 SENSOR_SCRIPT_FILENAME = 'sensor_script.py'
 SENSOR_SCRIPT_PATH = os.path.join(os.getcwd(), SENSOR_SCRIPT_FILENAME)
-AUTONOMOUS_SCRIPT_FILENAME = 'autonomous_drive.py'
+AUTONOMOUS_SCRIPT_FILENAME = 'autonomous_drive_pi5.py'
 AUTONOMOUS_SCRIPT_PATH = os.path.join(os.getcwd(), AUTONOMOUS_SCRIPT_FILENAME)
 
 SENSOR_SCRIPT_PID_FILE = '/tmp/sensor_scan_script.pid'

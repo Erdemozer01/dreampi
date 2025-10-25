@@ -21,6 +21,11 @@ import serial
 from gpiozero import DistanceSensor, OutputDevice, Device
 from gpiozero.pins.lgpio import LGPIOFactory
 
+try:
+    from gpiozero.pins.pigpio import PiGPIOFactory
+except ImportError:
+    PiGPIOFactory = None
+
 # Pi 5 için LGPIO kullan
 try:
     Device.pin_factory = LGPIOFactory()

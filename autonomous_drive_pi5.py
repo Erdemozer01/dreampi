@@ -172,6 +172,23 @@ def cleanup_on_exit():
         stop_step_motors_local()
         logging.info("Tarama motorları durduruldu.")
 
+        # Motor pinlerini temizle
+        if vertical_scan_motor_devices:
+            for pin in vertical_scan_motor_devices:
+                try:
+                    pin.close()
+                except:
+                    pass
+
+        if horizontal_scan_motor_devices:
+            for pin in horizontal_scan_motor_devices:
+                try:
+                    pin.close()
+                except:
+                    pass
+
+        logging.info("Motor pinleri temizlendi.")
+
         if pico and pico.is_open:
             try:
                 pico.write(b"STOP_ALL\n")
@@ -183,6 +200,14 @@ def cleanup_on_exit():
     except Exception as e:
         logging.error(f"Donanım durdurulurken hata: {e}")
     finally:
+        # Pin factory'yi temizle
+        try:
+            if Device.pin_factory:
+                Device.pin_factory.close()
+                logging.info("Pin factory kapatıldı.")
+        except:
+            pass
+
         pid_file = CONFIG['autonomous_script_pid_file']
         if os.path.exists(pid_file):
             os.remove(pid_file)

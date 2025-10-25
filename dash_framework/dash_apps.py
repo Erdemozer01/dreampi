@@ -553,7 +553,7 @@ def handle_start_stop_operations(start_clicks, stop_clicks, mode, h_angle, h_ste
     elif button_id == "stop-button":
         return stop_current_operation(mode)
 
-    return no_update, no_update, no_update, no
+    return no_update, no_update, no_update, no_update
 
 
 # 4. AI Modeli Dropdown Doldurma

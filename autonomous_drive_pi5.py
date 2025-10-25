@@ -208,17 +208,37 @@ def setup_hardware():
         start_wait = time.time()
         ready_received = False
 
-        while time.time() - start_wait < 10:
+        while time.time() - start_wait < 15:
             if pico.in_waiting > 0:
-                response = pico.readline().decode('utf-8').strip()
-                logging.info(f"Pico'dan mesaj: '{response}'")
-                if "Hazir" in response:
-                    ready_received = True
-                    break
+                try:
+                    response = pico.readline().decode('utf-8', errors='ignore').strip()
+                    logging.info(f"Pico'dan mesaj: '{response}'")
+                    # Farklı mesaj formatlarını kontrol et
+                    if "Hazir" in response or "PICO" in response or "MOTOR" in response or "hazir" in response.lower():
+                        ready_received = True
+                        break
+                except Exception as e:
+                    logging.warning(f"Mesaj okuma hatası: {e}")
             time.sleep(0.1)
 
         if not ready_received:
-            logging.error("Pico 'Hazir' mesajı göndermedi!")
+            logging.warning("⚠️ Pico 'Hazir' mesajı göndermedi, ancak devam ediliyor...")
+            logging.warning("   Pico zaten çalışıyor olabilir. Test ediliyor...")
+            # Test komutu gönder
+            try:
+                pico.write(b"STOP_DRIVE\n")
+                time.sleep(0.5)
+                if pico.in_waiting > 0:
+                    response = pico.readline().decode('utf-8', errors='ignore').strip()
+                    logging.info(f"   Test yanıtı: '{response}'")
+                    if response in ["ACK", "DONE", "OK"]:
+                        logging.info("   ✓ Pico çalışıyor!")
+                        ready_received = True
+            except:
+                pass
+
+        if not ready_received:
+            logging.error("❌ Pico ile iletişim kurulamadı!")
             raise Exception("Pico başlatılamadı")
 
         logging.info("✓ Pico başarıyla bağlandı.")

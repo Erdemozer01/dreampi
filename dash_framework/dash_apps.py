@@ -128,10 +128,12 @@ def stop_current_operation(mode):
     # DÜZELTME: Callback artık 4 değer beklediği için dördüncü değeri ekliyoruz (interval'i durdur).
     return html.Span([html.I(className="fa-solid fa-play me-2"), "Başlat"]), False, True, True
 
+
 def start_mapping_mode(h_angle, h_step, v_angle, v_step, buzzer_dist):
     try:
         stop_all_scripts()
-        cmd = [sys.executable, SENSOR_SCRIPT_PATH, "--h-angle", str(h_angle), "--h-step", str(h_step), "--v-angle", str(v_angle), "--v-step", str(v_step), "--buzzer-distance", str(buzzer_dist)]
+        cmd = [sys.executable, SENSOR_SCRIPT_PATH, "--h-angle", str(h_angle), "--h-step", str(h_step), "--v-angle",
+               str(v_angle), "--v-step", str(v_step), "--buzzer-distance", str(buzzer_dist)]
         log_file = open("sensor_script_live.log", "w")
         subprocess.Popen(cmd, stdout=log_file, stderr=log_file, start_new_session=True)
         # DÜZELTME: Callback artık 4 değer beklediği için dördüncü değeri ekliyoruz (interval'i başlat).
@@ -420,7 +422,8 @@ stats_panel = dbc.Card([dbc.CardHeader([html.I(className="fa-solid fa-gauge-simp
 
 system_card = dbc.Card(
     [dbc.CardHeader([html.I(className="fa-solid fa-microchip me-2"), "Sistem Durumu"]), dbc.CardBody([
-        dbc.Row([dbc.Col(html.Div([html.H6("Tarama Betiği:"), html.H5(id='script-status', children="Beklemede")]))],
+        dbc.Row([dbc.Col(html.Div([html.H6("Çalışan Betik:"), html.H5(id='script-status', children="Beklemede")]))],
+                # DÜZELTME: Başlık
                 className="mb-2"),
         dbc.Row([
             dbc.Col(html.Div([html.H6("CPU Kullanımı:"),
@@ -525,7 +528,7 @@ def toggle_mode_parameters(selected_mode):
     [Output("start-button", "children"),
      Output("start-button", "disabled"),
      Output("stop-button", "disabled"),
-     Output("interval-component-main", "disabled")], # DÜZELTME: Eksik olan çıktı eklendi
+     Output("interval-component-main", "disabled")],  # DÜZELTME: Eksik olan çıktı eklendi
     [Input("start-button", "n_clicks"),
      Input("stop-button", "n_clicks")],
     [State("operation-mode", "value"),
@@ -566,7 +569,7 @@ def populate_ai_model_dropdown(n):
     return [], True, "Aktif AI Modeli Bulunamadı"
 
 
-# 5. Sistem Durum Kartı Güncelleme
+# 5. Sistem Durum Kartı Güncelleme (DÜZELTİLDİ)
 @app.callback(
     [Output('script-status', 'children'), Output('script-status', 'className'), Output('cpu-usage', 'value'),
      Output('cpu-usage', 'label'), Output('ram-usage', 'value'), Output('ram-usage', 'label')],
@@ -574,16 +577,43 @@ def populate_ai_model_dropdown(n):
 )
 def update_system_card(n):
     pid_val, status_text, status_class = None, "Beklemede", "text-warning"
-    if os.path.exists(SENSOR_SCRIPT_PID_FILE):
+
+    # Düzeltme: Her iki PID dosyasını da kontrol et
+    sensor_pid_file = SENSOR_SCRIPT_PID_FILE
+    auto_pid_file = AUTONOMOUS_SCRIPT_PID_FILE
+
+    pid_to_check = None
+    script_name = ""
+
+    # Hangi betiğin PID dosyası mevcut?
+    if os.path.exists(sensor_pid_file):
+        pid_to_check = sensor_pid_file
+        script_name = "Haritalama"
+    elif os.path.exists(auto_pid_file):
+        pid_to_check = auto_pid_file
+        script_name = "Otonom Sürüş"
+
+    # Eğer bir PID dosyası bulunduysa, o işlemi kontrol et
+    if pid_to_check:
         try:
-            with open(SENSOR_SCRIPT_PID_FILE, 'r') as pf:
-                pid_val = int(pf.read().strip())
+            with open(pid_to_check, 'r') as pf:
+                content = pf.read().strip()
+                if content:
+                    pid_val = int(content)
         except (IOError, ValueError):
             pid_val = None
+
+    # PID değerini ve işlemin durumunu kontrol et
     if pid_val and is_process_running(pid_val):
-        status_text, status_class = f"Çalışıyor (PID:{pid_val})", "text-success"
+        status_text, status_class = f"{script_name} Çalışıyor (PID:{pid_val})", "text-success"
     else:
-        status_text, status_class = "Çalışmıyor", "text-danger"
+        # PID dosyası var ama işlem çalışmıyorsa (eski kalıntı dosya veya hata)
+        if pid_to_check:
+            status_text, status_class = "Hata/Durduruldu", "text-danger"
+        # Hiçbir PID dosyası yoksa
+        else:
+            status_text, status_class = "Beklemede", "text-warning"
+
     cpu, ram = psutil.cpu_percent(interval=0.1), psutil.virtual_memory().percent
     return status_text, status_class, cpu, f"{cpu:.1f}%", ram, f"{ram:.1f}%"
 
@@ -657,7 +687,6 @@ def render_and_update_data_table(active_tab, points_json):
                                 page_size=20, sort_action="native", filter_action="native", virtualization=True,
                                 fixed_rows={'headers': True}, style_table={'minHeight': '65vh', 'overflowY': 'auto'},
                                 style_cell={'textAlign': 'left'}, style_header={'fontWeight': 'bold'})
-
 
 
 @app.callback(
@@ -779,7 +808,6 @@ def update_all_graphs_and_analytics(scan_json, points_json):
     return fig_3d, fig_2d, fig_polar, analysis_report_component, store_data, area, perim, width, depth
 
 
-
 # 12. 2D haritadaki bir noktaya tıklandığında kümeleme bilgilerini gösterir
 @app.callback(
     [Output("cluster-info-modal", "is_open"), Output("modal-title", "children"), Output("modal-body", "children")],
@@ -850,3 +878,4 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
         traceback.print_exc()
         safe_error_message = str(e).encode('ascii', 'ignore').decode('ascii')
         return dbc.Alert(f"Hata: {safe_error_message}", color="danger"), None
+

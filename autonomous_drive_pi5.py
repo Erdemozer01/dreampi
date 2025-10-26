@@ -175,7 +175,7 @@ def reactive_decide_and_act(best_h_angle, max_distance):
 
 def main_reactive():
     """Reaktif navigasyon ana döngüsü"""
-    atexit.register(cleanup_on_exit)
+    anext.register(cleanup_on_exit)
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
     create_pid_file()

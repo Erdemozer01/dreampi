@@ -22,10 +22,6 @@ import django
 from gpiozero import DistanceSensor, OutputDevice, Device
 from gpiozero.pins.lgpio import LGPIOFactory
 
-# Django'yu başlat
-sys.path.append('/home/pi')
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'dream_pi.settings')
-django.setup()
 
 from scanner.models import Scan, ScanPoint
 

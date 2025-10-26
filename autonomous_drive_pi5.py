@@ -1,4 +1,4 @@
-# autonomous_drive_pi5.py - Pi 5 (Beyin) -> Pico (Kas) Sürümü - DÜZELTİLMİŞ
+# autonomous_drive_pi5.py - Pi 5 (Beyin) -> Pico W (Kas) Sürümü - WIFI TCP
 # Proaktif ve Akıllı Navigasyon Betiği
 
 import math
@@ -15,7 +15,7 @@ import json
 import fcntl
 import queue
 from pathlib import Path
-import serial
+import socket  # GÜNCELLENDİ (serial yerine)
 
 import django
 
@@ -40,9 +40,12 @@ except Exception as e:
 CONFIG_FILE = '/home/pi/robot_config.json'
 DEFAULT_CONFIG = {
     "autonomous_script_pid_file": "/tmp/autonomous_drive_script.pid",
-    "pico_serial_port": "/dev/ttyACM0",
-    "pico_baud_rate": 115200,
-    "pico_response_timeout": 3.0,  # ✅ 2 saniyeye düşürüldü
+
+    # --- PICO İLETİŞİM (WIFI TCP) ---
+    "pico_ip_address": "192.168.1.123",  # <-- PICO W'NUN IP ADRESİNİ BURAYA YAZIN
+    "pico_tcp_port": 8888,
+    "pico_response_timeout": 5.0,  # ✅ Ağ gecikmeleri için 5 saniyeye çıkarıldı
+
     "h_pin_trig": 23,
     "h_pin_echo": 24,
     "v_pin_trig": 17,
@@ -81,11 +84,15 @@ current_scan = None
 point_counter = 0
 current_heading = 0.0  # ✅ Robot yönü takibi
 
-pico: serial.Serial = None
+# PICO İLETİŞİM (TCP) - GÜNCELLENDİ
+pico_socket: socket.socket = None
+pico_reader = None  # File-like object for reading
+pico_writer = None  # File-like object for writing
+pico_comm_lock = threading.Lock()  # GÜNCELLENDİ (isim)
+
 h_sensor: DistanceSensor = None
 v_sensor: DistanceSensor = None
 stop_event = threading.Event()
-pico_lock = threading.Lock()
 
 vertical_scan_motor_devices: tuple = None
 horizontal_scan_motor_devices: tuple = None
@@ -125,7 +132,10 @@ def load_config():
             with open(CONFIG_FILE, 'r') as f:
                 config = json.load(f)
                 logging.info(f"Konfigürasyon yüklendi: {CONFIG_FILE}")
-                return config
+                # Varsayılanlar ile birleştir (yeni eklenenler için)
+                default_with_user = DEFAULT_CONFIG.copy()
+                default_with_user.update(config)
+                return default_with_user
         except Exception as e:
             logging.error(f"Konfigürasyon yüklenemedi: {e}")
 
@@ -158,6 +168,40 @@ def create_pid_file():
         logging.info(f"PID dosyası oluşturuldu: {os.getpid()}")
     except IOError as e:
         logging.error(f"PID dosyası oluşturulamadı: {e}")
+
+
+def close_pico_connection():
+    """Pico soket bağlantısını güvenle kapatır"""
+    global pico_socket, pico_reader, pico_writer
+
+    with pico_comm_lock:
+        if pico_socket:
+            logging.info("Pico bağlantısı kapatılıyor...")
+            try:
+                # Önce yazıcıyı kapat
+                if pico_writer:
+                    pico_writer.close()
+            except:
+                pass
+            try:
+                # Sonra okuyucuyu kapat
+                if pico_reader:
+                    pico_reader.close()
+            except:
+                pass
+            try:
+                # Son olarak soketi kapat
+                pico_socket.sendall(b"STOP_ALL\n")  # Kapatmadan önce durdur
+                time.sleep(0.1)
+                pico_socket.shutdown(socket.SHUT_RDWR)
+                pico_socket.close()
+            except Exception as e:
+                logging.debug(f"Soket kapatılırken hata: {e}")
+
+            pico_socket = None
+            pico_reader = None
+            pico_writer = None
+            logging.info("Pico bağlantısı kapatıldı.")
 
 
 def cleanup_on_exit():
@@ -209,18 +253,11 @@ def cleanup_on_exit():
                     pin.close()
                 except:
                     pass
-
         logging.info("Motor pinleri temizlendi.")
 
-        # Pico'yu kapat
-        if pico and pico.is_open:
-            try:
-                pico.write(b"STOP_ALL\n")
-                time.sleep(0.1)
-                pico.close()
-                logging.info("Pico bağlantısı kapatıldı.")
-            except:
-                pass
+        # Pico'yu kapat (GÜNCELLENDİ)
+        close_pico_connection()
+
     except Exception as e:
         logging.error(f"Donanım durdurulurken hata: {e}")
     finally:
@@ -314,103 +351,59 @@ def finish_scan_session():
         logging.error(f"Tarama sonlandırılamadı: {e}")
 
 
-
-# --- SERIAL PORT OTOMATİK TESPİT ---
-def find_pico_serial_port():
-    """Pico'nun bağlı olduğu serial portu otomatik bul"""
-    import glob
-
-    possible_ports = [
-        CONFIG.get('pico_serial_port', '/dev/ttyACM0'),  # Config'den
-        '/dev/ttyACM0', '/dev/ttyACM1', '/dev/ttyACM2',
-        '/dev/ttyUSB0', '/dev/ttyUSB1', '/dev/ttyUSB2',
-        '/dev/serial0', '/dev/serial1'
-    ]
-
-    # Glob ile mevcut portları ekle
-    for pattern in ['/dev/ttyACM*', '/dev/ttyUSB*']:
-        try:
-            possible_ports.extend(glob.glob(pattern))
-        except:
-            pass
-
-    # Unique yap
-    possible_ports = list(set(possible_ports))
-
-    logging.info(f"Serial port aranıyor... Denenen portlar: {possible_ports}")
-
-    for port in possible_ports:
-        if not os.path.exists(port):
-            continue
-
-        try:
-            logging.info(f"Deneniyor: {port}")
-            test_serial = serial.Serial(
-                port,
-                CONFIG['pico_baud_rate'],
-                timeout=1.0
-            )
-            time.sleep(0.5)
-            test_serial.reset_input_buffer()
-            test_serial.close()
-            logging.info(f"✓ Port bulundu: {port}")
-            return port
-        except (OSError, serial.SerialException) as e:
-            logging.debug(f"  {port} kullanılamadı: {e}")
-            continue
-
-    logging.error("❌ Hiçbir serial port bulunamadı!")
-    return None
+# --- SERIAL PORT OTOMATİK TESPİT (KALDIRILDI) ---
+# find_pico_serial_port fonksiyonu kaldırıldı
 
 
-# --- DONANIM BAŞLATMA ---
-# --- DONANIM BAŞLATMA ---
+# --- DONANIM BAŞLATMA (TCP SOKET İÇİN YENİLENDİ) ---
 def setup_hardware():
-    """Enhanced hardware setup with robust Pico communication"""
-    global pico, h_sensor, v_sensor
+    """Pico W'ya WiFi üzerinden bağlanır ve diğer donanımları başlatır"""
+    global pico_socket, pico_reader, pico_writer, h_sensor, v_sensor
     global vertical_scan_motor_devices, horizontal_scan_motor_devices
 
     try:
-        # 1. FIND PICO PORT
-        pico_port = find_pico_serial_port()
-        if not pico_port:
-            raise Exception("Pico serial port not found!")
+        # 1. PICO W'YA BAĞLAN
+        pico_ip = CONFIG['pico_ip_address']
+        pico_port = CONFIG['pico_tcp_port']
 
-        logging.info(f"Connecting to Pico: {pico_port}")
+        logging.info(f"Connecting to Pico W at {pico_ip}:{pico_port}...")
 
-        # 2. OPEN CONNECTION WITH PROPER TIMEOUTS
-        pico = serial.Serial(
-            pico_port,
-            CONFIG['pico_baud_rate'],
-            timeout=1.0,  # Read timeout (bu, komutlar için ayarlanacak)
-            write_timeout=5.0  # Write timeout
-        )
+        # Soket oluştur
+        pico_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-        # 3. CRITICAL (DÜZELTİLDİ): Pico'nun 'READY' sinyalini bekleyin
-        # Kör bir 'sleep' yerine, Pico'nun hazır olduğunu bildirmesini dinleyin.
-        logging.info("Waiting for Pico 'PICO_READY' signal...")
+        # Bağlantı için 15sn zaman aşımı ayarla
+        pico_socket.settimeout(15.0)
 
-        # Pico'nun önyüklemesi ve TMC sürücülerini ayarlaması için cömert bir zaman aşımı
-        pico.timeout = 15.0
+        pico_socket.connect((pico_ip, pico_port))
+
+        # Kolay okuma/yazma için file-like objeler oluştur
+        # 'w' (yazma) için buffering=1 (satır tamponlu), 'r' (okuma) için default
+        pico_reader = pico_socket.makefile('r')
+        pico_writer = pico_socket.makefile('w', buffering=1)
+
+        logging.info("✓ Connected. Waiting for Pico 'PICO_READY' signal...")
+
+        # 2. PICO'DAN HAZIR SİNYALİNİ BEKLE
         ready_received = False
         start_wait_time = time.time()
 
         while time.time() - start_wait_time < 15.0:
             try:
-                line = pico.readline().decode('utf-8', errors='ignore').strip()
+                line = pico_reader.readline().strip()
 
                 if line:
                     logging.info(f"[PICO_BOOT] {line}")
-                    # Pico'nun gönderdiği anahtar hazır mesajlarından birini kontrol et
                     if "PICO_READY" in line or "Pico (Kas) Hazir" in line:
                         logging.info("✓ Pico has signaled READY.")
                         ready_received = True
                         break
                 else:
-                    # pico.readline() 15s içinde hiçbir şey almazsa (boş string döner)
                     logging.warning("Pico.readline() timed out waiting for boot message.")
-                    break  # Zaman aşımı durumunda döngüden çık
+                    break
 
+            except socket.timeout:
+                logging.warning("Socket timed out waiting for PICO_READY.")
+                break
             except Exception as e:
                 logging.warning(f"Error reading from Pico during boot: {e}")
                 time.sleep(0.1)
@@ -418,36 +411,40 @@ def setup_hardware():
         if not ready_received:
             raise Exception("Pico did not send 'PICO_READY' signal within 15 seconds.")
 
-        # 4. BUFFERSLARI TEMİZLE ve normal zaman aşımını ayarla
-        logging.info("Pico is ready. Clearing buffers and setting normal timeout.")
-        pico.reset_input_buffer()
-        pico.reset_output_buffer()
-        time.sleep(0.1)  # Kısa bir duraklama
+        # 3. NORMAL ZAMAN AŞIMINI AYARLA
+        logging.info("Pico is ready. Setting normal response timeout.")
+        pico_socket.settimeout(CONFIG['pico_response_timeout'])
 
-        # Sonraki komutlar için (ACK/DONE) normal yanıt zaman aşımını ayarla
-        pico.timeout = CONFIG['pico_response_timeout']
-
-        # 5. ACTIVE HANDSHAKE - Request ready status (PING)
+        # 4. AKTİF EL SIKIŞMA (PING)
         logging.info("Requesting Pico ready status (PING)...")
+
+        # PING göndermeden önce buffer'da kalanları oku (varsa)
+        try:
+            pico_socket.settimeout(0.1)
+            while True:
+                extra_line = pico_reader.readline()
+                if not extra_line: break
+                logging.debug(f"[PICO_FLUSH] {extra_line.strip()}")
+        except socket.timeout:
+            pass  # Buffer temiz
+        finally:
+            pico_socket.settimeout(CONFIG['pico_response_timeout'])
+
         max_attempts = 5
-        ready_received = False  # PING el sıkışması için değişkeni yeniden kullan
+        ready_received = False
 
         for attempt in range(max_attempts):
             try:
-                # Bufferları tekrar temizle
-                pico.reset_input_buffer()
-                pico.reset_output_buffer()
-
                 # PING komutunu gönder
-                pico.write(b"PING\n")
-                pico.flush()
+                pico_writer.write("PING\n")
+                pico_writer.flush()  # <-- FLUSH ÖNEMLİ
 
                 # ACK bekle
-                ack = pico.readline().decode('utf-8', errors='ignore').strip()
+                ack = pico_reader.readline().strip()
 
                 if ack == "ACK":
                     # DONE bekle
-                    done = pico.readline().decode('utf-8', errors='ignore').strip()
+                    done = pico_reader.readline().strip()
 
                     if done == "DONE":
                         logging.info(f"✓ Pico responded to PING (attempt {attempt + 1})")
@@ -456,21 +453,23 @@ def setup_hardware():
 
                 logging.warning(f"Incomplete response: ACK='{ack}', attempt {attempt + 1}")
 
+            except socket.timeout:
+                logging.debug(f"Ping attempt {attempt + 1} timed out")
             except Exception as e:
                 logging.debug(f"Ping attempt {attempt + 1} failed: {e}")
 
-            time.sleep(1.0)  # Yeniden denemeden önce bekle
+            time.sleep(1.0)
 
         if not ready_received:
             raise Exception("Failed to establish communication with Pico after PING")
 
         logging.info("✓ Pico communication established")
 
-        # 6. TEST WITH STOP COMMAND
+        # 5. DURDURMA KOMUTU İLE TEST
         if not send_command_to_pico("STOP_DRIVE", max_retries=1, timeout=2.0):
             logging.warning("⚠ STOP_DRIVE failed, but continuing...")
 
-        # 7. REST OF SETUP (sensors, motors...)
+        # 6. DİĞER DONANIMLAR (SENSÖRLER, MOTORLAR...)
         logging.info("Setting up sensors...")
         h_sensor = DistanceSensor(
             echo=CONFIG['h_pin_echo'],
@@ -511,36 +510,44 @@ def setup_hardware():
         logging.critical(f"CRITICAL: Hardware setup failed: {e}")
         import traceback
         traceback.print_exc()
+        close_pico_connection()  # Başarısız olursa temizle
         sys.exit(1)
 
-# --- PICO İLETİŞİMİ (İYİLEŞTİRİLMİŞ - RETRY) ---
-def send_command_to_pico(command, max_retries=3, timeout=3.0):
+
+# --- PICO İLETİŞİMİ (SOKET İÇİN YENİLENDİ) ---
+def send_command_to_pico(command, max_retries=3, timeout=None):
     """
-    ✅ IMPROVED: Better error handling and timeout management
+    Pico W'ya TCP üzerinden komut gönderir, ACK ve DONE bekler.
+    Bağlantı hatalarını yönetir.
     """
-    if stop_event.is_set() or not pico or not pico.is_open:
+    global pico_socket, pico_reader, pico_writer
+
+    if stop_event.is_set():
         return False
 
-    for attempt in range(max_retries):
-        with pico_lock:
-            try:
-                # 1. Clear buffers
-                pico.reset_input_buffer()
-                pico.reset_output_buffer()
-                time.sleep(0.05)  # Short settle time
+    if not pico_socket or not pico_reader or not pico_writer:
+        logging.error("Pico connection is not established. Command aborted.")
+        return False
 
-                # 2. Send command
-                command_bytes = f"{command}\n".encode('utf-8')
-                pico.write(command_bytes)
-                pico.flush()
+    # Varsayılan zaman aşımını kullan, eğer özel verilmediyse
+    effective_timeout = timeout if timeout else CONFIG['pico_response_timeout']
+
+    for attempt in range(max_retries):
+        with pico_comm_lock:
+            try:
+                # 1. Soket zaman aşımını ayarla
+                pico_socket.settimeout(effective_timeout)
+                start_time = time.time()
+
+                # 2. Komutu gönder
+                command_with_newline = f"{command}\n"
+                pico_writer.write(command_with_newline)
+                pico_writer.flush()  # <-- ÇOK ÖNEMLİ
 
                 logging.debug(f"→ Sent: {command} (attempt {attempt + 1})")
 
-                # 3. Set timeout and wait for ACK
-                pico.timeout = timeout
-                start_time = time.time()
-
-                ack = pico.readline().decode('utf-8', errors='ignore').strip()
+                # 3. ACK bekle
+                ack = pico_reader.readline().strip()
 
                 if not ack:
                     logging.warning(f"Timeout waiting for ACK (attempt {attempt + 1})")
@@ -552,11 +559,16 @@ def send_command_to_pico(command, max_retries=3, timeout=3.0):
                     time.sleep(0.5)
                     continue
 
-                # 4. Wait for DONE
-                done = pico.readline().decode('utf-8', errors='ignore').strip()
+                # 4. DONE bekle
+                done = pico_reader.readline().strip()
 
                 if not done:
                     logging.warning(f"Timeout waiting for DONE (attempt {attempt + 1})")
+                    time.sleep(0.5)
+                    continue
+
+                if done.startswith("ERR:"):
+                    logging.error(f"Pico reported error: {done} (attempt {attempt + 1})")
                     time.sleep(0.5)
                     continue
 
@@ -565,25 +577,28 @@ def send_command_to_pico(command, max_retries=3, timeout=3.0):
                     time.sleep(0.5)
                     continue
 
-                # 5. SUCCESS
+                # 5. BAŞARILI
                 elapsed = time.time() - start_time
-                if elapsed > 1.0:
+                if elapsed > 2.0:  # Yavaş yanıt loglaması
                     logging.warning(f"Slow response: {elapsed:.2f}s for {command}")
                 else:
                     logging.debug(f"✓ Command OK: {command} ({elapsed:.3f}s)")
 
                 return True
 
-            except serial.SerialTimeoutException:
-                logging.warning(f"Serial timeout on attempt {attempt + 1}/{max_retries}")
+            except socket.timeout:
+                logging.warning(f"Socket timeout on attempt {attempt + 1}/{max_retries}")
                 time.sleep(0.5)
 
-            except serial.SerialException as e:
-                logging.error(f"Serial error: {e} (attempt {attempt + 1})")
-                time.sleep(0.5)
+            except (OSError, BrokenPipeError) as e:
+                # Bu, bağlantının koptuğu anlamına gelir
+                logging.error(f"FATAL: Connection to Pico lost: {e}")
+                close_pico_connection()
+                stats['errors'] += 1
+                return False  # Tekrar deneme, bağlantı koptu
 
             except Exception as e:
-                logging.error(f"Unexpected error: {e}")
+                logging.error(f"Unexpected error in send_command: {e}")
                 import traceback
                 traceback.print_exc()
                 time.sleep(0.5)
@@ -594,6 +609,8 @@ def send_command_to_pico(command, max_retries=3, timeout=3.0):
 
 
 # --- HAREKET FONKSİYONLARI ---
+# (Bu fonksiyonlar send_command_to_pico kullandığı için değiştirilmedi)
+
 def move_forward():
     global current_heading
     logging.info(f"→ İLERİ ({CONFIG['move_duration_ms']} ms)")
@@ -1096,6 +1113,7 @@ def main_reactive():
     listener.start()
 
     try:
+        # Donanımı (ve Pico W bağlantısını) başlat
         setup_hardware()
 
         if not create_scan_session():
@@ -1116,11 +1134,13 @@ def main_reactive():
         )
 
         logging.info("=" * 60)
-        logging.info("🚀 REAKTİF OTONOM SÜRÜŞ MODU BAŞLATILDI")
+        logging.info("🚀 REAKTİF OTONOM SÜRÜŞ MODU BAŞLATILDI (WIFI)")
         logging.info("=" * 60)
 
         # İlk hareketi başlat
-        continuous_move_forward()
+        if not continuous_move_forward():
+            logging.error("İlk hareket komutu başarısız, çıkılıyor.")
+            return
 
         loop_count = 0
 
@@ -1129,6 +1149,11 @@ def main_reactive():
             loop_start_time = time.time()
 
             logging.debug(f"--- Döngü #{loop_count} ---")
+
+            # Bağlantı koptuysa (send_command_to_pico'da fark edilir)
+            if not pico_socket:
+                logging.error("Pico bağlantısı koptu. Ana döngü durduruluyor.")
+                break
 
             # Komut kuyruğunu kontrol et
             if not command_queue.empty():
@@ -1187,6 +1212,7 @@ def main_classic():
     create_pid_file()
 
     try:
+        # Donanımı (ve Pico W bağlantısını) başlat
         setup_hardware()
 
         if not create_scan_session():
@@ -1209,7 +1235,7 @@ def main_classic():
         time.sleep(0.5)
 
         logging.info("=" * 60)
-        logging.info("🤖 KLASİK OTONOM SÜRÜŞ MODU BAŞLATILDI")
+        logging.info("🤖 KLASİK OTONOM SÜRÜŞ MODU BAŞLATILDI (WIFI)")
         logging.info("=" * 60)
 
         loop_count = 0
@@ -1217,6 +1243,11 @@ def main_classic():
         while not stop_event.is_set():
             loop_count += 1
             loop_start_time = time.time()
+
+            # Bağlantı koptuysa (send_command_to_pico'da fark edilir)
+            if not pico_socket:
+                logging.error("Pico bağlantısı koptu. Ana döngü durduruluyor.")
+                break
 
             logging.info(f"\n{'=' * 60}")
             logging.info(f"DÖNGÜ #{loop_count}")

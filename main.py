@@ -1,5 +1,3 @@
-
-
 from machine import Pin, UART, WDT
 import utime
 import sys

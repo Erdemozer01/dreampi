@@ -314,6 +314,7 @@ def finish_scan_session():
         logging.error(f"Tarama sonlandırılamadı: {e}")
 
 
+
 # --- DONANIM BAŞLATMA ---
 def setup_hardware():
     """Tüm donanımı başlat"""
@@ -326,9 +327,9 @@ def setup_hardware():
         pico = serial.Serial(
             CONFIG['pico_serial_port'],
             CONFIG['pico_baud_rate'],
-            timeout=CONFIG['pico_response_timeout']
+            timeout=CONFIG['pico_response_timeout']  # Örn: 2.0 saniye
         )
-        time.sleep(2)
+        time.sleep(2)  # Pico'nun boot etmesi için kısa bir bekleme
         pico.reset_input_buffer()
         pico.reset_output_buffer()
 
@@ -337,30 +338,58 @@ def setup_hardware():
         start_wait = time.time()
         ready_received = False
 
+        # --- DÜZELTİLMİŞ BEKLEME DÖNGÜSÜ ---
+        # 'pico.in_waiting' KULLANILMIYOR. Bu, [Errno 5] hatasının kaynağıdır.
+        # Bunun yerine, 'readline()' fonksiyonunun timeout'una güveniyoruz.
         while time.time() - start_wait < 15:
-            if pico.in_waiting > 0:
-                try:
-                    response = pico.readline().decode('utf-8', errors='ignore').strip()
+            if stop_event.is_set():
+                break
+
+            try:
+                # Doğrudan okumayı dene.
+                # Veri gelirse okur, gelmezse 'pico_response_timeout' (2s) bekler ve boş string döner.
+                response = pico.readline().decode('utf-8', errors='ignore').strip()
+
+                if response:  # Sadece boş olmayan bir yanıt geldiyse
                     logging.info(f"Pico'dan mesaj: '{response}'")
                     if any(keyword in response for keyword in ["Hazir", "PICO", "MOTOR", "hazir"]):
                         ready_received = True
                         break
-                except Exception as e:
-                    logging.warning(f"Mesaj okuma hatası: {e}")
-            time.sleep(0.1)
+                else:
+                    # Timeout oldu, veri gelmedi. Döngü devam edecek.
+                    logging.debug("Pico 'Hazir' mesajı bekleniyor...")
+
+            except serial.SerialException as e:
+                # [Errno 5] Input/output error gibi ciddi donanım hataları buraya düşer
+                logging.error(f"Pico ile iletişimde ciddi hata: {e}")
+                # Bağlantı koptu, döngüden çıkmak en mantıklısı
+                break
+            except Exception as e:
+                # Genellikle decode hatası vb.
+                logging.warning(f"Mesaj okuma/decode hatası: {e}")
+
+        # --- DÜZELTME SONU ---
 
         if not ready_received:
-            logging.warning("⚠️ Pico 'Hazir' mesajı göndermedi, test ediliyor...")
+            logging.warning("⚠️ Pico 'Hazir' mesajı göndermedi, STOP_DRIVE ile test ediliyor...")
             try:
+                # Pico'nun yanıt verip vermediğini test etmek için bir komut gönder
+                pico.reset_input_buffer()
+                pico.reset_output_buffer()
                 pico.write(b"STOP_DRIVE\n")
-                time.sleep(0.5)
-                if pico.in_waiting > 0:
-                    response = pico.readline().decode('utf-8', errors='ignore').strip()
+
+                # Yanıtı bekle (readline timeout'u ile)
+                response = pico.readline().decode('utf-8', errors='ignore').strip()  # ACK
+                logging.info(f"Pico Test Yanıtı 1: '{response}'")
+                if response in ["ACK", "DONE", "OK"]:
+                    response = pico.readline().decode('utf-8', errors='ignore').strip()  # DONE
+                    logging.info(f"Pico Test Yanıtı 2: '{response}'")
                     if response in ["ACK", "DONE", "OK"]:
-                        logging.info("✓ Pico çalışıyor!")
+                        logging.info("✓ Pico test komutuna yanıt verdi!")
                         ready_received = True
-            except:
-                pass
+
+            except Exception as e:
+                logging.error(f"Pico test komutu gönderilirken hata: {e}")
 
         if not ready_received:
             logging.error("❌ Pico ile iletişim kurulamadı!")
@@ -408,6 +437,8 @@ def setup_hardware():
         logging.critical(f"KRİTİK HATA: Donanım başlatılamadı: {e}")
         traceback.print_exc()
         sys.exit(1)
+
+
 
 
 # --- PICO İLETİŞİMİ (İYİLEŞTİRİLMİŞ - RETRY) ---

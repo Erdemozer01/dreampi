@@ -27,6 +27,19 @@ class Scan(models.Model):
         ERROR = 'ERR', 'Hata'
         INSUFFICIENT_POINTS = 'ISP', 'Yetersiz Nokta'
 
+    # --- YENİ EKLENEN ALAN ---
+    class ScanType(models.TextChoices):
+        MANUAL = 'MAN', 'Manuel Haritalama'
+        AUTONOMOUS = 'AUT', 'Otonom Sürüş'
+
+    scan_type = models.CharField(
+        max_length=3,
+        choices=ScanType.choices,
+        default=ScanType.MANUAL,
+        verbose_name="Tarama Tipi"
+    )
+    # --- YENİ EKLENEN ALAN SONU ---
+
     # Ayarlar
     h_scan_angle_setting = models.FloatField(default=360.0, verbose_name="Yatay Tarama Açısı")
     h_step_angle_setting = models.FloatField(default=10.0, verbose_name="Yatay Adım Açısı")
@@ -48,6 +61,7 @@ class Scan(models.Model):
     max_height_cm = models.FloatField(null=True, blank=True, verbose_name="Maks. Yükseklik (cm)")
     calculated_volume_cm3 = models.FloatField(null=True, blank=True, verbose_name="3D Hacim (cm³)")
     ai_commentary = models.TextField(blank=True, null=True, verbose_name="AI Yorumu")
+
 
     class Meta:
         verbose_name = "Tarama Kaydı"
@@ -103,7 +117,6 @@ class Scan(models.Model):
 
         # Analizden sonra tüm hesaplanmış alanları tek seferde kaydet
         self.save()
-
 
 class ScanPoint(models.Model):
     """

@@ -12,16 +12,10 @@ import time
 print("\n" + "=" * 60)
 print("PICO DIAGNOSTIC MODE")
 print("=" * 60)
-sys.stdout.flush()
 
 print("PICO_READY")
-sys.stdout.flush()
-
 print("Pico (Kas) Hazir")
-sys.stdout.flush()
-
 print("Waiting for commands...")
-sys.stdout.flush()
 
 # Blink LED to show we're alive
 try:
@@ -60,10 +54,7 @@ while True:
 
         # Always respond with ACK + DONE
         print("ACK")
-        sys.stdout.flush()
-
         print("DONE")
-        sys.stdout.flush()
 
         # LED back on
         if led:
@@ -71,13 +62,11 @@ while True:
 
         # Log the command
         print(f"# Processed: {command}", file=sys.stderr)
-        sys.stderr.flush()
 
     except KeyboardInterrupt:
         print("\nStopping...")
         break
     except Exception as e:
         print(f"ERR:{e}")
-        sys.stdout.flush()
 
 print("Diagnostic ended")

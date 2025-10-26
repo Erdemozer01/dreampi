@@ -1,10 +1,4 @@
-# main.py - Raspberry Pi Pico W (Kas) Kodu - DÜZELTİLMİŞ SÜRÜM
-# Pi 5 (Beyin) tarafından gönderilen seri komutları alır ve donanımı kontrol eder
-# ACK+DONE protokolü ile güvenli iletişim
-# ✅ Watchdog timeout artırıldı (20s)
-# ✅ Daha sık watchdog besleme
-# ✅ Startup güvenliği iyileştirildi
-# ✅ Bağlantı hatası kontrolü geliştirildi
+
 
 from machine import Pin, UART, WDT
 import utime

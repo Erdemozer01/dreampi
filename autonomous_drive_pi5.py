@@ -315,6 +315,54 @@ def finish_scan_session():
 
 
 
+# --- SERIAL PORT OTOMATİK TESPİT ---
+def find_pico_serial_port():
+    """Pico'nun bağlı olduğu serial portu otomatik bul"""
+    import glob
+
+    possible_ports = [
+        CONFIG.get('pico_serial_port', '/dev/ttyACM0'),  # Config'den
+        '/dev/ttyACM0', '/dev/ttyACM1', '/dev/ttyACM2',
+        '/dev/ttyUSB0', '/dev/ttyUSB1', '/dev/ttyUSB2',
+        '/dev/serial0', '/dev/serial1'
+    ]
+
+    # Glob ile mevcut portları ekle
+    for pattern in ['/dev/ttyACM*', '/dev/ttyUSB*']:
+        try:
+            possible_ports.extend(glob.glob(pattern))
+        except:
+            pass
+
+    # Unique yap
+    possible_ports = list(set(possible_ports))
+
+    logging.info(f"Serial port aranıyor... Denenen portlar: {possible_ports}")
+
+    for port in possible_ports:
+        if not os.path.exists(port):
+            continue
+
+        try:
+            logging.info(f"Deneniyor: {port}")
+            test_serial = serial.Serial(
+                port,
+                CONFIG['pico_baud_rate'],
+                timeout=1.0
+            )
+            time.sleep(0.5)
+            test_serial.reset_input_buffer()
+            test_serial.close()
+            logging.info(f"✓ Port bulundu: {port}")
+            return port
+        except (OSError, serial.SerialException) as e:
+            logging.debug(f"  {port} kullanılamadı: {e}")
+            continue
+
+    logging.error("❌ Hiçbir serial port bulunamadı!")
+    return None
+
+
 # --- DONANIM BAŞLATMA ---
 def setup_hardware():
     """Tüm donanımı başlat"""
@@ -322,14 +370,22 @@ def setup_hardware():
     global vertical_scan_motor_devices, horizontal_scan_motor_devices
 
     try:
-        # 1. PICO BAĞLANTISI
-        logging.info(f"Pico'ya bağlanılıyor: {CONFIG['pico_serial_port']}")
+        # 1. PICO BAĞLANTISI - OTOMATİK PORT TESPİTİ
+        pico_port = find_pico_serial_port()
+
+        if not pico_port:
+            raise Exception("Pico serial portu bulunamadı! Lütfen kontrol edin:\n"
+                          "  1. Pico USB ile bağlı mı?\n"
+                          "  2. boot.py Pico'ya yüklü mü?\n"
+                          "  3. 'ls /dev/ttyACM*' komutu ile portu kontrol edin")
+
+        logging.info(f"Pico'ya bağlanılıyor: {pico_port}")
         pico = serial.Serial(
-            CONFIG['pico_serial_port'],
+            pico_port,
             CONFIG['pico_baud_rate'],
-            timeout=CONFIG['pico_response_timeout']  # Örn: 2.0 saniye
+            timeout=3.0  # ✅ Timeout artırıldı
         )
-        time.sleep(2)  # Pico'nun boot etmesi için kısa bir bekleme
+        time.sleep(2.5)  # Pico'nun boot etmesi için yeterli bekleme
         pico.reset_input_buffer()
         pico.reset_output_buffer()
 
@@ -338,51 +394,46 @@ def setup_hardware():
         start_wait = time.time()
         ready_received = False
 
-        # --- DÜZELTİLMİŞ BEKLEME DÖNGÜSÜ ---
-        # 'pico.in_waiting' KULLANILMIYOR. Bu, [Errno 5] hatasının kaynağıdır.
-        # Bunun yerine, 'readline()' fonksiyonunun timeout'una güveniyoruz.
-        while time.time() - start_wait < 15:
+        # ✅ İYİLEŞTİRİLMİŞ BEKLEME DÖNGÜSÜ
+        while time.time() - start_wait < 20:  # ✅ 20 saniyeye çıkarıldı
             if stop_event.is_set():
                 break
 
             try:
-                # Doğrudan okumayı dene.
-                # Veri gelirse okur, gelmezse 'pico_response_timeout' (2s) bekler ve boş string döner.
                 response = pico.readline().decode('utf-8', errors='ignore').strip()
 
-                if response:  # Sadece boş olmayan bir yanıt geldiyse
+                if response:
                     logging.info(f"Pico'dan mesaj: '{response}'")
-                    if any(keyword in response for keyword in ["Hazir", "PICO", "MOTOR", "hazir"]):
+                    if any(keyword in response for keyword in ["Hazir", "PICO", "MOTOR", "hazir", "Kas"]):
                         ready_received = True
+                        logging.info("✓ Pico hazır sinyali alındı!")
                         break
                 else:
-                    # Timeout oldu, veri gelmedi. Döngü devam edecek.
                     logging.debug("Pico 'Hazir' mesajı bekleniyor...")
 
             except serial.SerialException as e:
-                # [Errno 5] Input/output error gibi ciddi donanım hataları buraya düşer
                 logging.error(f"Pico ile iletişimde ciddi hata: {e}")
-                # Bağlantı koptu, döngüden çıkmak en mantıklısı
                 break
             except Exception as e:
-                # Genellikle decode hatası vb.
                 logging.warning(f"Mesaj okuma/decode hatası: {e}")
 
-        # --- DÜZELTME SONU ---
-
+        # Test komutu gönder (eğer hazır mesajı alınmadıysa)
         if not ready_received:
             logging.warning("⚠️ Pico 'Hazir' mesajı göndermedi, STOP_DRIVE ile test ediliyor...")
             try:
-                # Pico'nun yanıt verip vermediğini test etmek için bir komut gönder
                 pico.reset_input_buffer()
                 pico.reset_output_buffer()
+                time.sleep(0.5)
                 pico.write(b"STOP_DRIVE\n")
+                pico.flush()
 
-                # Yanıtı bekle (readline timeout'u ile)
-                response = pico.readline().decode('utf-8', errors='ignore').strip()  # ACK
+                # ✅ Daha uzun timeout ile test
+                time.sleep(0.3)
+                response = pico.readline().decode('utf-8', errors='ignore').strip()
                 logging.info(f"Pico Test Yanıtı 1: '{response}'")
+
                 if response in ["ACK", "DONE", "OK"]:
-                    response = pico.readline().decode('utf-8', errors='ignore').strip()  # DONE
+                    response = pico.readline().decode('utf-8', errors='ignore').strip()
                     logging.info(f"Pico Test Yanıtı 2: '{response}'")
                     if response in ["ACK", "DONE", "OK"]:
                         logging.info("✓ Pico test komutuna yanıt verdi!")
@@ -393,7 +444,12 @@ def setup_hardware():
 
         if not ready_received:
             logging.error("❌ Pico ile iletişim kurulamadı!")
-            raise Exception("Pico başlatılamadı")
+            logging.error("Kontrol listesi:")
+            logging.error("  1. Pico USB kablosu bağlı mı?")
+            logging.error("  2. boot.py dosyası Pico'ya yüklendi mi?")
+            logging.error(f"  3. Serial port doğru mu? ({pico_port})")
+            logging.error("  4. Pico'nun LED'i yanıyor mu?")
+            raise Exception("Pico başlatılamadı - yanıt vermiyor")
 
         logging.info("✓ Pico başarıyla bağlandı.")
 

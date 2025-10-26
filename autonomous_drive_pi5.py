@@ -885,3 +885,278 @@ def navigate_to_target(target_x, target_y, target_z):
         for _ in range(num_turns):
             if angle_diff > 0:
                 logging.info("   ↷ Sağa dön")
+                turn_right()
+            else:
+                logging.info("   ↶ Sola dön")
+                turn_left()
+            time.sleep(0.2)
+
+    # 4. İleri git (mesafeye göre süre hesapla)
+    # Varsayım: Robot ~20cm/s hızla gider
+    required_duration = int((distance_2d / 20.0) * 1000)
+    required_duration = min(required_duration, 5000)  # Max 5 saniye
+
+    logging.info(f"   → İleri git ({required_duration}ms)")
+
+    if send_command_to_pico(f"FORWARD:{required_duration}"):
+        logging.info("   ✓ Hedefe ulaşıldı (yaklaşık)")
+    else:
+        logging.error("   ✗ Hareket başarısız")
+
+    # 5. Doğrulama taraması
+    best_angle, min_dist = find_best_path()
+    if min_dist < 30:
+        logging.warning("   ⚠️ Hedefe yaklaşıldı ama engel var!")
+
+
+# --- KOMUT DİNLEYİCİ THREAD ---
+def command_listener_thread():
+    """
+    Komut dosyasından komut dinler
+    ✅ DÜZELTİLDİ: Atomic file operations + fcntl lock
+    """
+    command_file = '/tmp/robot_command.txt'
+
+    while not stop_event.is_set():
+        try:
+            if os.path.exists(command_file):
+                with open(command_file, 'r+') as f:
+                    # ✅ Dosyayı kilitle
+                    fcntl.flock(f, fcntl.LOCK_EX)
+                    command = f.read().strip()
+                    f.seek(0)
+                    f.truncate(0)
+                    fcntl.flock(f, fcntl.LOCK_UN)
+
+                if command.startswith("GOTO:"):
+                    # Format: GOTO:x,y,z
+                    coords = command.split(":")[1].split(",")
+                    target_x = float(coords[0])
+                    target_y = float(coords[1])
+                    target_z = float(coords[2])
+
+                    logging.info(f"📨 Komut alındı: {command}")
+                    command_queue.put(('goto', target_x, target_y, target_z))
+
+                # Dosyayı sil
+                try:
+                    os.remove(command_file)
+                except:
+                    pass
+
+        except Exception as e:
+            logging.debug(f"Komut dinleme hatası: {e}")
+
+        time.sleep(0.5)
+
+
+# --- REAKTİF ANA DÖNGÜ ---
+def main_reactive():
+    """Reaktif navigasyon ana döngüsü"""
+    atexit.register(cleanup_on_exit)
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    create_pid_file()
+
+    # Komut dinleyici thread'i başlat
+    listener = threading.Thread(target=command_listener_thread, daemon=True)
+    listener.start()
+
+    try:
+        setup_hardware()
+
+        if not create_scan_session():
+            logging.critical("Veritabanı oturumu oluşturulamadı, çıkılıyor.")
+            return
+
+        # Başlangıç pozisyonu
+        move_step_motor_to_angle_local(
+            vertical_scan_motor_devices,
+            vertical_scan_motor_ctx,
+            0,
+            CONFIG['invert_rear_motor_direction']
+        )
+        move_step_motor_to_angle_local(
+            horizontal_scan_motor_devices,
+            horizontal_scan_motor_ctx,
+            0
+        )
+
+        logging.info("=" * 60)
+        logging.info("🚀 REAKTİF OTONOM SÜRÜŞ MODU BAŞLATILDI")
+        logging.info("=" * 60)
+
+        # İlk hareketi başlat
+        continuous_move_forward()
+
+        loop_count = 0
+
+        while not stop_event.is_set():
+            loop_count += 1
+            loop_start_time = time.time()
+
+            logging.debug(f"--- Döngü #{loop_count} ---")
+
+            # Komut kuyruğunu kontrol et
+            if not command_queue.empty():
+                cmd = command_queue.get()
+
+                if cmd[0] == 'goto':
+                    _, target_x, target_y, target_z = cmd
+                    logging.info("🎯 Hedefe gitme modu aktif")
+
+                    # Mevcut hareketi durdur
+                    stop_motors()
+                    time.sleep(0.5)
+
+                    # Hedefe git
+                    navigate_to_target(target_x, target_y, target_z)
+
+                    # Normal otonom moda dön
+                    logging.info("↩ Normal otonom moda dönülüyor")
+                    continuous_move_forward()
+                    continue
+
+            # HIZLI TARAMA (motorlar hareket ederken)
+            best_h_angle, max_distance = quick_scan_horizontal()
+
+            if stop_event.is_set():
+                break
+
+            # ANINDA KARAR VE YÖNLENDİRME
+            action = reactive_decide_and_act(best_h_angle, max_distance)
+
+            # Döngü süresi kontrolü
+            elapsed = time.time() - loop_start_time
+            logging.debug(f"Döngü süresi: {elapsed:.3f}s")
+
+            # Minimum 0.2 saniye bekle
+            if elapsed < 0.2:
+                time.sleep(0.2 - elapsed)
+
+    except KeyboardInterrupt:
+        logging.info("\n⚠️ Program kullanıcı tarafından durduruldu (CTRL+C)")
+        stop_motors()
+    except Exception as e:
+        logging.error(f"❌ KRİTİK HATA: {e}")
+        traceback.print_exc()
+        stop_motors()
+    finally:
+        logging.info("Ana döngüden çıkıldı.")
+
+
+# --- KLASİK ANA DÖNGÜ (PERİYODİK TARAMA) ---
+def main_classic():
+    """Klasik navigasyon - periyodik tam tarama"""
+    atexit.register(cleanup_on_exit)
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    create_pid_file()
+
+    try:
+        setup_hardware()
+
+        if not create_scan_session():
+            logging.critical("Veritabanı oturumu oluşturulamadı, çıkılıyor.")
+            return
+
+        # Başlangıç pozisyonu
+        logging.info("Tarama motorları merkeze alınıyor...")
+        move_step_motor_to_angle_local(
+            vertical_scan_motor_devices,
+            vertical_scan_motor_ctx,
+            0,
+            CONFIG['invert_rear_motor_direction']
+        )
+        move_step_motor_to_angle_local(
+            horizontal_scan_motor_devices,
+            horizontal_scan_motor_ctx,
+            0
+        )
+        time.sleep(0.5)
+
+        logging.info("=" * 60)
+        logging.info("🤖 KLASİK OTONOM SÜRÜŞ MODU BAŞLATILDI")
+        logging.info("=" * 60)
+
+        loop_count = 0
+
+        while not stop_event.is_set():
+            loop_count += 1
+            loop_start_time = time.time()
+
+            logging.info(f"\n{'=' * 60}")
+            logging.info(f"DÖNGÜ #{loop_count}")
+            logging.info(f"{'=' * 60}")
+
+            # Güvenlik: Motorları durdur
+            stop_motors()
+            stop_step_motors_local()
+            time.sleep(0.1)
+
+            # 1. Tam 3D tarama yap
+            best_h_angle, max_distance = find_best_path()
+
+            if stop_event.is_set():
+                break
+
+            # 2. Karar ver ve hareket et
+            obstacle_limit = CONFIG['obstacle_distance_cm']
+
+            # Kritik durum: Tüm yönler kapalı
+            if max_distance < obstacle_limit:
+                logging.warning(f"⚠️ SIKIŞTI! En açık yol bile ({max_distance:.1f}cm) çok yakın!")
+                logging.warning("   → 180° dönüş yapılıyor...")
+
+                for _ in range(2):
+                    if not turn_right():
+                        break
+                    time.sleep(0.2)
+
+                action = "TURN_180"
+
+            # İleri git
+            elif -15.0 < best_h_angle < 15.0:
+                logging.info(f"✓ Karar: İLERİ (Yol açık: {best_h_angle:+.1f}°, {max_distance:.1f}cm)")
+                move_forward()
+                action = "FORWARD"
+
+            # Sağa dön
+            elif best_h_angle >= 15.0:
+                logging.info(f"✓ Karar: SAĞA DÖN ({best_h_angle:+.1f}°, {max_distance:.1f}cm)")
+                turn_right()
+                action = "TURN_RIGHT"
+
+            # Sola dön
+            elif best_h_angle <= -15.0:
+                logging.info(f"✓ Karar: SOLA DÖN ({best_h_angle:+.1f}°, {max_distance:.1f}cm)")
+                turn_left()
+                action = "TURN_LEFT"
+
+            # 3. Minimum döngü süresi
+            elapsed = time.time() - loop_start_time
+            min_duration = CONFIG['min_loop_duration']
+
+            if elapsed < min_duration:
+                sleep_time = min_duration - elapsed
+                logging.info(f"⏱ Döngü süresi: {elapsed:.2f}s, {sleep_time:.2f}s bekleniyor...")
+                time.sleep(sleep_time)
+            else:
+                logging.info(f"⏱ Döngü süresi: {elapsed:.2f}s")
+
+    except KeyboardInterrupt:
+        logging.info("\n⚠️ Program kullanıcı tarafından durduruldu (CTRL+C)")
+    except Exception as e:
+        logging.error(f"❌ KRİTİK HATA: {e}")
+        traceback.print_exc()
+        stats['errors'] += 1
+    finally:
+        logging.info("Ana döngüden çıkıldı.")
+
+
+# --- PROGRAM BAŞLANGIÇ ---
+if __name__ == '__main__':
+    if reactive_mode:
+        main_reactive()  # ✅ Reaktif mod (varsayılan)
+    else:
+        main_classic()  # Klasik periyodik tarama modu

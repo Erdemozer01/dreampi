@@ -486,7 +486,7 @@ estimation_card = dbc.Card(
         html.Div("Tahmin: Bekleniyor...", id='environment-estimation-text', className="text-center"))])
 
 visualization_tabs = dbc.Tabs([
-    dbc.Tab(dcc.Graph(id='scan-map-graph-3d', style={'height': '75vh'}), label="3D Harita", tab_id="tab-3d", config={'displayModeBar': True}),
+    dbc.Tab(dcc.Graph(id='scan-map-graph-3d', style={'height': '75vh'}, config={'displayModeBar': True}), label="3D Harita", tab_id="tab-3d",),
     dbc.Tab(dcc.Graph(id='scan-map-graph-2d', style={'height': '75vh'}), label="2D Harita", tab_id="tab-2d"),
 
     dbc.Tab(dcc.Graph(id='polar-graph', style={'height': '75vh'}), label="Polar Grafik", tab_id="tab-polar"),

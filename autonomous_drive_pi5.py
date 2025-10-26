@@ -4,7 +4,7 @@
 # YENİ MİMARİ:
 # BEYİN (Pi 5): 2x Tarama (28BYJ H+V) + 2x Sensör (HC-SR04 H+V) + Mantık.
 # KAS (Pico): Sadece Sürüş (2x NEMA 17).
-
+import math
 import os
 import sys
 import time
@@ -18,8 +18,21 @@ import json
 from pathlib import Path
 import serial
 
+import django
+
 from gpiozero import DistanceSensor, OutputDevice, Device
 from gpiozero.pins.lgpio import LGPIOFactory
+from scanner.models import Scan, ScanPoint
+
+# Django'yu başlat (en üstte olmalı)
+sys.path.append('/home/pi')  # Proje ana dizini
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'dream_pi.settings')
+django.setup()
+
+# Global değişkenler bölümüne ekleyin:
+current_scan = None  # Aktif tarama oturumu
+point_counter = 0    # Nokta sayacı
+
 
 try:
     from gpiozero.pins.pigpio import PiGPIOFactory
@@ -78,6 +91,78 @@ import threading
 current_movement_command = None
 movement_lock = threading.Lock()
 reactive_mode = True  # Reaktif mod aktif mi?
+
+def create_scan_session():
+    """Yeni bir tarama oturumu başlat"""
+    global current_scan
+    try:
+        current_scan = Scan.objects.create(
+            scan_type='AUT',  # Otonom
+            status='RUN',
+            h_scan_angle=CONFIG['scan_h_angle'],
+            h_step_angle=CONFIG['scan_h_step'],
+            v_scan_angle=CONFIG['scan_v_angle'],
+            v_step_angle=CONFIG['scan_v_step']
+        )
+        logging.info(f"✓ Yeni tarama oturumu: ID={current_scan.id}")
+        return True
+    except Exception as e:
+        logging.error(f"Tarama oturumu başlatılamadı: {e}")
+        return False
+
+
+def save_scan_point(h_angle, v_angle, distance):
+    """Bir tarama noktasını DB'ye kaydet"""
+    global current_scan, point_counter
+
+    if not current_scan:
+        return False
+
+    try:
+        # Kartezyen koordinatları hesapla
+        h_rad = math.radians(h_angle)
+        v_rad = math.radians(v_angle)
+
+        x_cm = distance * math.cos(v_rad) * math.cos(h_rad)  # İleri
+        y_cm = distance * math.cos(v_rad) * math.sin(h_rad)  # Yan
+        z_cm = distance * math.sin(v_rad)  # Yükseklik
+
+        # DB'ye kaydet
+        ScanPoint.objects.create(
+            scan=current_scan,
+            derece=h_angle,
+            dikey_aci=v_angle,
+            mesafe_cm=distance,
+            x_cm=x_cm,
+            y_cm=y_cm,
+            z_cm=z_cm,
+            hiz_cm_s=0.0  # Otonom sürüşte hız hesaplanmıyor
+        )
+
+        point_counter += 1
+        if point_counter % 10 == 0:
+            logging.info(f"📊 {point_counter} nokta kaydedildi")
+
+        return True
+    except Exception as e:
+        logging.error(f"Nokta kaydedilemedi: {e}")
+        return False
+
+
+def finish_scan_session():
+    """Tarama oturumunu sonlandır"""
+    global current_scan, point_counter
+
+    if not current_scan:
+        return
+
+    try:
+        current_scan.status = 'COM'  # Completed
+        current_scan.save()
+        logging.info(f"✓ Tarama tamamlandı: {point_counter} nokta kaydedildi")
+    except Exception as e:
+        logging.error(f"Tarama sonlandırılamadı: {e}")
+
 
 # --- KONFİGÜRASYON YÖNETİMİ ---
 def load_config():
@@ -604,6 +689,7 @@ def find_best_path():
     Returns: (best_h_angle, max_distance)
     """
     logging.info("🔍 3D TARAMA BAŞLATILIYOR...")
+
     stats['total_scans'] += 1
 
     max_distance_found = 0.0
@@ -674,6 +760,8 @@ def find_best_path():
                 'v_angle': target_v_angle,
                 'distance': distance
             })
+
+            save_scan_point(target_h_angle, target_v_angle, distance)
 
             logging.debug(f"  H={target_h_angle:+6.1f}° V={target_v_angle:+6.1f}° → {distance:6.1f}cm")
 
@@ -770,6 +858,8 @@ def main():
 
         loop_count = 0
 
+
+
         while not stop_event.is_set():
             loop_count += 1
             loop_start_time = time.time()
@@ -812,6 +902,110 @@ def main():
     finally:
         logging.info("Ana döngüden çıkıldı.")
 
+
+def navigate_to_target(target_x, target_y, target_z):
+    """
+    Belirli bir hedefe (3D koordinat) gitmek için
+    robotun yönünü ayarlar ve hareket eder.
+
+    Args:
+        target_x, target_y, target_z: Hedef koordinatlar (cm)
+    """
+    logging.info(f"🎯 Hedefe gidiliyor: ({target_x:.1f}, {target_y:.1f}, {target_z:.1f})")
+
+    # 1. Hedefe yönelme açısını hesapla
+    distance_2d = math.sqrt(target_x ** 2 + target_y ** 2)
+    target_angle = math.degrees(math.atan2(target_y, target_x))
+
+    logging.info(f"   Hedef açı: {target_angle:.1f}°, Mesafe: {distance_2d:.1f}cm")
+
+    # 2. Robotun mevcut yönünü ayarla (tarama motorlarıyla ölçüm)
+    # Basitleştirilmiş: Robot 0° ileri bakıyor varsayımı
+    current_angle = 0.0
+
+    angle_diff = target_angle - current_angle
+
+    # Açıyı normalize et (-180° ile +180° arası)
+    while angle_diff > 180:
+        angle_diff -= 360
+    while angle_diff < -180:
+        angle_diff += 360
+
+    # 3. Dönüş yap
+    if abs(angle_diff) > 5:  # 5° tolerans
+        num_turns = int(abs(angle_diff) / 30)  # Her dönüş ~30°
+
+        for _ in range(num_turns):
+            if angle_diff > 0:
+                logging.info("   ↷ Sağa dön")
+                turn_right()
+            else:
+                logging.info("   ↶ Sola dön")
+                turn_left()
+            time.sleep(0.2)
+
+    # 4. İleri git (mesafeye göre süre hesapla)
+    # Varsayım: Robot ~20cm/s hızla gider
+    # move_duration_ms = 1000 → ~20cm
+    required_duration = int((distance_2d / 20.0) * 1000)
+
+    # Maksimum 5 saniye
+    required_duration = min(required_duration, 5000)
+
+    logging.info(f"   → İleri git ({required_duration}ms)")
+
+    # Gerçek hareketi komutla
+    if send_command_to_pico(f"FORWARD:{required_duration}"):
+        logging.info("   ✓ Hedefe ulaşıldı (yaklaşık)")
+    else:
+        logging.error("   ✗ Hareket başarısız")
+
+    # 5. Doğrulama taraması (opsiyonel)
+    # Hedefe gerçekten ulaşıp ulaşmadığını kontrol et
+    best_angle, min_dist = find_best_path()
+    if min_dist < 30:
+        logging.warning("   ⚠️ Hedefe yaklaşıldı ama engel var!")
+
+
+import threading
+import queue
+
+# Global komut kuyruğu
+command_queue = queue.Queue()
+target_navigation_active = False
+
+
+def command_listener_thread():
+    """
+    Bir dosyadan veya API'dan komut dinler.
+    Dashboard, hedefe git komutu geldiğinde dosyaya yazar:
+    /tmp/robot_command.txt
+    """
+    command_file = '/tmp/robot_command.txt'
+
+    while not stop_event.is_set():
+        try:
+            if os.path.exists(command_file):
+                with open(command_file, 'r') as f:
+                    command = f.read().strip()
+
+                if command.startswith("GOTO:"):
+                    # Format: GOTO:x,y,z
+                    coords = command.split(":")[1].split(",")
+                    target_x = float(coords[0])
+                    target_y = float(coords[1])
+                    target_z = float(coords[2])
+
+                    logging.info(f"📨 Komut alındı: {command}")
+                    command_queue.put(('goto', target_x, target_y, target_z))
+
+                # Komutu sil
+                os.remove(command_file)
+
+        except Exception as e:
+            logging.debug(f"Komut dinleme hatası: {e}")
+
+        time.sleep(0.5)
 
 # --- REAKTİF HAREKET FONKSİYONLARI ---
 
@@ -985,6 +1179,10 @@ def main_reactive():
     signal.signal(signal.SIGINT, signal_handler)
     create_pid_file()
 
+    # Komut dinleyici thread'i başlat
+    listener = threading.Thread(target=command_listener_thread, daemon=True)
+    listener.start()
+
     try:
         setup_hardware()
 
@@ -1010,6 +1208,8 @@ def main_reactive():
 
         loop_count = 0
 
+
+
         while not stop_event.is_set():
             loop_count += 1
             loop_start_time = time.time()
@@ -1033,6 +1233,23 @@ def main_reactive():
             if elapsed < 0.2:
                 time.sleep(0.2 - elapsed)
 
+                # Komut kuyruğunu kontrol et
+                if not command_queue.empty():
+                    cmd = command_queue.get()
+
+                    if cmd[0] == 'goto':
+                        _, target_x, target_y, target_z = cmd
+                        logging.info("🎯 Hedefe gitme modu aktif")
+
+                        # Mevcut hareketi durdur
+                        stop_motors()
+
+                        # Hedefe git
+                        navigate_to_target(target_x, target_y, target_z)
+
+                        # Normal otonom moda dön
+                        logging.info("↩ Normal otonom moda dönülüyor")
+
     except KeyboardInterrupt:
         logging.info("\n⚠️ Program kullanıcı tarafından durduruldu (CTRL+C)")
         stop_motors()
@@ -1044,7 +1261,6 @@ def main_reactive():
         logging.info("Ana döngüden çıkıldı.")
 
 
-# main() yerine main_reactive() kullanın:
 if __name__ == '__main__':
     if reactive_mode:
         main_reactive()  # Reaktif mod

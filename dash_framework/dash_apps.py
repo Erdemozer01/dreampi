@@ -340,16 +340,50 @@ def analyze_3d_clusters(df_3d):
 
 
 def start_autonomous_mode():
+    """
+    Otonom sürüşü başlatır ve veri tabanına kayıt yapar.
+    """
     try:
         stop_all_scripts()
+
+        # Yeni tarama oturumu oluştur (DB'de)
+        from scanner.models import Scan
+        new_scan = Scan.objects.create(
+            scan_type='AUT',  # Otonom
+            status='RUN',
+            h_scan_angle=90.0,  # Varsayılan değerler
+            h_step_angle=30.0,
+            v_scan_angle=30.0,
+            v_step_angle=15.0
+        )
+
+        logging.info(f"✓ Yeni otonom tarama başlatıldı: ID={new_scan.id}")
+
+        # Scripti başlat
         cmd = [sys.executable, AUTONOMOUS_SCRIPT_PATH]
         log_file = open("autonomous_drive_live.log", "w")
         subprocess.Popen(cmd, stdout=log_file, stderr=log_file, start_new_session=True)
-        return html.Span([html.I(className="fa-solid fa-robot fa-spin me-2"), "Otonom Sürüş..."]), True, False, False
-    except Exception as e:
-        print(f"Otonom sürüş başlatma hatası: {e}")
-        return html.Span([html.I(className="fa-solid fa-xmark me-2"), "Hata"]), False, True, True
 
+        return (
+            html.Span([
+                html.I(className="fa-solid fa-robot fa-spin me-2"),
+                "Otonom Sürüş..."
+            ]),
+            True,  # start-button disabled
+            False,  # stop-button enabled
+            False  # interval enabled
+        )
+    except Exception as e:
+        logging.error(f"Otonom sürüş başlatma hatası: {e}")
+        return (
+            html.Span([
+                html.I(className="fa-solid fa-xmark me-2"),
+                "Hata"
+            ]),
+            False,
+            True,
+            True
+        )
 
 # --- ARAYÜZ BİLEŞENLERİ (LAYOUT) ---
 control_panel = dbc.Card([
@@ -452,13 +486,27 @@ estimation_card = dbc.Card(
         html.Div("Tahmin: Bekleniyor...", id='environment-estimation-text', className="text-center"))])
 
 visualization_tabs = dbc.Tabs([
-    dbc.Tab(dcc.Graph(id='scan-map-graph-3d', style={'height': '75vh'}), label="3D Harita", tab_id="tab-3d"),
+    dbc.Tab(dcc.Graph(id='scan-map-graph-3d', style={'height': '75vh'}), label="3D Harita", tab_id="tab-3d", config={'displayModeBar': True}),
     dbc.Tab(dcc.Graph(id='scan-map-graph-2d', style={'height': '75vh'}), label="2D Harita", tab_id="tab-2d"),
 
     dbc.Tab(dcc.Graph(id='polar-graph', style={'height': '75vh'}), label="Polar Grafik", tab_id="tab-polar"),
     dbc.Tab(dcc.Loading(children=[html.Div(id='tab-content-datatable')]), label="Veri Tablosu",
             tab_id="tab-datatable")],
     id="visualization-tabs-main", active_tab="tab-3d")
+
+navigation_status_card = dbc.Card([
+    dbc.CardHeader([
+        html.I(className="fa-solid fa-location-crosshairs me-2"),
+        "Navigasyon Durumu"
+    ]),
+    dbc.CardBody([
+        html.Div(id='navigation-status-text', children=[
+            html.P("Hedefe gitme için 3D haritada bir noktaya tıklayın",
+                   className="text-muted text-center")
+        ]),
+        html.Div(id='target-coordinates', children="", className="text-center mt-2")
+    ])
+], className="mb-3")
 
 ai_card = dbc.Card([
     dbc.CardHeader([html.I(className="fa-solid fa-wand-magic-sparkles me-2"), "Akıllı Yorumlama (Yapay Zeka)"]),
@@ -473,7 +521,7 @@ ai_card = dbc.Card([
 app.layout = html.Div(style={'padding': '20px'}, children=[
     navbar,
     dbc.Row([
-        dbc.Col([control_panel, html.Br(), stats_panel, html.Br(), system_card, html.Br(), export_card], md=4,
+        dbc.Col([control_panel, html.Br(), stats_panel, navigation_status_card, html.Br(), system_card, html.Br(), export_card], md=4,
                 className="mb-3"),
         dbc.Col([visualization_tabs, html.Br(),
                  dbc.Row([dbc.Col(analysis_card, md=8), dbc.Col(estimation_card, md=4)]),
@@ -736,10 +784,14 @@ def update_all_graphs_and_analytics(scan_json, points_json):
 
     # Analiz ve görselleştirme için yeterli nokta var mı kontrol et
     if len(df_valid) > 10:
-        # --- 3D Grafik (Üzerine gelince açıları gösteren etiket ile) ---
+        # --- 3D Grafik (Tıklanabilir) ---
 
-        # Hover etiketinde gösterilecek özel veriyi oluştur
-        custom_data_3d = np.stack((df_valid['derece'], df_valid['dikey_aci']), axis=-1)
+        # Hover etiketinde gösterilecek özel veri
+        custom_data_3d = np.stack((
+            df_valid['derece'],
+            df_valid['dikey_aci'],
+            df_valid['id']  # Nokta ID'si
+        ), axis=-1)
 
         fig_3d.add_trace(go.Scatter3d(
             x=df_valid['y_cm'],
@@ -747,63 +799,51 @@ def update_all_graphs_and_analytics(scan_json, points_json):
             z=df_valid['z_cm'],
             mode='markers',
             marker=dict(
-                size=2.5,
+                size=3,
                 color=df_valid['mesafe_cm'],
                 colorscale='Viridis',
                 showscale=True,
-                colorbar_title='Mesafe (cm)'
+                colorbar_title='Mesafe (cm)',
+                line=dict(width=0)  # Sınır çizgisi yok
             ),
-            customdata=custom_data_3d,  # Özel veriyi buraya ekliyoruz
-            hovertemplate=(  # Etiketin nasıl görüneceğini burada tanımlıyoruz
+            customdata=custom_data_3d,
+            hovertemplate=(
                     "<b>Nokta Bilgileri</b><br><br>" +
                     "X (İleri): %{y:.1f} cm<br>" +
                     "Y (Yanal): %{x:.1f} cm<br>" +
                     "Z (Yükseklik): %{z:.1f} cm<br>" +
                     "--------------------<br>" +
                     "<b>Yatay Açı: %{customdata[0]:.1f}°</b><br>" +
-                    "<b>Dikey Açı: %{customdata[1]:.1f}°</b>" +
-                    "<extra></extra>"  # Plotly'nin varsayılan etiketini kaldırır
+                    "<b>Dikey Açı: %{customdata[1]:.1f}°</b><br>" +
+                    "<i>Tıklayarak bu noktaya git</i>" +
+                    "<extra></extra>"
             ),
             name='Tarama Noktaları'
         ))
 
+        # Sensör pozisyonu (tıklanamaz)
         fig_3d.add_trace(
-            go.Scatter3d(x=[0], y=[0], z=[0], mode='markers', marker=dict(size=6, color='red', symbol='diamond'),
-                         name='Sensör'))
+            go.Scatter3d(
+                x=[0],
+                y=[0],
+                z=[0],
+                mode='markers',
+                marker=dict(size=8, color='red', symbol='diamond'),
+                name='Sensör (Başlangıç)',
+                hovertemplate="<b>Robot Başlangıç Pozisyonu</b><extra></extra>"
+            )
+        )
+
         fig_3d.update_layout(
-            scene=dict(xaxis_title='Y Ekseni (cm)', yaxis_title='X Ekseni (cm)', zaxis_title='Z Ekseni (cm)',
-                       aspectmode='data'))
-
-        # --- 2D Grafik ---
-        clustering_desc_2d, df_clus_2d = analyze_environment_shape(fig_2d, df_valid.copy())
-        store_data = df_clus_2d.to_json(orient='split')
-        add_scan_rays(fig_2d, df_valid)
-        add_sector_area(fig_2d, df_valid)
-        add_sensor_position(fig_2d)
-        fig_2d.update_layout(xaxis_title="Yanal Mesafe (cm)", yaxis_title="İleri Mesafe (cm)", yaxis_scaleanchor="x",
-                             yaxis_scaleratio=1,
-                             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-
-        # --- Polar Grafik ---
-        fig_polar.add_trace(
-            go.Scatterpolar(r=df_valid['mesafe_cm'], theta=df_valid['derece'], mode='lines+markers', name='Mesafe'))
-        fig_polar.update_layout(
-            polar=dict(radialaxis=dict(visible=True, range=[0, 400]), angularaxis=dict(direction="clockwise")))
-
-        # --- Analiz Raporu ---
-        analysis_report_component = contextual_environment_analysis(df_valid)
-
-        # Sayısal analizler
-        try:
-            hull_points = df_valid[['y_cm', 'x_cm']].values
-            if len(hull_points) >= 3:
-                hull = ConvexHull(hull_points)
-                area = f"{hull.volume:.1f} cm²"
-                perim = f"{hull.area:.1f} cm"
-        except (QhullError, ValueError) as e:
-            print(f"ConvexHull hatası: {e}")
-        width = f"{df_valid['y_cm'].max() - df_valid['y_cm'].min():.1f} cm"
-        depth = f"{df_valid['x_cm'].max():.1f} cm"
+            scene=dict(
+                xaxis_title='Y Ekseni (cm)',
+                yaxis_title='X Ekseni (cm)',
+                zaxis_title='Z Ekseni (cm)',
+                aspectmode='data'
+            ),
+            # Tıklama modunu aktif et
+            clickmode='event+select'
+        )
 
     return fig_3d, fig_2d, fig_polar, analysis_report_component, store_data, area, perim, width, depth
 
@@ -879,3 +919,66 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
         safe_error_message = str(e).encode('ascii', 'ignore').decode('ascii')
         return dbc.Alert(f"Hata: {safe_error_message}", color="danger"), None
 
+
+@app.callback(
+    [Output('navigation-status-text', 'children'),
+     Output('target-coordinates', 'children')],
+    Input('scan-map-graph-3d', 'clickData'),
+    State('latest-scan-object-store', 'data'),
+    prevent_initial_call=True
+)
+def handle_3d_map_click(clickData, scan_json):
+    """
+    3D haritada bir noktaya tıklandığında çalışır.
+    Hedefe gitme komutunu robot_command.txt dosyasına yazar.
+    """
+    if not clickData:
+        raise PreventUpdate
+
+    if not scan_json:
+        return (
+            dbc.Alert("Aktif tarama yok!", color="warning"),
+            ""
+        )
+
+    try:
+        scan = json.loads(scan_json)
+
+        # Otonom mod aktif mi kontrol et
+        if scan.get('scan_type') != 'AUT':
+            return (
+                dbc.Alert("Hedefe gitme sadece otonom modda çalışır!", color="warning"),
+                ""
+            )
+
+        # Tıklanan noktanın koordinatlarını al
+        point = clickData['points'][0]
+        target_x = point['y']  # Plotly'de x/y ters
+        target_y = point['x']
+        target_z = point['z']
+
+        # Komut dosyasına yaz
+        command_file = '/tmp/robot_command.txt'
+        with open(command_file, 'w') as f:
+            f.write(f"GOTO:{target_x},{target_y},{target_z}")
+
+        logging.info(f"🎯 Hedefe gitme komutu gönderildi: ({target_x:.1f}, {target_y:.1f}, {target_z:.1f})")
+
+        return (
+            dbc.Alert([
+                html.I(className="fa-solid fa-check-circle me-2"),
+                "Hedefe gitme komutu gönderildi!"
+            ], color="success"),
+            html.Div([
+                html.Strong("Hedef Koordinatlar:"),
+                html.Br(),
+                html.Small(f"X: {target_x:.1f} cm | Y: {target_y:.1f} cm | Z: {target_z:.1f} cm")
+            ])
+        )
+
+    except Exception as e:
+        logging.error(f"Hedefe gitme hatası: {e}")
+        return (
+            dbc.Alert(f"Hata: {str(e)}", color="danger"),
+            ""
+        )

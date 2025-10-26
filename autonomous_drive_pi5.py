@@ -42,7 +42,7 @@ DEFAULT_CONFIG = {
     "autonomous_script_pid_file": "/tmp/autonomous_drive_script.pid",
     "pico_serial_port": "/dev/ttyACM0",
     "pico_baud_rate": 115200,
-    "pico_response_timeout": 2.0,  # ✅ 2 saniyeye düşürüldü
+    "pico_response_timeout": 3.0,  # ✅ 2 saniyeye düşürüldü
     "h_pin_trig": 23,
     "h_pin_echo": 24,
     "v_pin_trig": 17,
@@ -377,74 +377,68 @@ def setup_hardware():
 
         logging.info(f"Connecting to Pico: {pico_port}")
 
-        # 2. OPEN CONNECTION
+        # 2. OPEN CONNECTION WITH PROPER TIMEOUTS
         pico = serial.Serial(
             pico_port,
             CONFIG['pico_baud_rate'],
-            timeout=5.0,  # Longer initial timeout
-            write_timeout=5.0
+            timeout=1.0,  # Read timeout
+            write_timeout=5.0  # Write timeout
         )
 
-        # 3. WAIT FOR PICO BOOT (important!)
-        logging.info("Waiting for Pico to boot...")
-        time.sleep(3.0)  # Give Pico time to initialize
+        # 3. CRITICAL: Wait for Pico to fully boot
+        logging.info("Waiting for Pico boot sequence...")
+        time.sleep(4.0)  # Allow TMC2209 initialization + LED blink
 
-        # 4. CLEAR BUFFERS
+        # 4. CLEAR ALL BUFFERS
         pico.reset_input_buffer()
         pico.reset_output_buffer()
+        time.sleep(0.5)
 
-        # 5. WAIT FOR READY MESSAGE
-        logging.info("Waiting for Pico 'Hazir' message...")
+        # 5. ACTIVE HANDSHAKE - Request ready status
+        logging.info("Requesting Pico ready status...")
+        max_attempts = 5
         ready_received = False
-        start_wait = time.time()
-        max_wait = 15.0
 
-        while time.time() - start_wait < max_wait:
-            if stop_event.is_set():
-                break
-
+        for attempt in range(max_attempts):
             try:
-                # Check if data is available
-                if pico.in_waiting > 0:
-                    line = pico.readline().decode('utf-8', errors='ignore').strip()
+                # Clear buffers again
+                pico.reset_input_buffer()
+                pico.reset_output_buffer()
 
-                    if line:
-                        logging.info(f"Pico says: '{line}'")
+                # Send PING command
+                pico.write(b"PING\n")
+                pico.flush()
 
-                        # Check for ready keywords
-                        if any(kw in line.lower() for kw in ['hazir', 'ready', 'pico', 'kas']):
-                            ready_received = True
-                            logging.info("✓ Pico is ready!")
-                            break
-                else:
-                    time.sleep(0.2)
+                # Wait for ACK
+                ack = pico.readline().decode('utf-8', errors='ignore').strip()
+
+                if ack == "ACK":
+                    # Wait for DONE
+                    done = pico.readline().decode('utf-8', errors='ignore').strip()
+
+                    if done == "DONE":
+                        logging.info(f"✓ Pico responded to PING (attempt {attempt + 1})")
+                        ready_received = True
+                        break
+
+                logging.warning(f"Incomplete response: ACK={ack}, attempt {attempt + 1}")
 
             except Exception as e:
-                logging.debug(f"Error reading from Pico: {e}")
-                time.sleep(0.2)
+                logging.debug(f"Ping attempt {attempt + 1} failed: {e}")
 
-        # 6. TEST COMMUNICATION
-        if not ready_received:
-            logging.warning("⚠ Didn't receive ready message, testing with STOP_DRIVE...")
-
-            pico.reset_input_buffer()
-            pico.reset_output_buffer()
-            time.sleep(0.5)
-
-            # Try test command
-            if send_command_to_pico("STOP_DRIVE", max_retries=1, timeout=3.0):
-                logging.info("✓ Pico responds to commands!")
-                ready_received = True
-            else:
-                raise Exception("✗ Pico not responding to commands")
+            time.sleep(1.0)
 
         if not ready_received:
             raise Exception("Failed to establish communication with Pico")
 
         logging.info("✓ Pico communication established")
 
-        # 7. SETUP SENSORS (rest of the code...)
-        logging.info(f"Setting up sensors...")
+        # 6. TEST WITH STOP COMMAND
+        if not send_command_to_pico("STOP_DRIVE", max_retries=1, timeout=2.0):
+            logging.warning("⚠ STOP_DRIVE failed, but continuing...")
+
+        # 7. REST OF SETUP (sensors, motors...)
+        logging.info("Setting up sensors...")
         h_sensor = DistanceSensor(
             echo=CONFIG['h_pin_echo'],
             trigger=CONFIG['h_pin_trig'],
@@ -460,7 +454,6 @@ def setup_hardware():
         )
         logging.info("✓ Sensors ready")
 
-        # 8. SETUP SCAN MOTORS
         logging.info("Setting up scan motors...")
         v_pins = CONFIG['vertical_scan_motor_pins']
         vertical_scan_motor_devices = (
@@ -483,15 +476,15 @@ def setup_hardware():
 
     except Exception as e:
         logging.critical(f"CRITICAL: Hardware setup failed: {e}")
+        import traceback
         traceback.print_exc()
         sys.exit(1)
 
 
-
 # --- PICO İLETİŞİMİ (İYİLEŞTİRİLMİŞ - RETRY) ---
-def send_command_to_pico(command, max_retries=2, timeout=3.0):
+def send_command_to_pico(command, max_retries=3, timeout=3.0):
     """
-    ✅ FIXED: Better timeout handling and buffer management
+    ✅ IMPROVED: Better error handling and timeout management
     """
     if stop_event.is_set() or not pico or not pico.is_open:
         return False
@@ -499,55 +492,58 @@ def send_command_to_pico(command, max_retries=2, timeout=3.0):
     for attempt in range(max_retries):
         with pico_lock:
             try:
-                # Clear buffers completely
+                # 1. Clear buffers
                 pico.reset_input_buffer()
                 pico.reset_output_buffer()
-                time.sleep(0.1)  # Give time for buffers to clear
+                time.sleep(0.05)  # Short settle time
 
-                # Send command
+                # 2. Send command
                 command_bytes = f"{command}\n".encode('utf-8')
                 pico.write(command_bytes)
-                pico.flush()  # Ensure it's sent
-                logging.debug(f"→ PICO: {command}")
+                pico.flush()
 
-                # Wait for ACK with timeout
+                logging.debug(f"→ Sent: {command} (attempt {attempt + 1})")
+
+                # 3. Set timeout and wait for ACK
                 pico.timeout = timeout
                 start_time = time.time()
 
                 ack = pico.readline().decode('utf-8', errors='ignore').strip()
-                ack_time = time.time() - start_time
-                logging.debug(f"← PICO ACK: '{ack}' ({ack_time:.2f}s)")
+
+                if not ack:
+                    logging.warning(f"Timeout waiting for ACK (attempt {attempt + 1})")
+                    time.sleep(0.5)
+                    continue
 
                 if ack != "ACK":
-                    if ack == "":
-                        logging.warning(f"Timeout waiting for ACK (attempt {attempt + 1})")
-                    else:
-                        logging.error(f"Expected ACK, got '{ack}' (attempt {attempt + 1})")
-                    time.sleep(0.3)
+                    logging.error(f"Expected ACK, got '{ack}' (attempt {attempt + 1})")
+                    time.sleep(0.5)
                     continue
 
-                # Wait for DONE with timeout
+                # 4. Wait for DONE
                 done = pico.readline().decode('utf-8', errors='ignore').strip()
-                done_time = time.time() - start_time
-                logging.debug(f"← PICO DONE: '{done}' ({done_time:.2f}s)")
+
+                if not done:
+                    logging.warning(f"Timeout waiting for DONE (attempt {attempt + 1})")
+                    time.sleep(0.5)
+                    continue
 
                 if done != "DONE":
-                    if done == "":
-                        logging.warning(f"Timeout waiting for DONE (attempt {attempt + 1})")
-                    else:
-                        logging.error(f"Expected DONE, got '{done}' (attempt {attempt + 1})")
-                    time.sleep(0.3)
+                    logging.error(f"Expected DONE, got '{done}' (attempt {attempt + 1})")
+                    time.sleep(0.5)
                     continue
 
-                # Success
-                total_time = time.time() - start_time
-                if total_time > 1.0:
-                    logging.warning(f"Slow response: {total_time:.2f}s")
+                # 5. SUCCESS
+                elapsed = time.time() - start_time
+                if elapsed > 1.0:
+                    logging.warning(f"Slow response: {elapsed:.2f}s for {command}")
+                else:
+                    logging.debug(f"✓ Command OK: {command} ({elapsed:.3f}s)")
 
                 return True
 
             except serial.SerialTimeoutException:
-                logging.warning(f"Serial timeout (attempt {attempt + 1}/{max_retries})")
+                logging.warning(f"Serial timeout on attempt {attempt + 1}/{max_retries}")
                 time.sleep(0.5)
 
             except serial.SerialException as e:
@@ -555,13 +551,15 @@ def send_command_to_pico(command, max_retries=2, timeout=3.0):
                 time.sleep(0.5)
 
             except Exception as e:
-                logging.error(f"Unexpected error: {e} (attempt {attempt + 1})")
+                logging.error(f"Unexpected error: {e}")
+                import traceback
                 traceback.print_exc()
                 time.sleep(0.5)
 
-    logging.error(f"✗ Command failed after {max_retries} attempts: {command}")
+    logging.error(f"✗ Command FAILED after {max_retries} attempts: {command}")
     stats['errors'] += 1
     return False
+
 
 # --- HAREKET FONKSİYONLARI ---
 def move_forward():

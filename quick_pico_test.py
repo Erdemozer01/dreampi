@@ -1,77 +1,102 @@
-#!/usr/bin/env python3
 """
-Pico'nun main.py ile çalışıp çalışmadığını test et
+Minimal Pico test - sadece seri iletişim
+TMC2209 olmadan da çalışır
 """
 
-import serial
-import time
+import sys
+import uselect
+import utime
+from machine import Pin
 
-
-def test_pico():
-    print("🧪 Pico Test Başlatılıyor...")
-
+# LED
+try:
+    led = Pin("LED", Pin.OUT)
+    led.on()
+except:
     try:
-        # Bağlan
-        ser = serial.Serial('/dev/ttyACM0', 115200, timeout=3)
-        print("✓ Port açıldı")
+        led = Pin(25, Pin.OUT)
+        led.on()
+    except:
+        led = None
 
-        # 3 saniye bekle (Pico'nun başlaması için)
-        time.sleep(3)
+# Başlatma mesajı
+print("\n" + "=" * 60)
+print("PICO MINIMAL TEST")
+print("=" * 60)
+print("Pico (Kas) Hazir")
+print("Komut bekleniyor...\n")
 
-        # Buffer'ı temizle
-        ser.reset_input_buffer()
-        ser.reset_output_buffer()
+# LED yanıp sönsün
+if led:
+    for _ in range(3):
+        led.off()
+        utime.sleep_ms(100)
+        led.on()
+        utime.sleep_ms(100)
 
-        print("\n📡 Pico'dan mesaj bekleniyor (10 saniye)...")
-        start = time.time()
+# Poll objesi
+spoll = uselect.poll()
+spoll.register(sys.stdin, uselect.POLLIN)
 
-        while time.time() - start < 10:
-            if ser.in_waiting > 0:
-                line = ser.readline().decode('utf-8', errors='ignore').strip()
-                if line:
-                    print(f"   📨 {line}")
+command_count = 0
 
-                    if "Hazir" in line or "PICO" in line:
-                        print("\n✅ BAŞARI! main.py çalışıyor!")
+# Ana döngü
+while True:
+    try:
+        # Komut kontrol
+        if spoll.poll(0):
+            line = sys.stdin.readline()
 
-                        # Komut testi
-                        print("\n🧪 Komut testi: STOP_DRIVE")
-                        ser.write(b"STOP_DRIVE\n")
-                        ser.flush()
+            if not line:
+                utime.sleep_ms(5)
+                continue
 
-                        time.sleep(0.5)
+            cmd = line.strip()
 
-                        responses = []
-                        while ser.in_waiting > 0:
-                            resp = ser.readline().decode('utf-8', errors='ignore').strip()
-                            if resp:
-                                responses.append(resp)
-                                print(f"   📨 {resp}")
+            if not cmd:
+                continue
 
-                        if "ACK" in responses and "DONE" in responses:
-                            print("\n✅ MÜKEMMEL! Protokol doğru çalışıyor!")
-                            print("\n🚀 autonomous_drive_pi5.py'yi çalıştırabilirsiniz!")
-                            return True
-                        else:
-                            print("\n⚠️ Protokol tam değil")
-                            return False
+            command_count += 1
 
-        print("\n❌ Timeout: Pico yanıt vermiyor")
-        print("\n🔧 Yapılacaklar:")
-        print("   1. Pico'yu USB'den çıkarıp tekrar takın")
-        print("   2. Thonny'de CTRL+D yapın (soft reset)")
-        print("   3. main.py'nin Pico'da olduğunu doğrulayın")
-        return False
+            if led:
+                led.off()
 
+            # ACK gönder
+            print("ACK")
+
+            # Komut işle (basit)
+            if cmd == "STOP_DRIVE" or cmd == "STOP_ALL":
+                print("DONE")
+            elif cmd.startswith("FORWARD:") or cmd.startswith("BACKWARD:"):
+                duration = int(cmd.split(":")[1])
+                # Simüle et
+                utime.sleep_ms(min(duration, 100))
+                print("DONE")
+            elif cmd.startswith("TURN_"):
+                duration = int(cmd.split(":")[1])
+                utime.sleep_ms(min(duration, 100))
+                print("DONE")
+            elif cmd.startswith("SLIGHT_"):
+                duration = int(cmd.split(":")[1])
+                utime.sleep_ms(min(duration, 100))
+                print("DONE")
+            elif cmd.startswith("CONTINUOUS_"):
+                print("DONE")
+            else:
+                print("ERR:BilinmeyenKomut")
+
+            if led:
+                led.on()
+
+            # Her 10 komutta log
+            if command_count % 10 == 0:
+                print(f"# {command_count} komut islendi", file=sys.stderr)
+
+        else:
+            utime.sleep_ms(10)
+
+    except KeyboardInterrupt:
+        print("Program sonlandi")
+        break
     except Exception as e:
-        print(f"\n❌ Hata: {e}")
-        return False
-    finally:
-        try:
-            ser.close()
-        except:
-            pass
-
-
-if __name__ == "__main__":
-    test_pico()
+        print(f"ERR:{e}")

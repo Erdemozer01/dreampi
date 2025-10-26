@@ -837,6 +837,10 @@ def main():
     try:
         setup_hardware()
 
+        if not create_scan_session():
+            logging.critical("Veritabanı oturumu oluşturulamadı, çıkılıyor.")
+            return
+
         # Başlangıç pozisyonu
         logging.info("Tarama motorları merkeze alınıyor...")
         move_step_motor_to_angle_local(
@@ -1185,6 +1189,10 @@ def main_reactive():
 
     try:
         setup_hardware()
+
+        if not create_scan_session():
+            logging.critical("Veritabanı oturumu oluşturulamadı, çıkılıyor.")
+            return
 
         # Başlangıç pozisyonu
         move_step_motor_to_angle_local(

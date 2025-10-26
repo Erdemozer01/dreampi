@@ -346,18 +346,22 @@ def start_autonomous_mode():
     try:
         stop_all_scripts()
 
-        # Yeni tarama oturumu oluştur (DB'de)
-        from scanner.models import Scan
-        new_scan = Scan.objects.create(
-            scan_type='AUT',  # Otonom
-            status='RUN',
-            h_scan_angle=90.0,  # Varsayılan değerler
-            h_step_angle=30.0,
-            v_scan_angle=30.0,
-            v_step_angle=15.0
-        )
+        # --- DÜZELTME: BU BLOK KALDIRILDI ---
+        # Veritabanı kaydı oluşturma işi artık 'autonomous_drive_pi5.py'
+        # betiğinin kendi sorumluluğundadır.
+        #
+        # from scanner.models import Scan
+        # new_scan = Scan.objects.create(
+        #     scan_type='AUT',  # Otonom
+        #     status='RUN',
+        #     h_scan_angle=90.0,  # Varsayılan değerler
+        #     h_step_angle=30.0,
+        #     v_scan_angle=30.0,
+        #     v_step_angle=15.0
+        # )
+        # logging.info(f"✓ Yeni otonom tarama başlatıldı: ID={new_scan.id}")
+        # --- DÜZELTME SONU ---
 
-        logging.info(f"✓ Yeni otonom tarama başlatıldı: ID={new_scan.id}")
 
         # Scripti başlat
         cmd = [sys.executable, AUTONOMOUS_SCRIPT_PATH]
@@ -374,6 +378,7 @@ def start_autonomous_mode():
             False  # interval enabled
         )
     except Exception as e:
+        # Hata artık veritabanından değil, Popen'dan gelebilir.
         logging.error(f"Otonom sürüş başlatma hatası: {e}")
         return (
             html.Span([
@@ -384,7 +389,6 @@ def start_autonomous_mode():
             True,
             True
         )
-
 # --- ARAYÜZ BİLEŞENLERİ (LAYOUT) ---
 control_panel = dbc.Card([
     dbc.CardHeader([html.I(className="fa-solid fa-gears me-2"), "Sistem Kontrolü"]),

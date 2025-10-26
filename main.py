@@ -567,10 +567,13 @@ def main_loop():
     """
     global continuous_mode, continuous_step_count
 
-    # Initialize hardware
+    if not hasattr(sys.stdout, 'flush'):
+        sys.stdout.flush = lambda: None
+    if not hasattr(sys.stderr, 'flush'):
+        sys.stderr.flush = lambda: None
+
     if not setup_hardware():
         print("✗ Hardware initialization failed")
-        sys.stdout.flush()  # ✅ CRITICAL
         return
 
     # ✅ CRITICAL FIX: Send ready signal MULTIPLE times and flush

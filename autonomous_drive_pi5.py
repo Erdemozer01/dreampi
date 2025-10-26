@@ -364,6 +364,7 @@ def find_pico_serial_port():
 
 
 # --- DONANIM BAŞLATMA ---
+# --- DONANIM BAŞLATMA ---
 def setup_hardware():
     """Enhanced hardware setup with robust Pico communication"""
     global pico, h_sensor, v_sensor
@@ -381,39 +382,71 @@ def setup_hardware():
         pico = serial.Serial(
             pico_port,
             CONFIG['pico_baud_rate'],
-            timeout=1.0,  # Read timeout
+            timeout=1.0,  # Read timeout (bu, komutlar için ayarlanacak)
             write_timeout=5.0  # Write timeout
         )
 
-        # 3. CRITICAL: Wait for Pico to fully boot
-        logging.info("Waiting for Pico boot sequence...")
-        time.sleep(4.0)  # Allow TMC2209 initialization + LED blink
+        # 3. CRITICAL (DÜZELTİLDİ): Pico'nun 'READY' sinyalini bekleyin
+        # Kör bir 'sleep' yerine, Pico'nun hazır olduğunu bildirmesini dinleyin.
+        logging.info("Waiting for Pico 'PICO_READY' signal...")
 
-        # 4. CLEAR ALL BUFFERS
+        # Pico'nun önyüklemesi ve TMC sürücülerini ayarlaması için cömert bir zaman aşımı
+        pico.timeout = 15.0
+        ready_received = False
+        start_wait_time = time.time()
+
+        while time.time() - start_wait_time < 15.0:
+            try:
+                line = pico.readline().decode('utf-8', errors='ignore').strip()
+
+                if line:
+                    logging.info(f"[PICO_BOOT] {line}")
+                    # Pico'nun gönderdiği anahtar hazır mesajlarından birini kontrol et
+                    if "PICO_READY" in line or "Pico (Kas) Hazir" in line:
+                        logging.info("✓ Pico has signaled READY.")
+                        ready_received = True
+                        break
+                else:
+                    # pico.readline() 15s içinde hiçbir şey almazsa (boş string döner)
+                    logging.warning("Pico.readline() timed out waiting for boot message.")
+                    break  # Zaman aşımı durumunda döngüden çık
+
+            except Exception as e:
+                logging.warning(f"Error reading from Pico during boot: {e}")
+                time.sleep(0.1)
+
+        if not ready_received:
+            raise Exception("Pico did not send 'PICO_READY' signal within 15 seconds.")
+
+        # 4. BUFFERSLARI TEMİZLE ve normal zaman aşımını ayarla
+        logging.info("Pico is ready. Clearing buffers and setting normal timeout.")
         pico.reset_input_buffer()
         pico.reset_output_buffer()
-        time.sleep(0.5)
+        time.sleep(0.1)  # Kısa bir duraklama
 
-        # 5. ACTIVE HANDSHAKE - Request ready status
-        logging.info("Requesting Pico ready status...")
+        # Sonraki komutlar için (ACK/DONE) normal yanıt zaman aşımını ayarla
+        pico.timeout = CONFIG['pico_response_timeout']
+
+        # 5. ACTIVE HANDSHAKE - Request ready status (PING)
+        logging.info("Requesting Pico ready status (PING)...")
         max_attempts = 5
-        ready_received = False
+        ready_received = False  # PING el sıkışması için değişkeni yeniden kullan
 
         for attempt in range(max_attempts):
             try:
-                # Clear buffers again
+                # Bufferları tekrar temizle
                 pico.reset_input_buffer()
                 pico.reset_output_buffer()
 
-                # Send PING command
+                # PING komutunu gönder
                 pico.write(b"PING\n")
                 pico.flush()
 
-                # Wait for ACK
+                # ACK bekle
                 ack = pico.readline().decode('utf-8', errors='ignore').strip()
 
                 if ack == "ACK":
-                    # Wait for DONE
+                    # DONE bekle
                     done = pico.readline().decode('utf-8', errors='ignore').strip()
 
                     if done == "DONE":
@@ -421,15 +454,15 @@ def setup_hardware():
                         ready_received = True
                         break
 
-                logging.warning(f"Incomplete response: ACK={ack}, attempt {attempt + 1}")
+                logging.warning(f"Incomplete response: ACK='{ack}', attempt {attempt + 1}")
 
             except Exception as e:
                 logging.debug(f"Ping attempt {attempt + 1} failed: {e}")
 
-            time.sleep(1.0)
+            time.sleep(1.0)  # Yeniden denemeden önce bekle
 
         if not ready_received:
-            raise Exception("Failed to establish communication with Pico")
+            raise Exception("Failed to establish communication with Pico after PING")
 
         logging.info("✓ Pico communication established")
 
@@ -479,7 +512,6 @@ def setup_hardware():
         import traceback
         traceback.print_exc()
         sys.exit(1)
-
 
 # --- PICO İLETİŞİMİ (İYİLEŞTİRİLMİŞ - RETRY) ---
 def send_command_to_pico(command, max_retries=3, timeout=3.0):

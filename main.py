@@ -11,6 +11,7 @@ class TMC2209_UART:
     """TMC2209 stepper motor sürücü kontrolü"""
 
     def __init__(self, uart_id, baudrate=115200, tx_pin_id=None, rx_pin_id=None, rsense_ohm=0.11):
+        uart_timeout = 50
         if tx_pin_id is not None and rx_pin_id is not None:
             self.uart = UART(uart_id, baudrate=baudrate, tx=Pin(tx_pin_id), rx=Pin(rx_pin_id))
         else:
@@ -469,8 +470,7 @@ def handle_continuous_slight_right():
 
 def process_command(command_line):
     """
-    Komut satırını işle ve yanıt döndür
-    Returns: (success: bool, response_to_send: str or None)
+    ✅ FIXED: Ensures all responses are flushed
     """
     global continuous_mode
     try:
@@ -479,11 +479,11 @@ def process_command(command_line):
         if not command_line:
             return False, None
 
-        # Süreli bir komut gelirse, önce sürekli hareketi durdur
+        # Stop continuous movement for timed commands
         if not command_line.startswith("CONTINUOUS_") and command_line not in ["STOP_DRIVE", "STOP_ALL"]:
             continuous_mode = "STOP"
 
-        # --- SÜRELİ KOMUTLAR ---
+        # Process commands...
         if command_line.startswith("FORWARD:"):
             duration = int(command_line.split(":")[1])
             handle_forward(duration)
@@ -514,7 +514,6 @@ def process_command(command_line):
             handle_slight_right(duration)
             return True, "DONE"
 
-        # --- SÜREKLİ VE KONTROL KOMUTLARI ---
         elif command_line == "STOP_DRIVE":
             handle_stop_drive()
             return True, "DONE"
@@ -525,33 +524,40 @@ def process_command(command_line):
 
         elif command_line == "CONTINUOUS_FORWARD":
             handle_continuous_forward()
-            return True, None  # 'DONE' zaten gönderildi
+            sys.stdout.flush()  # ✅ Flush after DONE
+            return True, None  # DONE already sent in handler
 
         elif command_line == "CONTINUOUS_TURN_LEFT":
             handle_continuous_turn_left()
+            sys.stdout.flush()
             return True, None
 
         elif command_line == "CONTINUOUS_TURN_RIGHT":
             handle_continuous_turn_right()
+            sys.stdout.flush()
             return True, None
 
         elif command_line == "CONTINUOUS_SLIGHT_LEFT":
             handle_continuous_slight_left()
+            sys.stdout.flush()
             return True, None
 
         elif command_line == "CONTINUOUS_SLIGHT_RIGHT":
             handle_continuous_slight_right()
+            sys.stdout.flush()
             return True, None
 
-        # Bilinmeyen komut
+        # ✅ ADD: Ping/pong test command
+        elif command_line == "PING":
+            return True, "DONE"
+
         else:
-            return False, "ERR:BilinmeyenKomut"
+            return False, "ERR:UnknownCommand"
 
     except ValueError as e:
-        return False, f"ERR:FormatHatasi:{e}"
+        return False, f"ERR:FormatError:{e}"
     except Exception as e:
-        return False, f"ERR:GenelHata:{e}"
-
+        return False, f"ERR:GeneralError:{e}"
 
 # ============================================================================
 # ANA DÖNGÜ (DÜZELTİLMİŞ)
@@ -559,53 +565,73 @@ def process_command(command_line):
 
 def main_loop():
     """
-    Ana komut dinleyici ve sürekli hareket döngüsü
-    ✅ DÜZELTİLDİ: Watchdog daha sık besleniyor
-    ✅ DÜZELTİLDİ: STOP durumunda CPU %100 kullanmıyor
+    ✅ FIXED: Ensures boot message is sent immediately
     """
     global continuous_mode, continuous_step_count
 
-    # Donanımı başlat
+    # Initialize hardware
     if not setup_hardware():
-        print("✗ Donanım başlatılamadı, program sonlanıyor")
+        print("✗ Hardware initialization failed")
+        sys.stdout.flush()  # ✅ CRITICAL
         return
 
-    # Pi 5'e hazır sinyali gönder
-    print("Pico (Kas) Hazir")
+    # ✅ CRITICAL FIX: Send ready signal MULTIPLE times and flush
+    print("\n" + "=" * 60)
+    print("🤖 PICO MOTOR CONTROL READY")
+    print("=" * 60)
+    print("Pico (Kas) Hazir")  # This is what Pi5 is looking for
+    print("PICO_READY")  # Alternative message
+    print("Status: Ready")  # Another alternative
+    sys.stdout.flush()  # ✅ FORCE SEND NOW
+
+    # ✅ Also write to stderr to be sure
+    print("Pico (Kas) Hazir", file=sys.stderr)
+    sys.stderr.flush()
 
     if led:
-        # LED yanıp sönsün (hazır durumu)
-        for _ in range(3):
+        # Blink LED pattern: READY
+        for _ in range(5):
             led.off()
             utime.sleep_ms(100)
             led.on()
             utime.sleep_ms(100)
 
-    print("\n🎧 Pi 5'ten komut bekleniyor...\n")
+    # ✅ Send another ready message after LED blink
+    print("Listening for commands...")
+    sys.stdout.flush()
 
-    # USB Seri (stdin) için bir poll objesi oluştur
+    print("\n🎧 Waiting for commands from Pi 5...\n")
+    sys.stdout.flush()
+
+    # Create poll object for stdin
     spoll = uselect.poll()
     spoll.register(sys.stdin, uselect.POLLIN)
 
     command_count = 0
-    wdt_feed_counter = 0
+    last_wdt_feed = utime.ticks_ms()
+    last_heartbeat = utime.ticks_ms()
 
-    # Sonsuz döngü
+    # Main loop
     while True:
         try:
-            # ✅ Watchdog'u daha sık besle (her 100 iterasyonda)
-            wdt_feed_counter += 1
-            if wdt_feed_counter >= 100:
+            # Feed watchdog every 5 seconds
+            now = utime.ticks_ms()
+            if utime.ticks_diff(now, last_wdt_feed) > 5000:
                 if wdt:
                     wdt.feed()
-                wdt_feed_counter = 0
+                last_wdt_feed = now
 
-            # 1. KOMUTLARI KONTROL ET (non-blocking)
-            if spoll.poll(0):
+            # ✅ Send periodic heartbeat every 30 seconds
+            if utime.ticks_diff(now, last_heartbeat) > 30000:
+                print(f"# Heartbeat: {command_count} commands, mode={continuous_mode}", file=sys.stderr)
+                sys.stderr.flush()
+                last_heartbeat = now
+
+            # Check for commands (1ms timeout)
+            if spoll.poll(1):
                 command_line = sys.stdin.readline()
 
                 if not command_line:
-                    utime.sleep_ms(5)
                     continue
 
                 command_line = command_line.strip()
@@ -615,28 +641,25 @@ def main_loop():
 
                 command_count += 1
                 if led:
-                    led.off()  # Komut alındı
+                    led.off()
 
-                # Hemen ACK gönder
+                # ✅ Send ACK immediately with flush
                 print("ACK")
+                sys.stdout.flush()
 
-                # Komutu işle
+                # Process command
                 success, response = process_command(command_line)
 
-                # Yanıtı gönder (DONE veya ERR)
+                # ✅ Send response with flush
                 if response:
                     print(response)
+                    sys.stdout.flush()
 
                 if led:
-                    led.on()  # İşlem bitti
+                    led.on()
 
-                # Debug: Her 10 komutta bir istatistik yazdır
-                if command_count % 10 == 0:
-                    print(f"# {command_count} komut işlendi", file=sys.stderr)
-
-            # 2. SÜREKLİ HAREKETİ YÜRÜT
+            # Execute continuous movement
             if continuous_mode == "STOP":
-                # ✅ DÜZELTİLDİ: Duruyorsa daha uzun bekle (CPU rahatlar)
                 utime.sleep_ms(10)
                 continue
 
@@ -657,11 +680,9 @@ def main_loop():
                 utime.sleep_us(DEFAULT_TURN_DELAY_US)
 
             elif continuous_mode == "SLIGHT_LEFT":
-                # Sağ %100, Sol %50
                 right_step.high()
                 if continuous_step_count % 2 == 0:
                     left_step.high()
-
                 utime.sleep_us(DEFAULT_SPEED_DELAY_US)
                 left_step.low()
                 right_step.low()
@@ -669,11 +690,9 @@ def main_loop():
                 continuous_step_count += 1
 
             elif continuous_mode == "SLIGHT_RIGHT":
-                # Sol %100, Sağ %50
                 left_step.high()
                 if continuous_step_count % 2 == 0:
                     right_step.high()
-
                 utime.sleep_us(DEFAULT_SPEED_DELAY_US)
                 left_step.low()
                 right_step.low()
@@ -681,19 +700,25 @@ def main_loop():
                 continuous_step_count += 1
 
         except KeyboardInterrupt:
-            print("\n⚠️ CTRL+C - Program sonlandırılıyor...")
+            print("\n⚠ CTRL+C - Stopping...")
+            sys.stdout.flush()
             handle_stop_all()
             break
 
         except Exception as e:
-            print(f"ERR:DonguHatasi:{e}")
+            print(f"ERR:LoopError:{e}")
+            sys.stdout.flush()
             import sys
             sys.print_exception(e)
-            # Hata durumunda motorları durdur
+
             try:
                 handle_stop_all()
+                continuous_mode = "STOP"
             except:
                 pass
+
+            if wdt:
+                wdt.feed()
 
 
 # ============================================================================

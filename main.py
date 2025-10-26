@@ -1,10 +1,12 @@
 # main.py - Raspberry Pi Pico W (Kas) Kodu - İYİLEŞTİRİLMİŞ
 # Pi 5 (Beyin) tarafından gönderilen seri komutları alır ve donanımı kontrol eder.
 # ACK+DONE protokolü ile güvenli iletişim
+# Reaktif (Sürekli) Mod Desteği Eklendi
 
 from machine import Pin, UART
 import utime
 import sys
+import uselect  # Non-blocking okuma için eklendi
 
 
 # --- TMC2209 UART Kontrol Sınıfı ---
@@ -175,11 +177,8 @@ left_driver = None
 right_driver = None
 
 # Sürekli hareket için
-continuous_movement = False
-movement_thread = None
-current_left_dir = 1
-current_right_dir = 1
-current_delay = DEFAULT_SPEED_DELAY_US
+continuous_mode = "STOP"  # "STOP", "FORWARD", "TURN_LEFT", "TURN_RIGHT", "SLIGHT_LEFT", "SLIGHT_RIGHT"
+continuous_step_count = 0
 
 
 # ============================================================================
@@ -259,7 +258,7 @@ def setup_hardware():
 
 
 # ============================================================================
-# MOTOR KONTROL FONKSİYONLARI
+# MOTOR KONTROL FONKSİYONLARI (SÜRELİ)
 # ============================================================================
 
 def drive_for_time(left_direction, right_direction, duration_ms, delay_us):
@@ -290,17 +289,20 @@ def drive_for_time(left_direction, right_direction, duration_ms, delay_us):
 
 def stop_drive_motors():
     """Sürüş motorlarını durdur (hold akımına geçer)"""
+    global continuous_mode
+    continuous_mode = "STOP"
     # Aktif pals gönderilmediğinde motorlar otomatik durur
-    pass
 
 
 def disable_all_motors():
     """Tüm motorları devre dışı bırak"""
+    global continuous_mode
+    continuous_mode = "STOP"
     enable_motors_pin.high()  # EN pini HIGH = Devre dışı
 
 
 # ============================================================================
-# KOMUT İŞLEYİCİLER
+# KOMUT İŞLEYİCİLER (SÜRELİ)
 # ============================================================================
 
 def handle_forward(duration_ms):
@@ -391,67 +393,136 @@ def handle_slight_right(duration_ms):
 
 
 # ============================================================================
-# ANA KOMUT DİNLEYİCİ
+# KOMUT İŞLEYİCİLER (SÜREKLİ - YENİ)
+# ============================================================================
+
+def handle_continuous_forward():
+    global continuous_mode, continuous_step_count
+    left_dir.value(1)
+    right_dir.value(1)
+    continuous_mode = "FORWARD"
+    continuous_step_count = 0
+    print("DONE")  # Komutun alındığını ve uygulandığını bildir
+
+
+def handle_continuous_turn_left():
+    global continuous_mode, continuous_step_count
+    left_dir.value(0)
+    right_dir.value(1)
+    continuous_mode = "TURN_LEFT"
+    continuous_step_count = 0
+    print("DONE")
+
+
+def handle_continuous_turn_right():
+    global continuous_mode, continuous_step_count
+    left_dir.value(1)
+    right_dir.value(0)
+    continuous_mode = "TURN_RIGHT"
+    continuous_step_count = 0
+    print("DONE")
+
+
+def handle_continuous_slight_left():
+    global continuous_mode, continuous_step_count
+    left_dir.value(1)
+    right_dir.value(1)
+    continuous_mode = "SLIGHT_LEFT"
+    continuous_step_count = 0
+    print("DONE")
+
+
+def handle_continuous_slight_right():
+    global continuous_mode, continuous_step_count
+    left_dir.value(1)
+    right_dir.value(1)
+    continuous_mode = "SLIGHT_RIGHT"
+    continuous_step_count = 0
+    print("DONE")
+
+
+# ============================================================================
+# ANA KOMUT İŞLEYİCİ (GÜNCELLENDİ)
 # ============================================================================
 
 def process_command(command_line):
     """
     Komut satırını işle ve yanıt döndür.
+    NOT: Sürekli komutlar kendi "DONE" yanıtını gönderir.
 
     Returns:
-        tuple: (success: bool, response: str)
+        tuple: (success: bool, response_to_send: str or None)
     """
+    global continuous_mode
     try:
         command_line = command_line.strip()
 
         if not command_line:
             return False, None
 
-        # FORWARD:1000
+        # Süreli bir komut gelirse, önce sürekli hareketi durdur
+        if not command_line.startswith("CONTINUOUS_") and command_line != "STOP_DRIVE" and command_line != "STOP_ALL":
+            continuous_mode = "STOP"
+
+        # --- SÜRELİ KOMUTLAR ---
         if command_line.startswith("FORWARD:"):
             duration = int(command_line.split(":")[1])
             handle_forward(duration)
             return True, "DONE"
 
-        # BACKWARD:1000
         elif command_line.startswith("BACKWARD:"):
             duration = int(command_line.split(":")[1])
             handle_backward(duration)
             return True, "DONE"
 
-        # TURN_LEFT:500
         elif command_line.startswith("TURN_LEFT:"):
             duration = int(command_line.split(":")[1])
             handle_turn_left(duration)
             return True, "DONE"
 
-        # TURN_RIGHT:500
         elif command_line.startswith("TURN_RIGHT:"):
             duration = int(command_line.split(":")[1])
             handle_turn_right(duration)
             return True, "DONE"
 
-        # STOP_DRIVE
-        elif command_line == "STOP_DRIVE":
-            handle_stop_drive()
-            return True, "DONE"
-
-        # STOP_ALL
-        elif command_line == "STOP_ALL":
-            handle_stop_all()
-            return True, "DONE"
-
-        # SLIGHT_LEFT:1000 (Hafif sola dön)
         elif command_line.startswith("SLIGHT_LEFT:"):
             duration = int(command_line.split(":")[1])
             handle_slight_left(duration)
             return True, "DONE"
 
-        # SLIGHT_RIGHT:1000 (Hafif sağa dön)
         elif command_line.startswith("SLIGHT_RIGHT:"):
             duration = int(command_line.split(":")[1])
             handle_slight_right(duration)
             return True, "DONE"
+
+        # --- SÜREKLİ VE KONTROL KOMUTLARI ---
+        elif command_line == "STOP_DRIVE":
+            handle_stop_drive()
+            return True, "DONE"
+
+        elif command_line == "STOP_ALL":
+            handle_stop_all()
+            return True, "DONE"
+
+        elif command_line == "CONTINUOUS_FORWARD":
+            handle_continuous_forward()
+            return True, None  # 'DONE' zaten gönderildi
+
+        elif command_line == "CONTINUOUS_TURN_LEFT":
+            handle_continuous_turn_left()
+            return True, None
+
+        elif command_line == "CONTINUOUS_TURN_RIGHT":
+            handle_continuous_turn_right()
+            return True, None
+
+        elif command_line == "CONTINUOUS_SLIGHT_LEFT":
+            handle_continuous_slight_left()
+            return True, None
+
+        elif command_line == "CONTINUOUS_SLIGHT_RIGHT":
+            handle_continuous_slight_right()
+            return True, None
 
         # Bilinmeyen komut
         else:
@@ -463,8 +534,13 @@ def process_command(command_line):
         return False, f"ERR:GenelHata:{e}"
 
 
+# ============================================================================
+# ANA DÖNGÜ (YENİDEN YAZILDI - NON-BLOCKING)
+# ============================================================================
+
 def main_loop():
-    """Ana komut dinleyici döngüsü"""
+    """Ana komut dinleyici ve sürekli hareket döngüsü"""
+    global continuous_mode, continuous_step_count
 
     # Donanımı başlat
     if not setup_hardware():
@@ -484,46 +560,91 @@ def main_loop():
 
     print("\n🎧 Pi 5'ten komut bekleniyor...\n")
 
+    # USB Seri (stdin) için bir poll objesi oluştur
+    spoll = uselect.poll()
+    spoll.register(sys.stdin, uselect.POLLIN)
+
     command_count = 0
 
-    # Sonsuz döngü: USB üzerinden komut al
+    # Sonsuz döngü: Komutları dinle VEYA sürekli hareketi yürüt
     while True:
         try:
-            # USB seri porttan komut oku
-            command_line = sys.stdin.readline()
+            # 1. KOMUTLARI KONTROL ET (0ms timeout ile non-blocking)
+            if spoll.poll(0):
+                command_line = sys.stdin.readline()
 
-            if not command_line:
-                utime.sleep_ms(10)
+                if not command_line:
+                    utime.sleep_ms(10)
+                    continue
+
+                command_line = command_line.strip()
+
+                if not command_line:
+                    continue
+
+                command_count += 1
+                if led: led.off()  # Komut alındı
+
+                # Hemen ACK gönder
+                print("ACK")
+
+                # Komutu işle
+                success, response = process_command(command_line)
+
+                # Yanıtı gönder (DONE veya ERR)
+                if response:
+                    print(response)
+
+                if led: led.on() # İşlem bitti
+
+                # Debug: Her 10 komutta bir istatistik yazdır
+                if command_count % 10 == 0:
+                    print(f"# {command_count} komut işlendi", file=sys.stderr)
+
+            # 2. SÜREKLİ HAREKETİ YÜRÜT (Eğer yeni komut yoksa)
+            if continuous_mode == "STOP":
+                utime.sleep_us(500)  # CPU'yu yorma
                 continue
 
-            command_line = command_line.strip()
+            elif continuous_mode == "FORWARD":
+                left_step.high()
+                right_step.high()
+                utime.sleep_us(DEFAULT_SPEED_DELAY_US)
+                left_step.low()
+                right_step.low()
+                utime.sleep_us(DEFAULT_SPEED_DELAY_US)
 
-            if not command_line:
-                continue
+            elif continuous_mode == "TURN_LEFT" or continuous_mode == "TURN_RIGHT":
+                left_step.high()
+                right_step.high()
+                utime.sleep_us(DEFAULT_TURN_DELAY_US)
+                left_step.low()
+                right_step.low()
+                utime.sleep_us(DEFAULT_TURN_DELAY_US)
 
-            command_count += 1
+            elif continuous_mode == "SLIGHT_LEFT":
+                # Sağ %100, Sol %50
+                right_step.high()
+                if continuous_step_count % 2 == 0:
+                    left_step.high()
 
-            # LED'i kısa süre söndür (komut alındı göstergesi)
-            if led:
-                led.off()
+                utime.sleep_us(DEFAULT_SPEED_DELAY_US)
+                left_step.low()
+                right_step.low()
+                utime.sleep_us(DEFAULT_SPEED_DELAY_US)
+                continuous_step_count += 1
 
-            # Hemen ACK gönder
-            print("ACK")
+            elif continuous_mode == "SLIGHT_RIGHT":
+                # Sol %100, Sağ %50
+                left_step.high()
+                if continuous_step_count % 2 == 0:
+                    right_step.high()
 
-            # Komutu işle
-            success, response = process_command(command_line)
-
-            # Yanıtı gönder
-            if response:
-                print(response)
-
-            # LED'i tekrar yak
-            if led:
-                led.on()
-
-            # Debug: Her 10 komutta bir istatistik yazdır
-            if command_count % 10 == 0:
-                print(f"# {command_count} komut işlendi", file=sys.stderr)
+                utime.sleep_us(DEFAULT_SPEED_DELAY_US)
+                left_step.low()
+                right_step.low()
+                utime.sleep_us(DEFAULT_SPEED_DELAY_US)
+                continuous_step_count += 1
 
         except KeyboardInterrupt:
             print("\n⚠️ CTRL+C - Program sonlandırılıyor...")
@@ -549,7 +670,7 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("🤖 RASPBERRY PI PICO - MOTOR KONTROL (KAS)")
     print("=" * 60)
-    print("Versiyon: 2.0 (ACK+DONE Protokolü)")
+    print("Versiyon: 2.1 (Reaktif Mod Destekli)")
     print("Görev: Pi 5'ten gelen komutları işle ve motorları kontrol et")
     print("=" * 60 + "\n")
 

@@ -1,83 +1,83 @@
 #!/usr/bin/env python3
-"""Basit Pico Bağlantı Testi"""
+"""
+DIAGNOSTIC VERSION - Simplified Pico code for testing
+Upload this as main.py to Pico if the full version doesn't work
+"""
 
-import serial
+from machine import Pin
+import sys
 import time
 
-PORT = '/dev/ttyACM0'
-BAUD = 115200
+# Immediately send ready signals
+print("\n" + "=" * 60)
+print("PICO DIAGNOSTIC MODE")
+print("=" * 60)
+sys.stdout.flush()
 
-print("🔍 Pico Bağlantı Testi Başlatılıyor...")
-print(f"Port: {PORT}")
-print(f"Baud: {BAUD}")
-print("-" * 50)
+print("PICO_READY")
+sys.stdout.flush()
 
+print("Pico (Kas) Hazir")
+sys.stdout.flush()
+
+print("Waiting for commands...")
+sys.stdout.flush()
+
+# Blink LED to show we're alive
 try:
-    # Seri port aç
-    print("\n1. Port açılıyor...")
-    ser = serial.Serial(PORT, BAUD, timeout=2)
-    print("   ✓ Port açıldı")
+    led = Pin("LED", Pin.OUT)
+except:
+    try:
+        led = Pin(25, Pin.OUT)
+    except:
+        led = None
 
-    # 3 saniye bekle (Pico başlangıç mesajı için)
-    print("\n2. Pico başlangıç mesajı bekleniyor (3 saniye)...")
-    time.sleep(3)
+if led:
+    for _ in range(5):
+        led.on()
+        time.sleep(0.1)
+        led.off()
+        time.sleep(0.1)
+    led.on()
 
-    # Bekleyen mesajları oku
-    print("\n3. Bekleyen mesajlar kontrol ediliyor...")
-    messages_found = False
+# Simple command loop
+while True:
+    try:
+        line = sys.stdin.readline()
 
-    while ser.in_waiting > 0:
-        try:
-            line = ser.readline().decode('utf-8', errors='ignore').strip()
-            if line:
-                print(f"   📨 PICO: {line}")
-                messages_found = True
-        except Exception as e:
-            print(f"   ⚠️ Okuma hatası: {e}")
+        if not line:
+            time.sleep(0.01)
+            continue
 
-    if not messages_found:
-        print("   ⚠️ Hiç mesaj yok - Pico çalışmıyor olabilir")
+        command = line.strip()
 
-    # Test komutu gönder
-    print("\n4. Test komutu gönderiliyor: STOP_DRIVE")
-    ser.reset_input_buffer()
-    ser.write(b"STOP_DRIVE\n")
-    time.sleep(0.5)
+        if not command:
+            continue
 
-    # Yanıt kontrol et
-    if ser.in_waiting > 0:
-        response = ser.readline().decode('utf-8', errors='ignore').strip()
-        print(f"   ← Yanıt: {response}")
+        # LED feedback
+        if led:
+            led.off()
 
-        if response == "ACK":
-            print("   ✓ ACK alındı, DONE bekleniyor...")
-            time.sleep(0.5)
-            if ser.in_waiting > 0:
-                response2 = ser.readline().decode('utf-8', errors='ignore').strip()
-                print(f"   ← Yanıt2: {response2}")
-                if response2 == "DONE":
-                    print("\n✅ PİCO ÇALIŞIYOR VE DOĞRU YANIT VERİYOR!")
-                else:
-                    print(f"\n⚠️ DONE yerine '{response2}' alındı")
-        else:
-            print(f"\n⚠️ ACK yerine '{response}' alındı")
-    else:
-        print("   ❌ Hiç yanıt gelmedi - Pico çalışmıyor!")
+        # Always respond with ACK + DONE
+        print("ACK")
+        sys.stdout.flush()
 
-    ser.close()
-    print("\n" + "=" * 50)
+        print("DONE")
+        sys.stdout.flush()
 
-except serial.SerialException as e:
-    print(f"\n❌ Seri Port Hatası: {e}")
-    print("\nÇözüm:")
-    print("  1. Pico USB kablosunu çıkarıp takın")
-    print("  2. Pico'da main.py dosyasının olduğundan emin olun")
-    print("  3. Thonny ile Pico'ya bağlanıp kodu yükleyin")
+        # LED back on
+        if led:
+            led.on()
 
-except Exception as e:
-    print(f"\n❌ Hata: {e}")
-    import traceback
+        # Log the command
+        print(f"# Processed: {command}", file=sys.stderr)
+        sys.stderr.flush()
 
-    traceback.print_exc()
+    except KeyboardInterrupt:
+        print("\nStopping...")
+        break
+    except Exception as e:
+        print(f"ERR:{e}")
+        sys.stdout.flush()
 
-print("\n✅ Test tamamlandı")
+print("Diagnostic ended")

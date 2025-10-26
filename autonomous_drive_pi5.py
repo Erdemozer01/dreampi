@@ -239,9 +239,12 @@ def main_reactive():
         logging.info("Ana döngüden çıkıldı.")
 
 
-# main() yerine main_reactive() kullanın:
+# autonomous_drive_pi5.py sonuna ekleyin:
+
+reactive_mode = True  # False yaparsanız klasik mod
+
 if __name__ == '__main__':
     if reactive_mode:
-        main_reactive()  # Reaktif mod
+        main_reactive()  # REAKTİF MOD
     else:
-        main()  # Klasik mod
+        main()           # KLASİK MOD

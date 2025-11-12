@@ -1,3 +1,5 @@
+# dash_apps.py - GÜNCELLENMİŞ: İki Bağımsız Sensör, LCD/Buzzer/LED Kaldırıldı
+
 import atexit
 import logging
 import os
@@ -18,7 +20,7 @@ import json
 from scipy.spatial import ConvexHull, QhullError
 from sklearn.cluster import DBSCAN
 from sklearn.linear_model import RANSACRegressor
-
+from django.shortcuts import reverse, redirect
 # Dash ve Plotly Kütüphaneleri
 from django_plotly_dash import DjangoDash
 from dash import html, dcc, Output, Input, State, no_update, dash_table
@@ -26,6 +28,7 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
+
 
 # Google AI kütüphaneleri
 try:
@@ -54,9 +57,26 @@ app = DjangoDash(
 )
 
 # --- NAVBAR ---
+# dash_apps.py içindeki navbar bölümünü bu şekilde güncelleyin:
+
+# dash_apps.py içindeki navbar bölümünü bu şekilde güncelleyin:
+
 navbar = dbc.NavbarSimple(
-    children=[dbc.NavItem(dbc.NavLink("Admin Paneli", href="/admin/", external_link=True, target="_blank"))],
-    brand="Dream Pi", brand_href="/", color="primary", dark=True, sticky="top", fluid=True, className="mb-4"
+    children=[
+        dbc.NavItem(dbc.NavLink("Ana Sayfa", href="/", external_link=True)),
+        dbc.NavItem(dbc.NavLink(
+            [html.I(className="fa-solid fa-video me-2"), "Kamera"],
+            href="camera/",
+            external_link=True
+        )),
+        dbc.NavItem(dbc.NavLink("Admin Paneli", href="/admin/", external_link=True, target="_blank"))
+    ],
+    brand="Dream Pi",
+    brand_href="/",
+    color="primary",
+    dark=True,
+    fluid=True,
+    className="mb-4"
 )
 
 
@@ -137,11 +157,11 @@ def stop_current_operation(mode):
     )
 
 
-def start_mapping_mode(h_angle, h_step, v_angle, v_step, buzzer_dist):
+def start_mapping_mode(h_angle, h_step, v_angle, v_step, steps_per_rev):
     """Haritalama modunu başlat"""
     try:
         stop_all_scripts()
-        time.sleep(0.5)  # Önceki scriptin tamamen durması için
+        time.sleep(0.5)
 
         cmd = [
             sys.executable, SENSOR_SCRIPT_PATH,
@@ -149,7 +169,7 @@ def start_mapping_mode(h_angle, h_step, v_angle, v_step, buzzer_dist):
             "--h-step", str(h_step),
             "--v-angle", str(v_angle),
             "--v-step", str(v_step),
-            "--buzzer-distance", str(buzzer_dist)
+            "--steps-per-rev", str(steps_per_rev)
         ]
 
         log_file = open("sensor_script_live.log", "w")
@@ -173,9 +193,8 @@ def start_autonomous_mode():
     """Otonom sürüşü başlat"""
     try:
         stop_all_scripts()
-        time.sleep(0.5)  # Önceki scriptin tamamen durması için
+        time.sleep(0.5)
 
-        # Script kendi scan'ını oluşturacak
         cmd = [sys.executable, AUTONOMOUS_SCRIPT_PATH]
         log_file = open("autonomous_drive_live.log", "w")
         subprocess.Popen(cmd, stdout=log_file, stderr=log_file, start_new_session=True)
@@ -361,11 +380,11 @@ control_panel = dbc.Card([
 
             dbc.Row([
                 dbc.Col([
-                    html.Label([html.I(className="fa-solid fa-volume-high me-2"), "Buzzer Mesafesi (cm):"],
+                    html.Label([html.I(className="fa-solid fa-sync me-2"), "Adım/Devir (Motor):"],
                                className="fw-bold"),
-                    dbc.Input(id='buzzer-distance-input', type='number', value=15)
+                    dbc.Input(id='steps-per-rev-input', type='number', value=4096, step=1)
                 ], width=6)
-            ], className="mb-3")
+            ], className="mb-3"),
         ]),
 
         # Kontrol butonları
@@ -394,25 +413,54 @@ control_panel = dbc.Card([
     ])
 ])
 
+# === GÜNCELLENMİŞ: İKİ SENSÖR GÖSTERGESİ ===
 stats_panel = dbc.Card([
     dbc.CardHeader([html.I(className="fa-solid fa-gauge-simple me-2"), "Anlık Sensör Değerleri"]),
     dbc.CardBody(
         dbc.Row([
             dbc.Col(
-                html.Div([html.H6("Mevcut Açı:"), html.H4(id='current-angle', children="--°")]),
-                width=3, className="text-center border-end"
+                html.Div([
+                    html.H6("Yatay Açı:", className="mb-1"),
+                    html.H4(id='current-h-angle', children="--°", className="mb-0")
+                ]),
+                width=2, className="text-center border-end"
             ),
             dbc.Col(
-                html.Div([html.H6("Mevcut Mesafe:"), html.H4(id='current-distance', children="-- cm")]),
-                id='current-distance-col', width=3, className="text-center border-end"
+                html.Div([
+                    html.H6("Dikey Açı:", className="mb-1"),
+                    html.H4(id='current-v-angle', children="--°", className="mb-0")
+                ]),
+                width=2, className="text-center border-end"
+            ),
+            # >>> YENİ: İKİ BAĞIMSIZ SENSÖR <<<
+            dbc.Col(
+                html.Div([
+                    html.H6([html.I(className="fa-solid fa-1 me-1"), "H-Sensör:"], className="mb-1 text-primary"),
+                    html.H4(id='h-sensor-distance', children="-- cm", className="mb-0 text-primary fw-bold")
+                ]),
+                width=2, className="text-center border-end"
             ),
             dbc.Col(
-                html.Div([html.H6("Anlık Hız:"), html.H4(id='current-speed', children="-- cm/s")]),
-                width=3, className="text-center border-end"
+                html.Div([
+                    html.H6([html.I(className="fa-solid fa-2 me-1"), "V-Sensör:"], className="mb-1 text-success"),
+                    html.H4(id='v-sensor-distance', children="-- cm", className="mb-0 text-success fw-bold")
+                ]),
+                width=2, className="text-center border-end"
+            ),
+            # >>> YENİ ALAN SONU <<<
+            dbc.Col(
+                html.Div([
+                    html.H6("Ana Mesafe:", className="mb-1"),
+                    html.H4(id='current-distance', children="-- cm", className="mb-0 fw-bold")
+                ]),
+                width=2, className="text-center border-end"
             ),
             dbc.Col(
-                html.Div([html.H6("Max Mesafe:"), html.H4(id='max-detected-distance', children="-- cm")]),
-                width=3, className="text-center"
+                html.Div([
+                    html.H6("Max Mesafe:", className="mb-1"),
+                    html.H4(id='max-detected-distance', children="-- cm", className="mb-0")
+                ]),
+                width=2, className="text-center"
             )
         ])
     )
@@ -523,7 +571,10 @@ ai_card = dbc.Card([
 ], className="mt-3")
 
 # --- ANA UYGULAMA YERLEŞİMİ ---
-app.layout = html.Div(style={'padding': '20px'}, children=[
+app.layout = html.Div(
+    style={'padding': '20px'},
+
+    children=[
     navbar,
     dbc.Row([
         dbc.Col([
@@ -584,7 +635,8 @@ def update_data_stores(n):
         scan_json = json.dumps(model_to_dict(scan), default=str)
 
         points_qs = scan.points.all().values(
-            'id', 'x_cm', 'y_cm', 'z_cm', 'derece', 'dikey_aci', 'mesafe_cm', 'hiz_cm_s', 'timestamp'
+            'id', 'x_cm', 'y_cm', 'z_cm', 'derece', 'dikey_aci', 'mesafe_cm',
+            'h_sensor_distance', 'v_sensor_distance', 'hiz_cm_s', 'timestamp'
         )
 
         if not points_qs.exists():
@@ -623,9 +675,9 @@ def toggle_mode_parameters(selected_mode):
      State("h-step-angle-input", "value"),
      State("v-scan-angle-input", "value"),
      State("v-step-angle-input", "value"),
-     State("buzzer-distance-input", "value")]
+     State("steps-per-rev-input", "value")]
 )
-def handle_start_stop_operations(start_clicks, stop_clicks, mode, h_angle, h_step, v_angle, v_step, buzzer_dist):
+def handle_start_stop_operations(start_clicks, stop_clicks, mode, h_angle, h_step, v_angle, v_step, steps_per_rev):
     """Başlat/Durdur butonlarını yönet"""
     ctx = dash.callback_context
     if not ctx.triggered:
@@ -635,7 +687,7 @@ def handle_start_stop_operations(start_clicks, stop_clicks, mode, h_angle, h_ste
 
     if button_id == "start-button":
         if mode == 'mapping':
-            return start_mapping_mode(h_angle, h_step, v_angle, v_step, buzzer_dist)
+            return start_mapping_mode(h_angle, h_step, v_angle, v_step, steps_per_rev)
         elif mode == 'autonomous':
             return start_autonomous_mode()
     elif button_id == "stop-button":
@@ -662,7 +714,7 @@ def populate_ai_model_dropdown(n):
     return [], True, "Aktif AI Modeli Bulunamadı"
 
 
-# 5. Sistem Durum Kartı (DÜZELTİLMİŞ - Çoklu Script Desteği)
+# 5. Sistem Durum Kartı
 @app.callback(
     [Output('script-status', 'children'),
      Output('script-status', 'className'),
@@ -711,31 +763,26 @@ def update_system_card(n):
     return status_text, status_class, cpu, f"{cpu:.1f}%", ram, f"{ram:.1f}%"
 
 
-# 6. Anlık Değerleri Güncelleme
+# 6. Anlık Değerleri Güncelleme (İKİ SENSÖR)
 @app.callback(
-    [Output('current-angle', 'children'),
+    [Output('current-h-angle', 'children'),
+     Output('current-v-angle', 'children'),
+     Output('h-sensor-distance', 'children'),
+     Output('v-sensor-distance', 'children'),
      Output('current-distance', 'children'),
-     Output('current-speed', 'children'),
-     Output('current-distance-col', 'style'),
      Output('max-detected-distance', 'children')],
     [Input('latest-scan-points-store', 'data'),
      State('latest-scan-object-store', 'data')]
 )
 def update_realtime_values(points_json, scan_json):
-    """Anlık sensör değerlerini güncelle"""
-    style = {
-        'padding': '10px',
-        'transition': 'background-color 0.5s ease',
-        'borderRadius': '5px'
-    }
-    default_return = ("--°", "-- cm", "-- cm/s", style, "-- cm")
+    """Anlık sensör değerlerini güncelle - İKİ BAĞIMSIZ SENSÖR"""
+    default_return = ("--°", "--°", "-- cm", "-- cm", "-- cm", "-- cm")
 
     if not points_json or not scan_json:
         return default_return
 
     try:
         df = pd.read_json(io.StringIO(points_json), orient='split')
-        scan = json.loads(scan_json)
         if df.empty:
             return default_return
     except Exception:
@@ -744,21 +791,21 @@ def update_realtime_values(points_json, scan_json):
     # En son noktayı al
     point = df.sort_values(by='id', ascending=False).iloc[0]
 
-    angle = f"{point.get('derece', 0.0):.1f}°"
-    dist = f"{point.get('mesafe_cm', 0.0):.1f} cm"
-    speed = f"{point.get('hiz_cm_s', 0.0):.1f} cm/s"
+    h_angle = f"{point.get('derece', 0.0):.1f}°"
+    v_angle = f"{point.get('dikey_aci', 0.0):.1f}°"
 
-    # Buzzer uyarısı için renk değiştir
-    buzzer_dist = scan.get('buzzer_distance_setting')
-    if buzzer_dist is not None and 0 < point['mesafe_cm'] <= buzzer_dist:
-        style.update({'backgroundColor': '#d9534f', 'color': 'white'})
+    # İKİ BAĞIMSIZ SENSÖR DEĞERLERİ
+    h_sensor = f"{point.get('h_sensor_distance', 0.0):.1f} cm"
+    v_sensor = f"{point.get('v_sensor_distance', 0.0):.1f} cm"
+
+    avg_dist = f"{point.get('mesafe_cm', 0.0):.1f} cm"
 
     # Maksimum mesafe
     df_valid = df[df['mesafe_cm'] > 0]
     max_dist_val = df_valid['mesafe_cm'].max() if not df_valid.empty else None
     max_dist = f"{max_dist_val:.1f} cm" if pd.notnull(max_dist_val) else "-- cm"
 
-    return angle, dist, speed, style, max_dist
+    return h_angle, v_angle, h_sensor, v_sensor, avg_dist, max_dist
 
 
 # 7. CSV Export
@@ -809,34 +856,101 @@ def export_excel_callback(n_clicks, scan_json, points_json):
     return dcc.send_bytes(output.getvalue(), f"tarama_detaylari_id_{scan_id}.xlsx")
 
 
-# 9. Veri Tablosu
+# 9. Veri Tablosu (İKİ SENSÖR KOLONLU)
 @app.callback(
     Output('tab-content-datatable', 'children'),
     [Input('visualization-tabs-main', 'active_tab'),
      Input('latest-scan-points-store', 'data')]
 )
 def render_and_update_data_table(active_tab, points_json):
-    """Veri tablosunu oluştur"""
+    """Veri tablosunu oluştur - İKİ SENSÖR KOLONU DAHİL"""
     if active_tab != "tab-datatable" or not points_json:
         return None
 
     df = pd.read_json(io.StringIO(points_json), orient='split')
+    if df.empty:
+        return dbc.Alert("Görüntülenecek veri noktası bulunamadı.", color="warning")
+
+    column_definitions = {
+        'id': "Nokta ID",
+        'timestamp': "Zaman Damgası",
+        'derece': "Yatay Açı (°)",
+        'dikey_aci': "Dikey Açı (°)",
+        'h_sensor_distance': "H-Sensör (cm)",
+        'v_sensor_distance': "V-Sensör (cm)",
+        'mesafe_cm': "Ana Mesafe (cm)",
+        'x_cm': "İleri Mesafe (cm)",
+        'y_cm': "Yanal Mesafe (cm)",
+        'z_cm': "Yükseklik (cm)",
+        'hiz_cm_s': "Hız (cm/s)"
+    }
+
+    ordered_columns_ids = [
+        'id', 'timestamp', 'derece', 'dikey_aci',
+        'h_sensor_distance', 'v_sensor_distance', 'mesafe_cm',
+        'x_cm', 'y_cm', 'z_cm', 'hiz_cm_s'
+    ]
+
+    final_columns = []
+    for col_id in ordered_columns_ids:
+        if col_id in df.columns:
+            col_name = column_definitions.get(col_id, col_id.replace("_", " ").title())
+            final_columns.append({"name": col_name, "id": col_id})
 
     return dash_table.DataTable(
         data=df.to_dict('records'),
-        columns=[{"name": i.replace("_", " ").title(), "id": i} for i in df.columns],
+        columns=final_columns,
         page_size=20,
         sort_action="native",
         filter_action="native",
         virtualization=True,
         fixed_rows={'headers': True},
-        style_table={'minHeight': '65vh', 'overflowY': 'auto'},
-        style_cell={'textAlign': 'left'},
-        style_header={'fontWeight': 'bold'}
+
+        style_table={
+            'minHeight': '65vh',
+            'overflowY': 'auto',
+            'overflowX': 'auto'
+        },
+
+        style_cell={
+            'textAlign': 'left',
+            'padding': '5px',
+            'whiteSpace': 'nowrap',
+            'overflow': 'hidden',
+            'textOverflow': 'ellipsis',
+            'minWidth': '120px'
+        },
+
+        style_header={
+            'fontWeight': 'bold',
+            'backgroundColor': 'rgb(230, 230, 230)',
+            'border': '1px solid grey'
+        },
+
+        style_data_conditional=[
+            {
+                'if': {'row_index': 'odd'},
+                'backgroundColor': 'rgb(248, 248, 248)'
+            },
+            # H-Sensör kolonu vurgusu
+            {
+                'if': {'column_id': 'h_sensor_distance'},
+                'backgroundColor': 'rgba(0, 123, 255, 0.1)',
+                'color': '#0056b3',
+                'fontWeight': 'bold'
+            },
+            # V-Sensör kolonu vurgusu
+            {
+                'if': {'column_id': 'v_sensor_distance'},
+                'backgroundColor': 'rgba(40, 167, 69, 0.1)',
+                'color': '#155724',
+                'fontWeight': 'bold'
+            }
+        ]
     )
 
 
-# 10. Tüm Grafikleri Güncelle (DÜZELTİLMİŞ)
+# 10. Tüm Grafikleri Güncelle
 @app.callback(
     [Output('scan-map-graph-3d', 'figure'),
      Output('scan-map-graph-2d', 'figure'),
@@ -852,7 +966,6 @@ def render_and_update_data_table(active_tab, points_json):
 )
 def update_all_graphs_and_analytics(scan_json, points_json):
     """Tüm grafikleri ve analizleri güncelle"""
-    # Başlangıç durumu
     empty_fig = go.Figure(
         layout=dict(
             title='Veri Bekleniyor...',
@@ -868,7 +981,6 @@ def update_all_graphs_and_analytics(scan_json, points_json):
     if not scan_json or not points_json:
         return default_return
 
-    # Veriyi yükle
     scan_data = json.loads(scan_json)
     scan_id = scan_data.get('id', 'Bilinmiyor')
     df = pd.read_json(io.StringIO(points_json), orient='split')
@@ -877,11 +989,9 @@ def update_all_graphs_and_analytics(scan_json, points_json):
         empty_fig = go.Figure(layout=dict(title=f'Tarama #{scan_id} için Nokta Verisi Yok...'))
         return (empty_fig,) * 3 + (html.Div("Analiz için veri bekleniyor."), None) + ("--",) * 4
 
-    # Geçerli verileri filtrele
     df_valid = df[(df['mesafe_cm'] > 0.1) & (df['mesafe_cm'] < 400.0)].copy()
     df_valid.dropna(subset=['x_cm', 'y_cm', 'z_cm', 'derece', 'dikey_aci'], inplace=True)
 
-    # Figürleri başlat
     fig_3d = go.Figure(layout=dict(
         title=f'3D Tarama Görüntüsü - Tarama ID: {scan_id}',
         margin=dict(l=0, r=0, b=0, t=40)
@@ -909,6 +1019,8 @@ def update_all_graphs_and_analytics(scan_json, points_json):
         custom_data_3d = np.stack((
             df_valid['derece'],
             df_valid['dikey_aci'],
+            df_valid['h_sensor_distance'].fillna(-1),
+            df_valid['v_sensor_distance'].fillna(-1),
             df_valid['id']
         ), axis=-1)
 
@@ -934,13 +1046,15 @@ def update_all_graphs_and_analytics(scan_json, points_json):
                     "--------------------<br>" +
                     "<b>Yatay Açı: %{customdata[0]:.1f}°</b><br>" +
                     "<b>Dikey Açı: %{customdata[1]:.1f}°</b><br>" +
+                    "--------------------<br>" +
+                    "<b>H-Sensör: %{customdata[2]:.1f} cm</b><br>" +
+                    "<b>V-Sensör: %{customdata[3]:.1f} cm</b><br>" +
                     "<i>Tıklayarak bu noktaya git</i>" +
                     "<extra></extra>"
             ),
             name='Tarama Noktaları'
         ))
 
-        # Sensör pozisyonu
         fig_3d.add_trace(go.Scatter3d(
             x=[0], y=[0], z=[0],
             mode='markers',
@@ -959,11 +1073,9 @@ def update_all_graphs_and_analytics(scan_json, points_json):
             clickmode='event+select'
         )
 
-        # --- 2D GRAFİK (DÜZELTİLMİŞ) ---
-        # Kümeleme yap
+        # --- 2D GRAFİK ---
         desc, df_clustered = analyze_environment_shape(fig_2d, df_valid)
 
-        # Sensör pozisyonu ekle
         fig_2d.add_trace(go.Scatter(
             x=[0], y=[0],
             mode='markers',
@@ -971,10 +1083,9 @@ def update_all_graphs_and_analytics(scan_json, points_json):
             name='Sensör'
         ))
 
-        # Tarama sektörü ekle
-        df_sorted = df_valid.sort_values(by='derece')
-        poly_x = df_sorted['y_cm'].tolist()
-        poly_y = df_sorted['x_cm'].tolist()
+        df_sorted_2d = df_valid.sort_values(by='derece')
+        poly_x = df_sorted_2d['y_cm'].tolist()
+        poly_y = df_sorted_2d['x_cm'].tolist()
         fig_2d.add_trace(go.Scatter(
             x=[0] + poly_x + [0],
             y=[0] + poly_y + [0],
@@ -987,7 +1098,7 @@ def update_all_graphs_and_analytics(scan_json, points_json):
 
         fig_2d.update_layout(yaxis=dict(scaleanchor="x", scaleratio=1))
 
-        # --- POLAR GRAFİK (DÜZELTİLMİŞ) ---
+        # --- POLAR GRAFİK ---
         fig_polar.add_trace(go.Scatterpolar(
             r=df_valid['mesafe_cm'],
             theta=df_valid['derece'],
@@ -1005,7 +1116,6 @@ def update_all_graphs_and_analytics(scan_json, points_json):
         # --- ANALİZLER ---
         env_key, analysis_report_component = classify_environment_and_get_report(df_valid)
 
-        # Alan hesaplama
         try:
             hull = ConvexHull(df_valid[['y_cm', 'x_cm']].values)
             area = f"{hull.volume:.1f} cm²"
@@ -1014,11 +1124,9 @@ def update_all_graphs_and_analytics(scan_json, points_json):
             area = "Hesaplanamadı"
             perim = "Hesaplanamadı"
 
-        # Genişlik ve derinlik
         width = f"{df_valid['y_cm'].max() - df_valid['y_cm'].min():.1f} cm"
         depth = f"{df_valid['x_cm'].max():.1f} cm"
 
-        # Kümelenmiş veriyi kaydet
         store_data = df_clustered.to_json(orient='split')
 
     return fig_3d, fig_2d, fig_polar, analysis_report_component, store_data, area, perim, width, depth
@@ -1075,7 +1183,7 @@ def display_cluster_info(clickData, stored_data_json):
     prevent_initial_call=True
 )
 def yorumla_model_secimi(selected_config_id, scan_json, points_json):
-    """Seçilen AI modelini kullanarak tarama verilerini yorumla ve resim oluştur"""
+    """Seçilen AI modelini kullanarak tarama verilerini yorumla"""
     from scanner.models import AIModelConfiguration, Scan
     from scanner.ai_analyzer import AIAnalyzerService
 
@@ -1126,30 +1234,37 @@ def yorumla_model_secimi(selected_config_id, scan_json, points_json):
     [Output('navigation-status-text', 'children'),
      Output('target-coordinates', 'children')],
     Input('scan-map-graph-3d', 'clickData'),
-    State('latest-scan-object-store', 'data'),
     prevent_initial_call=True
 )
-def handle_3d_map_click(clickData, scan_json):
+def handle_3d_map_click(clickData):
     """3D haritada bir noktaya tıklandığında hedefe gitme komutunu yaz"""
     if not clickData:
         raise PreventUpdate
 
-    if not scan_json:
+    # Otonom sürüş betiğinin çalışıp çalışmadığını kontrol et
+    is_autonomous_running = False
+    if os.path.exists(AUTONOMOUS_SCRIPT_PID_FILE):
+        try:
+            with open(AUTONOMOUS_SCRIPT_PID_FILE, 'r') as f:
+                pid_content = f.read().strip()
+                if pid_content:
+                    pid = int(pid_content)
+                    if is_process_running(pid):
+                        is_autonomous_running = True
+        except (IOError, ValueError, TypeError) as e:
+            logging.warning(f"Otonom PID dosyası okunamadı: {e}")
+            pass
+
+    if not is_autonomous_running:
         return (
-            dbc.Alert("Aktif tarama yok!", color="warning"),
+            dbc.Alert([
+                html.I(className="fa-solid fa-robot me-2"),
+                " Hedefe gitme komutu için önce 'Otonom Sürüş Modu'nu başlatmalısınız."
+            ], color="warning"),
             ""
         )
 
     try:
-        scan = json.loads(scan_json)
-
-        # Otonom mod kontrolü
-        if scan.get('scan_type') != 'AUT':
-            return (
-                dbc.Alert("Hedefe gitme sadece otonom modda çalışır!", color="warning"),
-                ""
-            )
-
         # Tıklanan noktanın koordinatlarını al
         point = clickData['points'][0]
         target_x = point['y']  # Plotly'de x/y ters

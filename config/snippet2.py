@@ -1,6 +1,16 @@
 # ConfigManager sınıfının sonrasına ekleyin:
 import contextlib
 from typing import Optional
+from logging import Logger
+
+import logging
+
+from gpiozero import OutputDevice, DistanceSensor, Servo, Buzzer, LED
+
+from config.snippet import config_manager
+from sensor_script import MOTOR_BAGLI
+
+logger: Logger = logging.getLogger(__name__)
 
 class HardwareManager:
     def __init__(self):

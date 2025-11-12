@@ -1,7 +1,7 @@
 # scanner/admin.py
 
 from django.contrib import admin
-from scanner.models import Scan, ScanPoint, AIModelConfiguration
+from scanner.models import Scan, ScanPoint, AIModelConfiguration, CameraCapture
 from django import forms
 
 class ScanPointInline(admin.TabularInline):
@@ -75,6 +75,29 @@ class ScanPointAdmin(admin.ModelAdmin):
     list_filter = ('scan',)
     search_fields = ('scan__id',)
 
+
+@admin.register(CameraCapture)
+class CameraCaptureAdmin(admin.ModelAdmin):
+    list_display = ('timestamp', 'pan_angle', 'distance_info', 'effect')
+    list_filter = ('effect', 'timestamp')
+    search_fields = ('distance_info',)
+
+    # Görüntü Base64 olduğu için düzenlemeyi engelle
+    readonly_fields = ('timestamp', 'pan_angle', 'distance_info', 'effect', 'base64_image')
+
+    fieldsets = (
+        (None, {
+            'fields': ('timestamp', 'pan_angle', 'distance_info', 'effect')
+        }),
+        ('Görüntü Verisi (Görüntülenemez)', {
+            'fields': ('base64_image',),
+            'classes': ('collapse',)  # Varsayılan olarak kapalı tut
+        }),
+    )
+
+    # Yeni kayıt eklemeye izin verme (sadece script üzerinden)
+    def has_add_permission(self, request):
+        return False
 
 class AIModelConfigurationForm(forms.ModelForm):
     api_key = forms.CharField(widget=forms.PasswordInput(render_value=True),

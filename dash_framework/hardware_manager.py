@@ -809,12 +809,17 @@ class HardwareManager:
             logger.info("🔧 Step motor başlatılıyor...")
             logger.info(f"   GPIO Pinler: IN1={MotorConfig.H_MOTOR_IN1}, IN2={MotorConfig.H_MOTOR_IN2}, IN3={MotorConfig.H_MOTOR_IN3}, IN4={MotorConfig.H_MOTOR_IN4}")
 
-            self.motor_devices = (
-                OutputDevice(MotorConfig.H_MOTOR_IN1),
-                OutputDevice(MotorConfig.H_MOTOR_IN2),
-                OutputDevice(MotorConfig.H_MOTOR_IN3),
-                OutputDevice(MotorConfig.H_MOTOR_IN4)
-            )
+            try:
+                self.motor_devices = (
+                    OutputDevice(MotorConfig.H_MOTOR_IN1),
+                    OutputDevice(MotorConfig.H_MOTOR_IN2),
+                    OutputDevice(MotorConfig.H_MOTOR_IN3),
+                    OutputDevice(MotorConfig.H_MOTOR_IN4)
+                )
+                logger.info(f"✓ Motor devices oluşturuldu: {len(self.motor_devices)} pin")
+            except Exception as e:
+                logger.error(f"❌ Motor devices oluşturma hatası: {e}", exc_info=True)
+                raise
 
             if MotorConfig.LIMIT_SWITCH_MIN:
                 self.limit_switches['min'] = Button(MotorConfig.LIMIT_SWITCH_MIN)
@@ -1046,6 +1051,12 @@ class HardwareManager:
                                       base_delay: float, deg_per_step: float,
                                       acceleration: float) -> bool:
         """Hızlanma/yavaşlama profili ile motor hareketi"""
+        logger.info(f"🔄 Motor adım hareketi başlıyor: {num_steps} adım, yön={'CW' if direction else 'CCW'}")
+
+        if not self.motor_devices:
+            logger.error("❌ motor_devices None! Motor hareketi yapılamıyor.")
+            return False
+
         acceleration = min(acceleration, 1.3)
         step_increment = 1 if direction else -1
 
@@ -1118,17 +1129,29 @@ class HardwareManager:
 
     def _set_motor_pins(self, pin1: int, pin2: int, pin3: int, pin4: int):
         """Motor pinlerini ayarla"""
-        if self.motor_devices:
+        if not self.motor_devices:
+            logger.error("❌ motor_devices None! Motor başlatılmamış olabilir.")
+            return
+
+        try:
             self.motor_devices[0].value = bool(pin1)
             self.motor_devices[1].value = bool(pin2)
             self.motor_devices[2].value = bool(pin3)
             self.motor_devices[3].value = bool(pin4)
+        except Exception as e:
+            logger.error(f"❌ Motor pin ayarlama hatası: {e}", exc_info=True)
+            raise
 
     def _stop_motor_internal(self):
         """Motoru durdur (internal)"""
-        if self.motor_devices:
+        if not self.motor_devices:
+            return
+
+        try:
             for dev in self.motor_devices:
                 dev.off()
+        except Exception as e:
+            logger.error(f"❌ Motor durdurma hatası: {e}", exc_info=True)
 
     def cancel_movement(self):
         """Mevcut motor hareketini iptal et"""

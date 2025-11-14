@@ -62,7 +62,7 @@ except ImportError:
         EXPOSURE_MODES = {'Normal': 0}
         METERING_MODES = {'Centre': 0}
     class MotorConfig:
-        H_MOTOR_IN1=17; H_MOTOR_IN2=18; H_MOTOR_IN3=27; H_MOTOR_IN4=22
+        H_MOTOR_IN1=6; H_MOTOR_IN2=13; H_MOTOR_IN3=19; H_MOTOR_IN4=26  # ✅ Düzeltildi: free_movement_script.py ile uyumlu
         LIMIT_SWITCH_MIN=None; LIMIT_SWITCH_MAX=None; STEPS_PER_REV = 4076
         MIN_ANGLE = -90.0; MAX_ANGLE = 90.0; BACKLASH_COMPENSATION = 0.5
         INVERT_DIRECTION = False; SETTLE_TIME = 0.05

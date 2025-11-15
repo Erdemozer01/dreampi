@@ -1735,207 +1735,214 @@ def compare_ultimate(n_clicks, id1, id2):
 @app.callback(
     [Output('motor-status-display', 'children'),
      Output('pan-slider', 'value')],
-    [Input('pan-slider', 'value'),
-     Input('stop-motor-btn', 'n_clicks'),
-     Input('home-btn', 'n_clicks'),
-     Input({'type': 'motor-btn', 'index': ALL}, 'n_clicks'),
-     Input('motor-update-interval', 'n_intervals')],
-    [State('speed-profile-radio', 'value'),
-     State('pan-slider', 'value')],
-    prevent_initial_call=False
+    Input('motor-update-interval', 'n_intervals'),
+    prevent_initial_call=False # Sayfa yüklendiğinde de çalış
 )
-def unified_motor_control(slider_value, stop_clicks, home_clicks, motor_btn_clicks,
-                          interval_n, speed_profile, current_slider_value):
+def update_motor_status_interval(n):
     """
-    Motor kontrol - HİBRİT SİSTEM v6
-    ✅ Butonlar için wait=True (senkron, slider anında güncellenir)
-    ✅ Slider için wait=False (asenkron, interval güncellemesi)
-    ✅ Interval slider'ı gerçek açıyla senkronize eder
+    Motorun mevcut durumunu periyodik olarak günceller (Ana Callback).
+    Slider'ı motorun GERÇEK açısıyla senkronize eder.
     """
-
-    # === NORMALIZE ===
-    stop_clicks = stop_clicks or 0
-    home_clicks = home_clicks or 0
-    motor_btn_clicks = [c or 0 for c in (motor_btn_clicks or [])]
-
-    # === CONTEXT ===
-    triggered_id = None
-    try:
-        ctx = callback_context
-        if ctx and ctx.triggered:
-            triggered_id = ctx.triggered[0]['prop_id']
-            logger.debug(f"🎯 Motor callback tetiklendi: {triggered_id}")
-    except Exception as e:
-        logger.debug(f"Context okuma hatası (ilk yükleme olabilir): {e}")
-        triggered_id = None
-
-
-    # === HARDWARE CHECK ===
     if not hardware_manager._initialized.get('motor'):
-        logger.error("❌ MOTOR BAŞLATILMAMIŞ!")
         status_div = html.Div([
             html.I(className="fa-solid fa-times text-danger me-2"),
-            "Motor başlatılmamış! (GPIO yok mu?)"
+            "Motor başlatılmamış!"
         ])
         return (status_div, 0)
 
-    current_angle = hardware_manager.get_motor_angle()
+    motor_info = hardware_manager.get_motor_info()
 
-    # === İLK YÜKLEME ===
-    if triggered_id is None or interval_n == 0:
-        logger.debug("📍 İlk yükleme")
+    if motor_info['is_moving']:
+        status_div = html.Div([
+            html.I(className="fa-solid fa-spinner fa-spin text-warning me-2"),
+            f"{motor_info['angle']:.1f}° → {motor_info.get('target_angle', '?'):.1f}°"
+        ])
+    else:
         status_div = html.Div([
             html.I(className="fa-solid fa-check text-success me-2"),
-            f"{current_angle:.1f}° (Hazır)"
+            f"{motor_info['angle']:.1f}° (Hazır)"
         ])
-        return (status_div, current_angle)
 
-    # === STOP BUTONU ===
-    if 'stop-motor-btn' in triggered_id:
-        logger.info("🛑 STOP BUTONU")
-        hardware_manager.cancel_movement()
-        current_angle = hardware_manager.get_motor_angle()
-
-        status_div = html.Div([
-            html.I(className="fa-solid fa-stop text-warning me-2"),
-            f"Durduruldu ({current_angle:.1f}°)"
-        ])
-        logger.info(f"✅ Motor durduruldu: {current_angle:.1f}°")
-        return (status_div, current_angle)
-
-    # === HOME BUTONU ===
-    if 'home-btn' in triggered_id:
-        logger.info("🏠 HOME BUTONU - SENKRON HAREKET")
-
-        # ✅ BUTON İÇİN SENKRON (wait=True)
-        success = hardware_manager.move_to_angle(
-            0,
-            speed_profile='normal',
-            force=True,
-            wait=True,  # ⭐ Senkron - hareket bitene kadar bekle
-            timeout=10.0
-        )
-
-        if success:
-            actual_angle = hardware_manager.get_motor_angle()
-            logger.info(f"✅ Home tamamlandı: {actual_angle:.1f}°")
-            status_div = html.Div([
-                html.I(className="fa-solid fa-home text-success me-2"),
-                f"Home (0°) - Tamamlandı"
-            ])
-            return (status_div, actual_angle)  # ⭐ Gerçek açıyı döndür
-        else:
-            logger.error("❌ Home BAŞARISIZ!")
-            status_div = html.Div([
-                html.I(className="fa-solid fa-exclamation-triangle text-danger me-2"),
-                "Home BAŞARISIZ!"
-            ])
-            return (status_div, current_angle)
-
-    # === MOTOR BUTONLARI ===
-    if 'motor-btn' in triggered_id:
-        logger.info("🎯 MOTOR BUTONU - SENKRON HAREKET")
-
-        try:
-            import json
-            triggered_dict = json.loads(triggered_id.split('.')[0])
-            target_angle = triggered_dict['index']
-
-            logger.info(f"🎯 Hedef: {target_angle}° (Speed: {speed_profile})")
-
-            # ✅ BUTON İÇİN SENKRON (wait=True)
-            success = hardware_manager.move_to_angle(
-                target_angle,
-                speed_profile=speed_profile,
-                force=True,
-                wait=True,  # ⭐ Senkron - hareket bitene kadar bekle
-                timeout=10.0
-            )
-
-            if success:
-                actual_angle = hardware_manager.get_motor_angle()
-                logger.info(f"✅ Hareket tamamlandı: {actual_angle:.1f}°")
-                status_div = html.Div([
-                    html.I(className="fa-solid fa-check-circle text-success me-2"),
-                    f"Tamamlandı: {actual_angle:.1f}°"
-                ])
-                return (status_div, actual_angle)  # ⭐ Gerçek açıyı döndür
-            else:
-                logger.error("❌ Motor komutu BAŞARISIZ!")
-                status_div = html.Div([
-                    html.I(className="fa-solid fa-times-circle text-danger me-2"),
-                    f"BAŞARISIZ!"
-                ])
-                return (status_div, current_angle)
-
-        except Exception as e:
-            logger.error(f"❌ Buton hatası: {e}", exc_info=True)
-            status_div = html.Div([
-                html.I(className="fa-solid fa-exclamation-triangle text-danger me-2"),
-                f"Hata!"
-            ])
-            return (status_div, current_angle)
-
-    # === SLIDER ===
-    if 'pan-slider' in triggered_id:
-        logger.info("🎚️ SLIDER - ASENKRON HAREKET")
-
-        if slider_value is not None and abs(slider_value - current_slider_value) > 0.5:
-            slider_value = float(slider_value)
-            logger.info(f"🎚️ Slider: {current_slider_value}° → {slider_value}°")
-
-            # ✅ SLIDER İÇİN ASENKRON (wait=False)
-            success = hardware_manager.move_to_angle(
-                slider_value,
-                speed_profile=speed_profile,
-                force=False,
-                wait=False,  # ⭐ Asenkron - komut gönder ve devam et
-                timeout=10.0
-            )
-
-            if success:
-                # ⭐ Slider için hedef açıyı döndür (interval güncelleyecek)
-                status_div = html.Div([
-                    html.I(className="fa-solid fa-gauge text-info me-2"),
-                    f"Hareket ediyor... → {slider_value:.1f}°"
-                ])
-                logger.info(f"✅ Slider komutu gönderildi: {slider_value:.1f}°")
-                return (status_div, slider_value)  # ⭐ Hedefi döndür
-            else:
-                logger.error("❌ Slider hareketi BAŞARISIZ!")
-                status_div = html.Div([
-                    html.I(className="fa-solid fa-exclamation-triangle text-danger me-2"),
-                    "Slider BAŞARISIZ!"
-                ])
-                return (status_div, current_angle)
-
-    # === INTERVAL (Periyodik güncelleme) ===
-    if 'motor-update-interval' in triggered_id:
-        motor_info = hardware_manager.get_motor_info()
-
-        # ⭐ Slider'ı gerçek açıyla senkronize et
-        if motor_info['is_moving']:
-            status_div = html.Div([
-                html.I(className="fa-solid fa-spinner fa-spin text-warning me-2"),
-                f"{motor_info['angle']:.1f}° → {motor_info.get('target_angle', '?'):.1f}°"
-            ])
-        else:
-            status_div = html.Div([
-                html.I(className="fa-solid fa-check text-success me-2"),
-                f"{motor_info['angle']:.1f}°"
-            ])
-
-        # ⭐ Gerçek açıyı döndür (slider otomatik güncellenecek)
-        return (status_div, motor_info['angle'])
-
-    # === VARSAYILAN ===
-    logger.warning("⚠️ Hiçbir motor koşulu tutmadı!")
-    motor_info = hardware_manager.get_motor_info()
-    status_div = html.Div([
-        html.I(className="fa-solid fa-question text-muted me-2"),
-        f"{motor_info['angle']:.1f}°"
-    ])
+    # Slider'ı motorun gerçek açısıyla senkronize et
     return (status_div, motor_info['angle'])
+
+@app.callback(
+    Output('motor-status-display', 'children', allow_duplicate=True),
+    Input('pan-slider', 'value'),
+    State('speed-profile-radio', 'value'), # <-- DÜZELTİLDİ
+    prevent_initial_call=True
+)
+def control_motor_slider(slider_value, speed_profile): # <-- DÜZELTİLDİ
+    """Slider ile motoru ASENKRON olarak hareket ettirir."""
+
+    # Interval'in slider'ı güncellemesi bu callback'i tetiklemesin diye kontrol
+    current_angle = hardware_manager.get_motor_angle()
+    if slider_value is None or abs(slider_value - current_angle) < MotorConfig.FINE_STEP:
+        raise PreventUpdate
+
+    logger.info(f"🎚️ SLIDER DEĞİŞTİ -> {slider_value}°")
+    slider_value = float(slider_value)
+
+    # ASENKRON (wait=False)
+    success = hardware_manager.move_to_angle(
+        slider_value,
+        speed_profile=speed_profile,
+        force=False,  # Kuyruğa ekle
+        wait=False,
+        timeout=10.0
+    )
+
+    if success:
+        status_div = html.Div([
+            html.I(className="fa-solid fa-gauge text-info me-2"),
+            f"Slider komutu: {slider_value:.1f}°"
+        ])
+    else:
+        logger.error("❌ Slider hareketi BAŞARISIZ!")
+        status_div = html.Div([
+            html.I(className="fa-solid fa-exclamation-triangle text-danger me-2"),
+            "Slider BAŞARISIZ!"
+        ])
+
+    return status_div
+
+
+@app.callback(
+    [Output('motor-status-display', 'children', allow_duplicate=True),
+     Output('pan-slider', 'value', allow_duplicate=True)],
+    Input('stop-motor-btn', 'n_clicks'),
+    prevent_initial_call=True
+)
+def control_motor_stop(n_clicks):
+    """Motor hareketini iptal eder."""
+    if not n_clicks:
+        raise PreventUpdate
+
+    logger.info("🛑 STOP BUTONU BASILDI")
+    hardware_manager.cancel_movement()
+    current_angle = hardware_manager.get_motor_angle() # Durdurulan açıyı al
+
+    status_div = html.Div([
+        html.I(className="fa-solid fa-stop text-warning me-2"),
+        f"Durduruldu ({current_angle:.1f}°)"
+    ])
+    logger.info(f"✅ Motor durduruldu: {current_angle:.1f}°")
+    return (status_div, current_angle)
+
+
+@app.callback(
+    [Output('motor-status-display', 'children', allow_duplicate=True),
+     Output('pan-slider', 'value', allow_duplicate=True)],
+    Input('home-btn', 'n_clicks'),
+    State('speed-profile-radio', 'value'),
+    prevent_initial_call=True
+)
+def control_motor_home(n_clicks, speed_profile):
+    """Motoru ASENKRON olarak 0° pozisyonuna (Home) gönderir."""
+    if not n_clicks:
+        raise PreventUpdate
+
+    logger.info("🏠 HOME BUTONU - ASENKRON HAREKET")
+
+    # ASENKRON (wait=False)
+    success = hardware_manager.move_to_angle(
+        0,
+        speed_profile='normal',
+        force=True,
+        wait=False,
+        timeout=10.0
+    )
+
+    if success:
+        logger.info("✅ Home komutu kuyruğa eklendi: 0°")
+        status_div = html.Div([
+            html.I(className="fa-solid fa-home text-success me-2"),
+            "Home (0°) komutu gönderildi..."
+        ])
+        return (status_div, 0) # Slider'ı 0'a çek
+    else:
+        logger.error("❌ Home komutu BAŞARISIZ!")
+        status_div = html.Div([
+            html.I(className="fa-solid fa-exclamation-triangle text-danger me-2"),
+            "Home BAŞARISIZ!"
+        ])
+        return (no_update, no_update)
+
+
+
+@app.callback(
+    [Output('motor-status-display', 'children', allow_duplicate=True),
+     Output('pan-slider', 'value', allow_duplicate=True)],
+    Input({'type': 'motor-btn', 'index': -90}, 'n_clicks'),
+    State('speed-profile-radio', 'value'),
+    prevent_initial_call=True
+)
+def control_motor_btn_n90(n_clicks, speed_profile):
+    """Motoru -90°'ye ASENKRON olarak gönderir."""
+    if not n_clicks: raise PreventUpdate
+    logger.info("🎯 MOTOR BUTONU -90° - ASENKRON")
+    hardware_manager.move_to_angle(-90, speed_profile=speed_profile, force=True, wait=False)
+    return (html.Div("Komut: -90°", className="text-info"), -90)
+
+@app.callback(
+    [Output('motor-status-display', 'children', allow_duplicate=True),
+     Output('pan-slider', 'value', allow_duplicate=True)],
+    Input({'type': 'motor-btn', 'index': -10}, 'n_clicks'),
+    State('speed-profile-radio', 'value'),
+    prevent_initial_call=True
+)
+def control_motor_btn_n10(n_clicks, speed_profile):
+    """Motoru mevcut açıdan -10° geriye ASENKRON olarak gönderir."""
+    if not n_clicks: raise PreventUpdate
+    logger.info("🎯 MOTOR BUTONU -10° - ASENKRON")
+    current_angle = hardware_manager.get_motor_angle()
+    target_angle = max(MotorConfig.MIN_ANGLE, current_angle - 10) # Min sınırın altına inme
+    hardware_manager.move_to_angle(target_angle, speed_profile=speed_profile, force=True, wait=False)
+    return (html.Div(f"Komut: {target_angle:.1f}°", className="text-info"), target_angle)
+
+@app.callback(
+    [Output('motor-status-display', 'children', allow_duplicate=True),
+     Output('pan-slider', 'value', allow_duplicate=True)],
+    Input({'type': 'motor-btn', 'index': 0}, 'n_clicks'),
+    State('speed-profile-radio', 'value'),
+    prevent_initial_call=True
+)
+def control_motor_btn_0(n_clicks, speed_profile):
+    """Motoru 0°'ye ASENKRON olarak gönderir."""
+    if not n_clicks: raise PreventUpdate
+    logger.info("🎯 MOTOR BUTONU 0° - ASENKRON")
+    hardware_manager.move_to_angle(0, speed_profile=speed_profile, force=True, wait=False)
+    return (html.Div("Komut: 0°", className="text-info"), 0)
+
+@app.callback(
+    [Output('motor-status-display', 'children', allow_duplicate=True),
+     Output('pan-slider', 'value', allow_duplicate=True)],
+    Input({'type': 'motor-btn', 'index': 10}, 'n_clicks'),
+    State('speed-profile-radio', 'value'),
+    prevent_initial_call=True
+)
+def control_motor_btn_p10(n_clicks, speed_profile):
+    """Motoru mevcut açıdan +10° ileriye ASENKRON olarak gönderir."""
+    if not n_clicks: raise PreventUpdate
+    logger.info("🎯 MOTOR BUTONU +10° - ASENKRON")
+    current_angle = hardware_manager.get_motor_angle()
+    target_angle = min(MotorConfig.MAX_ANGLE, current_angle + 10) # Max sınırın üstüne çıkma
+    hardware_manager.move_to_angle(target_angle, speed_profile=speed_profile, force=True, wait=False)
+    return (html.Div(f"Komut: {target_angle:.1f}°", className="text-info"), target_angle)
+
+@app.callback(
+    [Output('motor-status-display', 'children', allow_duplicate=True),
+     Output('pan-slider', 'value', allow_duplicate=True)],
+    Input({'type': 'motor-btn', 'index': 90}, 'n_clicks'),
+    State('speed-profile-radio', 'value'),
+    prevent_initial_call=True
+)
+def control_motor_btn_p90(n_clicks, speed_profile):
+    """Motoru +90°'ye ASENKRON olarak gönderir."""
+    if not n_clicks: raise PreventUpdate
+    logger.info("🎯 MOTOR BUTONU +90° - ASENKRON")
+    hardware_manager.move_to_angle(90, speed_profile=speed_profile, force=True, wait=False)
+    return (html.Div("Komut: +90°", className="text-info"), 90)
 
 
 # ============================================================================
@@ -2100,13 +2107,39 @@ def toggle_ai_settings(selected_modules):
      Output('detection-list', 'children'),
      Output('motion-percentage-gauge', 'figure')],
     Input('single-ai-snapshot-btn', 'n_clicks'),
-    State('ai-modules-checklist', 'value'),
+    [State('ai-modules-checklist', 'value'),
+     # --- YENİ EKLENEN STATE'LER ---
+     State('resolution-select-radio', 'value'),
+     State('current-photo-store', 'data'),
+     State('framerate-slider', 'value'),
+     State('lens-correction-switch', 'value'),
+     State('ae-enable-switch', 'value'),
+     State('awb-enable-switch', 'value'),
+     State('exposure-time-slider', 'value'),
+     State('iso-gain-slider', 'value'),
+     State('brightness-slider', 'value'),
+     State('contrast-slider', 'value'),
+     State('saturation-slider', 'value'),
+     State('sharpness-slider', 'value'),
+     State('awb-mode-dropdown', 'value'),
+     State('colour-effect-dropdown', 'value'),
+     State('flicker-mode-dropdown', 'value'),
+     State('exposure-mode-dropdown', 'value'),
+     State('metering-mode-dropdown', 'value')],
     prevent_initial_call='initial_duplicate'
 )
-def single_ai_snapshot(n_clicks, modules):
-    """Tek çekim AI analizi"""
+def single_ai_snapshot(n_clicks, modules,
+                       # --- YENİ EKLENEN ARGÜMANLAR ---
+                       resolution_str, photo_store, framerate, lens_correction, ae_enable, awb_enable,
+                       exposure_time, analogue_gain, brightness, contrast, saturation, sharpness,
+                       awb_mode, colour_effect, flicker_mode, exposure_mode, metering_mode):
+    """Tek çekim AI analizi - Artık tüm kamera ayarlarını kullanıyor"""
+
+    # Hata durumunda boş döndür
+    error_return = ("", "", "0", "0", "0", "0", [], {})
+
     if not n_clicks:
-        return ("", "", "0", "0", "0", "0", [], {})
+        return error_return
 
     if not modules:
         return (
@@ -2119,21 +2152,78 @@ def single_ai_snapshot(n_clicks, modules):
         )
 
     try:
-        logger.info(f"🔍 AI snapshot başlatılıyor: {modules}")
+        logger.info(f"🔍 AI snapshot (Tüm Ayarlarla) başlatılıyor: {modules}")
 
-        frame = hardware_manager.capture_frame(
-            resolution=(1280, 720),
-            framerate=30
-        )
+        # --- FOTOĞRAF ÇEKME LOGIĞI (capture_photo_ultimate'den kopyalandı) ---
+
+        # FALLBACK: Eğer resolution_str None ise store'dan al
+        if not resolution_str or resolution_str is None:
+            if photo_store and 'selected_resolution' in photo_store:
+                resolution_str = photo_store['selected_resolution']
+                logger.warning(f"AI Snapshot: Çözünürlük State'ten alınamadı, store'dan kullanıldı: {resolution_str}")
+            else:
+                logger.error("AI Snapshot: Çözünürlük hem State hem Store'da yok! Varsayılan kullanılıyor.")
+                resolution_str = "1280x720"  # Varsayılan
+
+        if not resolution_str or 'x' not in str(resolution_str):
+            logger.error(f"AI Snapshot: Geçersiz çözünürlük: {resolution_str}")
+            return error_return
+
+        parts = str(resolution_str).split('x')
+        if len(parts) != 2: raise ValueError("Çözünürlük formatı hatalı")
+        w_str, h_str = parts
+        resolution_tuple = (int(w_str.strip()), int(h_str.strip()))
+
+        if not (320 <= resolution_tuple[0] <= 2592): raise ValueError(f"Genişlik sınır dışı: {resolution_tuple[0]}")
+        if not (240 <= resolution_tuple[1] <= 1944): raise ValueError(f"Yükseklik sınır dışı: {resolution_tuple[1]}")
+
+        validated_fps = CameraConfig.validate_framerate(float(framerate), resolution_tuple)
+        if validated_fps != framerate:
+            logger.warning(f"AI Snapshot: FPS {framerate} -> {validated_fps} ayarlandı")
+
+        try:
+            logger.debug(f"AI Snapshot: {resolution_tuple} @ {validated_fps}fps ile çekim yapılıyor...")
+            frame = hardware_manager.capture_frame(
+                resolution=resolution_tuple,
+                framerate=validated_fps,
+                apply_lens_correction=lens_correction,
+                ae_enable=ae_enable,
+                awb_enable=awb_enable,
+                exposure_time=int(exposure_time) if not ae_enable else None,
+                analogue_gain=float(analogue_gain) if not ae_enable else None,
+                brightness=float(brightness),
+                contrast=float(contrast),
+                saturation=float(saturation),
+                sharpness=float(sharpness),
+                awb_mode=awb_mode,
+                colour_effect=colour_effect,
+                flicker_mode=flicker_mode,
+                exposure_mode=exposure_mode,
+                metering_mode=metering_mode,
+            )
+        except TypeError:
+            logger.warning("AI Snapshot: Hardware manager güncel değil, temel ayarlar kullanılıyor")
+            frame = hardware_manager.capture_frame(
+                resolution=resolution_tuple,
+                framerate=validated_fps,
+                apply_lens_correction=lens_correction,
+                ae_enable=ae_enable,
+                awb_enable=awb_enable,
+            )
+
+        # --- FOTOĞRAF ÇEKME LOGIĞI BİTTİ ---
 
         if frame is None:
-            logger.error("Frame alınamadı")
+            logger.error("AI Snapshot: Frame alınamadı")
             return (
                 "", "", "!", "!", "!", "!",
                 [html.Div("❌ Frame alınamadı", className="alert alert-danger")],
                 {}
             )
 
+        logger.info(f"AI Snapshot: Frame alındı ({frame.shape[1]}x{frame.shape[0]}), işleniyor...")
+
+        # AI İŞLEME
         processed_frame, results = ai_vision_manager.process_frame(
             frame,
             modules=modules,
@@ -2210,6 +2300,8 @@ def single_ai_snapshot(n_clicks, modules):
             paper_bgcolor='rgba(0,0,0,0)',
             font={'color': 'white', 'size': 14}
         )
+
+        logger.info(f"AI Snapshot tamamlandı. {len(detections)} nesne bulundu.")
 
         return (
             processed_b64,

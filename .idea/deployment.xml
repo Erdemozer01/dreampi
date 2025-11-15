@@ -5,8 +5,11 @@
       <paths name="pi@192.168.1.10:22 password">
         <serverdata>
           <mappings>
-            <mapping deploy="/tmp/pycharm_project_24" local="$PROJECT_DIR$" />
+            <mapping deploy="/home/pi/dream" local="$PROJECT_DIR$" web="/" />
           </mappings>
+          <excludedPaths>
+            <excludedPath path="/home/pi/.venv/bin/python" />
+          </excludedPaths>
         </serverdata>
       </paths>
     </serverData>

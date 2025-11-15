@@ -1582,12 +1582,7 @@ class HardwareManager:
             }
         }
 
-    def __del__(self):
-        """Destructor - temizlik yap"""
-        try:
-            self.cleanup_all()
-        except:
-            pass
+
 
 
 # ============================================================================

@@ -18,7 +18,15 @@ from functools import wraps, lru_cache
 from dataclasses import dataclass
 import json
 
-from .config import CameraConfig, AppConfig, SensorConfig, PerformanceConfig
+from dash_framework.config import CameraConfig, AppConfig, SensorConfig, PerformanceConfig, AIConfig
+
+
+# Yeni importlar
+from ultralytics import YOLO
+from pyzbar.pyzbar import decode as pyzbar_decode
+import tflite_runtime.interpreter as tflite # YENİ TFLite importu
+
+from pathlib import Path
 
 try:
     from PIL import Image, ImageFilter, ExifTags
@@ -106,6 +114,239 @@ def profile_performance(func: Callable) -> Callable:
     wrapper._monitor = PerformanceMonitor()
     return wrapper
 
+
+class MultiTaskAIProcessor:
+    """
+    AIConfig'e dayalı çoklu AI/CV görevlerini yürüten işlemci.
+    YOLO, Yüz Tanıma, Hareket, QR ve Kenar Tespiti yönetir.
+    """
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.yolo_model = None
+        self.face_cascade = None
+        self.eye_cascade = None
+        self.qr_decoder = pyzbar_decode
+        self.prev_frame_gray = None # Hareket tespiti için
+
+        if not AIConfig.ENABLE_AI:
+            self.logger.warning("AI global olarak devre dışı.")
+            return
+
+        self.load_models()
+
+    def load_models(self):
+        """AIConfig'e göre gerekli modelleri belleğe yükle"""
+
+        # 1. YOLO Modelini Yükle
+        if AIConfig.ENABLE_YOLO:
+            try:
+                if not AIConfig.YOLO_MODEL_PATH.exists():
+                    self.logger.error(f"YOLO modeli bulunamadı: {AIConfig.YOLO_MODEL_PATH}")
+                    AIConfig.ENABLE_YOLO = False
+                else:
+                    self.yolo_model = YOLO(str(AIConfig.YOLO_MODEL_PATH))
+                    # RPi'de GPU/NPU yerine CPU'yu zorla (daha stabil)
+                    self.yolo_model.to('cpu')
+                    self.logger.info(f"✓ YOLO modeli yüklendi: {AIConfig.YOLO_MODEL}")
+            except Exception as e:
+                self.logger.error(f"YOLO modeli yüklenemedi: {e}")
+                AIConfig.ENABLE_YOLO = False
+
+        # 2. Yüz Tanıma (Haar Cascade) Yükle
+        if AIConfig.ENABLE_FACE_DETECTION:
+            try:
+                if not Path(AIConfig.FACE_CASCADE_PATH).exists():
+                    self.logger.error(f"Face cascade bulunamadı: {AIConfig.FACE_CASCADE_PATH}")
+                    AIConfig.ENABLE_FACE_DETECTION = False
+                else:
+                    self.face_cascade = cv2.CascadeClassifier(AIConfig.FACE_CASCADE_PATH)
+                    self.logger.info("✓ Yüz tanıma (Haar) modeli yüklendi.")
+
+                if AIConfig.DETECT_EYES:
+                    if not Path(AIConfig.EYE_CASCADE_PATH).exists():
+                        self.logger.error(f"Eye cascade bulunamadı: {AIConfig.EYE_CASCADE_PATH}")
+                        AIConfig.DETECT_EYES = False
+                    else:
+                        self.eye_cascade = cv2.CascadeClassifier(AIConfig.EYE_CASCADE_PATH)
+                        self.logger.info("✓ Göz tanıma (Haar) modeli yüklendi.")
+
+            except Exception as e:
+                self.logger.error(f"Haar cascade modelleri yüklenemedi: {e}")
+                AIConfig.ENABLE_FACE_DETECTION = False
+
+        # 3. QR/Barkod
+        if AIConfig.ENABLE_QR_BARCODE:
+            self.logger.info("✓ QR/Barkod okuyucu etkin.")
+
+        # 4. Hareket Tespiti
+        if AIConfig.ENABLE_MOTION_DETECTION:
+            self.logger.info("✓ Hareket tespiti etkin.")
+
+        # 5. Kenar Tespiti
+        if AIConfig.ENABLE_EDGE_DETECTION:
+            self.logger.info("✓ Kenar tespiti (Canny) etkin.")
+
+    @profile_performance
+    def process_frame(self, frame: np.ndarray, active_tasks: Dict[str, bool]) -> np.ndarray:
+        """
+        Kareyi, UI'dan gelen aktif görevlere göre işle.
+        'active_tasks' -> {'yolo': True, 'face': False, ...}
+        """
+        if not AIConfig.ENABLE_AI:
+            return frame
+
+        # İşlenmiş kare (çizimler bunun üzerine yapılacak)
+        processed_frame = frame.copy()
+
+        # --- Görevleri Sırayla Çalıştır ---
+
+        # 1. Hareket Tespiti (Genellikle ilk bu yapılır)
+        if active_tasks.get('motion') and AIConfig.ENABLE_MOTION_DETECTION:
+            processed_frame = self.run_motion_detection(frame, processed_frame)
+
+        # 2. YOLO Nesne Tespiti
+        if active_tasks.get('yolo') and AIConfig.ENABLE_YOLO and self.yolo_model:
+            processed_frame = self.run_yolo(frame, processed_frame) # 'frame' orijinal, 'processed_frame' çizim için
+
+        # 3. Yüz Tanıma
+        if active_tasks.get('face') and AIConfig.ENABLE_FACE_DETECTION and self.face_cascade:
+            processed_frame = self.run_face_detection(frame, processed_frame)
+
+        # 4. QR/Barkod Okuma
+        if active_tasks.get('qr') and AIConfig.ENABLE_QR_BARCODE:
+            processed_frame = self.run_qr_barcode(frame, processed_frame)
+
+        # 5. Kenar Tespiti
+        if active_tasks.get('edge') and AIConfig.ENABLE_EDGE_DETECTION:
+            processed_frame = self.run_edge_detection(frame, processed_frame)
+
+        return processed_frame
+
+    def run_yolo(self, frame_orig: np.ndarray, frame_draw: np.ndarray) -> np.ndarray:
+        """YOLOv8 modelini çalıştır ve sonuçları çiz"""
+        try:
+            results = self.yolo_model.predict(
+                source=frame_orig,
+                conf=AIConfig.YOLO_CONFIDENCE,
+                iou=AIConfig.YOLO_IOU,
+                verbose=False # Logları kapat
+            )
+
+            # Ultralytics'in kendi çizim fonksiyonunu kullan
+            if results and len(results) > 0:
+                frame_draw = results[0].plot() # plot() fonksiyonu BGR array döndürür
+
+        except Exception as e:
+            self.logger.warning(f"YOLO işleme hatası: {e}")
+        return frame_draw
+
+    def run_face_detection(self, frame_orig: np.ndarray, frame_draw: np.ndarray) -> np.ndarray:
+        """Haar Cascade ile yüz ve gözleri bul"""
+        try:
+            gray = cv2.cvtColor(frame_orig, cv2.COLOR_BGR2GRAY)
+            faces = self.face_cascade.detectMultiScale(
+                gray,
+                scaleFactor=AIConfig.FACE_SCALE_FACTOR,
+                minNeighbors=AIConfig.FACE_MIN_NEIGHBORS,
+                minSize=AIConfig.FACE_MIN_SIZE
+            )
+
+            color = AIConfig.get_color_for_label('face')
+
+            for (x, y, w, h) in faces:
+                # Yüzü çiz
+                cv2.rectangle(frame_draw, (x, y), (x+w, y+h), color, AIConfig.BBOX_THICKNESS)
+
+                if AIConfig.DETECT_EYES and self.eye_cascade:
+                    roi_gray = gray[y:y+h, x:x+w]
+                    roi_color = frame_draw[y:y+h, x:x+w]
+                    eyes = self.eye_cascade.detectMultiScale(roi_gray)
+                    for (ex, ey, ew, eh) in eyes:
+                        cv2.rectangle(roi_color, (ex, ey), (ex+ew, ey+eh), (0, 255, 255), 1) # Gözler sarı
+
+        except Exception as e:
+            self.logger.warning(f"Yüz tanıma hatası: {e}")
+        return frame_draw
+
+    def run_motion_detection(self, frame_orig: np.ndarray, frame_draw: np.ndarray) -> np.ndarray:
+        """Frame farkı ile hareket tespiti"""
+        try:
+            gray = cv2.cvtColor(frame_orig, cv2.COLOR_BGR2GRAY)
+            gray = cv2.GaussianBlur(gray, AIConfig.MOTION_GAUSSIAN_BLUR, 0)
+
+            if self.prev_frame_gray is None:
+                self.prev_frame_gray = gray
+                return frame_draw
+
+            # Ayarları profilden al
+            settings = AIConfig.get_motion_settings()
+
+            frame_delta = cv2.absdiff(self.prev_frame_gray, gray)
+            thresh = cv2.threshold(frame_delta, settings['threshold'], 255, cv2.THRESH_BINARY)[1]
+            thresh = cv2.dilate(thresh, None, iterations=AIConfig.MOTION_DILATE_ITERATIONS)
+
+            contours, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            color = AIConfig.get_color_for_label('motion')
+
+            for c in contours:
+                if cv2.contourArea(c) < settings['min_area']:
+                    continue
+
+                (x, y, w, h) = cv2.boundingRect(c)
+                cv2.rectangle(frame_draw, (x, y), (x + w, y + h), color, AIConfig.BBOX_THICKNESS)
+                cv2.putText(frame_draw, "Hareket", (x, y - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+
+            # Bir sonraki döngü için kareyi sakla
+            self.prev_frame_gray = gray
+
+        except Exception as e:
+            self.logger.warning(f"Hareket tespiti hatası: {e}")
+            self.prev_frame_gray = None # Hata olursa sıfırla
+        return frame_draw
+
+    def run_qr_barcode(self, frame_orig: np.ndarray, frame_draw: np.ndarray) -> np.ndarray:
+        """Pyzbar ile QR ve Barkodları oku"""
+        try:
+            decoded_objects = self.qr_decoder(frame_orig)
+            color = AIConfig.get_color_for_label('qr')
+
+            for obj in decoded_objects:
+                if obj.type not in AIConfig.QR_SUPPORTED_TYPES:
+                    continue
+
+                # Poligonu çiz
+                points = obj.polygon
+                if len(points) > 3:
+                    pts = np.array(points, dtype=np.int32)
+                    pts = pts.reshape((-1, 1, 2))
+                    cv2.polylines(frame_draw, [pts], True, color, AIConfig.BBOX_THICKNESS)
+
+                # Veriyi yaz
+                data_str = obj.data.decode('utf-8')
+                cv2.putText(frame_draw, f"{obj.type}: {data_str}", (obj.rect.left, obj.rect.top - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+
+        except Exception as e:
+            self.logger.warning(f"QR okuma hatası: {e}")
+        return frame_draw
+
+    def run_edge_detection(self, frame_orig: np.ndarray, frame_draw: np.ndarray) -> np.ndarray:
+        """Canny ile kenar tespiti"""
+        try:
+            gray = cv2.cvtColor(frame_orig, cv2.COLOR_BGR2GRAY)
+            blur = cv2.GaussianBlur(gray, AIConfig.EDGE_GAUSSIAN_BLUR, 0)
+
+            edges = cv2.Canny(blur, AIConfig.EDGE_LOW_THRESHOLD, AIConfig.EDGE_HIGH_THRESHOLD)
+
+            # Kenarları orijinal kare üzerine renkli olarak ekle
+            color = AIConfig.get_color_for_label('edge')
+            frame_draw[edges != 0] = color
+
+        except Exception as e:
+            self.logger.warning(f"Kenar tespiti hatası: {e}")
+        return frame_draw
 
 # ============================================================================
 # CİRCUİT BREAKER PATTERN
@@ -1044,6 +1285,8 @@ frame_buffer = FrameBuffer(
 image_processor = ImageProcessor()
 store_manager = StoreManager()
 performance_monitor = PerformanceMonitor()
+
+ai_processor = MultiTaskAIProcessor()
 
 camera_circuit_breaker = CircuitBreaker(
     failure_threshold=AppConfig.CIRCUIT_FAILURE_THRESHOLD,

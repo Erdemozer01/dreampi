@@ -6,7 +6,8 @@
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
-import json
+import cv2 # cv2 import'unu buraya ekleyin (Haar cascade yolları için)
+
 
 # libcamera kontrolleri
 try:
@@ -15,6 +16,7 @@ try:
 except ImportError:
     LIBCAMERA_CONTROLS_AVAILABLE = False
     logging.warning("libcamera.controls bulunamadı. Kamera ayarları sınırlı olabilir.")
+
 
 
 
@@ -29,7 +31,8 @@ class AIConfig:
     YOLO_MODEL = 'yolov8n.pt'  # Modeller: yolov8n (hızlı), yolov8s (dengeli), yolov8m (kaliteli)
     YOLO_CONFIDENCE = 0.5      # Minimum güven skoru (0.0-1.0)
     YOLO_IOU = 0.4             # Intersection over Union eşiği
-    YOLO_MODEL_DIR = Path("../yolov8n.pt")
+    YOLO_MODEL_DIR = Path("models") # Modelin bulunduğu klasör
+    YOLO_MODEL_PATH = YOLO_MODEL_DIR / YOLO_MODEL # Tam model yolu
 
     # YOLO Sınıfları (COCO dataset - 80 sınıf)
     YOLO_CLASSES = [
@@ -51,6 +54,11 @@ class AIConfig:
     FACE_MIN_SIZE = (30, 30)       # Minimum yüz boyutu (piksel)
     FACE_SCALE_FACTOR = 1.1        # Haar Cascade scale factor
     FACE_MIN_NEIGHBORS = 5         # Minimum komşu sayısı
+
+    # Haar Cascade dosyalarının yolları (OpenCV ile gelir)
+    FACE_CASCADE_PATH = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+    EYE_CASCADE_PATH = cv2.data.haarcascades + 'haarcascade_eye.xml'
+
 
     # ===== HAREKET TESPİTİ =====
     ENABLE_MOTION_DETECTION = True
@@ -142,7 +150,7 @@ class AIConfig:
 
     # ===== ESKİ AYARLAR (Geriye Dönük Uyumluluk) =====
     AI_MODEL = 'yolo'                 # Varsayılan model tipi
-    MODEL_PATH = YOLO_MODEL_DIR / YOLO_MODEL
+    MODEL_PATH = YOLO_MODEL_PATH      # Düzeltildi
     CONFIDENCE_THRESHOLD = YOLO_CONFIDENCE
     NMS_THRESHOLD = YOLO_IOU
     MAX_DETECTIONS = 50               # Maksimum tespit sayısı

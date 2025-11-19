@@ -1,4 +1,9 @@
-# hardware_manager.py - v3.24 (Django Import Fix + Resource Lock)
+# hardware_manager.py - v3.23 FIXED (Camera Pause/Resume Methods Added)
+# CHANGES:
+# - Added _is_camera_paused attribute
+# - Added pause_camera_usage() method
+# - Added resume_camera_usage() method
+# - Improved error handling in capture_frame
 
 import json
 import time
@@ -14,15 +19,15 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
-# DJANGO / STANDALONE IMPORT UYUMLULUĞU
 try:
-    # Django içinden (noktalı)
     from .config import CameraConfig, MotorConfig, SensorConfig, AppConfig, PerformanceConfig, SystemChecks
     from .utils import CircuitBreaker, FrameBuffer, FisheyeCorrector, profile_performance, PerformanceMonitor
 except ImportError:
-    # Standalone
-    from config import CameraConfig, MotorConfig, SensorConfig, AppConfig, PerformanceConfig, SystemChecks
-    from utils import CircuitBreaker, FrameBuffer, FisheyeCorrector, profile_performance, PerformanceMonitor
+    try:
+        from config import CameraConfig, MotorConfig, SensorConfig, AppConfig, PerformanceConfig, SystemChecks
+        from utils import CircuitBreaker, FrameBuffer, FisheyeCorrector, profile_performance, PerformanceMonitor
+    except ImportError:
+        raise ImportError("config.py veya utils.py bulunamadı!")
 
 logger = logging.getLogger(__name__)
 
@@ -151,84 +156,134 @@ class AdaptiveSensorReader:
 
 
 class HardwareManager:
-    VERSION = "3.24-IMPORT-FIX"
+    VERSION = "3.23-FIXED"
 
     def __init__(self):
         self.camera: Optional[Picamera2] = None
         self.motor_devices: Optional[Tuple] = None
         self.sensor: Optional[DistanceSensor] = None
         self.limit_switches: Dict[str, Optional[Button]] = {'min': None, 'max': None}
+
         self.fisheye_corrector = FisheyeCorrector()
         self.fisheye_corrector.load_calibration()
         self.frame_buffer = FrameBuffer(size=CameraConfig.FRAME_BUFFER_SIZE)
-        self.motor_ctx = {'current_angle': 0.0, 'sequence_index': 0, 'total_steps': 0, 'is_moving': False,
-                          'last_direction': None, 'target_angle': 0.0, 'cancel_movement': False,
-                          'speed_profile': 'normal'}
+
+        self.motor_ctx = {
+            'current_angle': 0.0, 'sequence_index': 0, 'total_steps': 0,
+            'is_moving': False, 'last_direction': None, 'target_angle': 0.0,
+            'cancel_movement': False, 'speed_profile': 'normal'
+        }
         self.motor_command_queue = MotorCommandQueue()
-        self._locks = {'camera': threading.RLock(), 'motor': threading.RLock(), 'sensor': threading.RLock()}
+
+        self._locks = {
+            'camera': threading.RLock(),
+            'motor': threading.RLock(),
+            'sensor': threading.RLock()
+        }
+
         self.executor = ThreadPoolExecutor(
             max_workers=AppConfig.MAX_THREAD_POOL_SIZE) if AppConfig.USE_THREAD_POOL else None
+
         self._initialized = {'camera': False, 'motor': False, 'sensor': False}
+
+        # ✅ FIXED: Added missing attribute
+        self._is_camera_paused = False
+
         self._camera_settings_cache = CameraConfig.get_camera_settings()
-        self._camera_settings_cache.update({'resolution': CameraConfig.DEFAULT_RESOLUTION, 'use_full_fov': True,
-                                            'ae_enable': CameraConfig.ENABLE_AUTO_EXPOSURE,
-                                            'awb_enable': CameraConfig.ENABLE_AUTO_WHITE_BALANCE})
+        self._camera_settings_cache.update({
+            'resolution': CameraConfig.DEFAULT_RESOLUTION,
+            'use_full_fov': True,
+            'ae_enable': CameraConfig.ENABLE_AUTO_EXPOSURE,
+            'awb_enable': CameraConfig.ENABLE_AUTO_WHITE_BALANCE
+        })
         self._settings_hash = None
+
         self.circuit_breakers = {
             'camera': CircuitBreaker(AppConfig.CIRCUIT_FAILURE_THRESHOLD, AppConfig.CIRCUIT_RECOVERY_TIMEOUT),
-            'motor': CircuitBreaker(3, 30), 'sensor': CircuitBreaker(5, 20)}
+            'motor': CircuitBreaker(3, 30),
+            'sensor': CircuitBreaker(5, 20)
+        }
+
         self.performance_monitor = PerformanceMonitor()
-        self.metrics = {'camera_frames': 0, 'motor_moves': 0, 'sensor_reads': 0, 'errors': 0,
-                        'start_time': datetime.now()}
+        self.metrics = {
+            'camera_frames': 0, 'motor_moves': 0, 'sensor_reads': 0,
+            'errors': 0, 'start_time': datetime.now()
+        }
+
         self.sensor_thread: Optional[threading.Thread] = None
         self.sensor_enabled = False
         self.sensor_running = False
         self.current_distance = None
         self.adaptive_sensor = None
+
         self.motor_thread: Optional[threading.Thread] = None
         self.motor_queue_running = False
-        self._is_camera_paused = False
-
-    def pause_camera_usage(self):
-        """Kamerayı harici işlem için serbest bırakır ve kilitler."""
-        logger.info("⚠️ Kamera 'PAUSE' moduna alındı (Harici işlem için).")
-        self._is_camera_paused = True
-        self.cleanup_camera()
-
-    def resume_camera_usage(self):
-        """Kamera kilidini kaldırır ve web için tekrar başlatır."""
-        logger.info("▶️ Kamera 'RESUME' edildi (Web kontrolü).")
-        self._is_camera_paused = False
-        self.initialize_camera()
 
     def _calculate_settings_hash(self, **settings) -> str:
         settings_str = str(settings)
         return hashlib.md5(settings_str.encode()).hexdigest()
 
+    # ✅ NEW METHOD: Pause camera for external process
+    def pause_camera_usage(self):
+        """
+        Pause camera for external process usage.
+        Cleanly stops and closes the camera.
+        """
+        logger.info("Pausing camera for external process...")
+        self._is_camera_paused = True
+        self.cleanup_camera()
+        logger.info("Camera paused successfully")
+
+    # ✅ NEW METHOD: Resume camera after external process
+    def resume_camera_usage(self):
+        """
+        Resume camera after external process is done.
+        Reinitializes the camera.
+        """
+        logger.info("Resuming camera for web interface...")
+        self._is_camera_paused = False
+        success = self.initialize_camera()
+        if success:
+            logger.info("Camera resumed successfully")
+        else:
+            logger.warning("Camera resume failed, will retry on next capture")
+
     @profile_performance
     def initialize_camera(self, retry: bool = True) -> bool:
-        if self._is_camera_paused:
-            logger.warning("Kamera PAUSE modunda, başlatılmıyor.")
-            return False
-
         if not CAMERA_AVAILABLE:
             self._initialized['camera'] = False
             return False
 
+        # ✅ IMPROVED: Check if camera is paused
+        if self._is_camera_paused:
+            logger.warning("Cannot initialize camera while paused")
+            return False
+
         def _init_camera():
-            if self.camera: self.cleanup_camera()
+            if self.camera:
+                self.cleanup_camera()
+
             logger.info("OV5647 130° kamera başlatılıyor (Full FOV)...")
             self.camera = Picamera2()
-            camera_controls = CameraConfig.get_camera_settings(resolution=CameraConfig.DEFAULT_RESOLUTION,
-                                                               framerate=CameraConfig.DEFAULT_FRAMERATE)
-            camera_streams = {"main": {"size": CameraConfig.DEFAULT_RESOLUTION, "format": "RGB888"},
-                              "raw": {"size": (2592, 1944)}}
+
+            camera_controls = CameraConfig.get_camera_settings(
+                resolution=CameraConfig.DEFAULT_RESOLUTION,
+                framerate=CameraConfig.DEFAULT_FRAMERATE
+            )
+
+            camera_streams = {
+                "main": {"size": CameraConfig.DEFAULT_RESOLUTION, "format": "RGB888"},
+                "raw": {"size": (2592, 1944)}
+            }
+
             config = self.camera.create_video_configuration(**camera_streams, controls=camera_controls)
             self.camera.configure(config)
             self.camera.start()
+
             self._camera_settings_cache.update(camera_controls)
             self._camera_settings_cache['resolution'] = CameraConfig.DEFAULT_RESOLUTION
             self._settings_hash = self._calculate_settings_hash(**self._camera_settings_cache)
+
             time.sleep(2)
             self._initialized['camera'] = True
             logger.info("✓ Kamera başlatıldı")
@@ -239,17 +294,26 @@ class HardwareManager:
         except Exception as e:
             logger.error(f"Kamera başlatma hatası: {e}")
             self.metrics['errors'] += 1
-        return False
+            return False
 
     @profile_performance
     def capture_frame(self, resolution=None, framerate=None, apply_lens_correction=True, **kwargs) -> Optional[
         np.ndarray]:
-        if self._is_camera_paused: return None
+        """
+        ✅ IMPROVED: Auto-wake camera if closed, but respect pause state
+        """
+        # Check if camera is paused by external process
+        if self._is_camera_paused:
+            logger.warning("Camera is paused for external process, returning test frame")
+            return self._generate_test_frame(resolution=resolution or CameraConfig.DEFAULT_RESOLUTION)
+
+        # Auto-wake camera if not initialized
         if not self._initialized['camera'] or self.camera is None:
-            logger.info("Kamera kapalı, otomatik başlatılıyor...")
+            logger.info("Camera not initialized, attempting auto-start...")
             if self.initialize_camera():
-                logger.info("Kamera otomatik başlatıldı.")
+                logger.info("✓ Camera auto-started successfully")
             else:
+                logger.warning("✗ Camera auto-start failed, returning test frame")
                 return self._generate_test_frame(resolution=resolution or CameraConfig.DEFAULT_RESOLUTION)
 
         current_cache = self._camera_settings_cache
@@ -285,43 +349,65 @@ class HardwareManager:
                 self.frame_buffer.add_frame(frame)
                 return frame
             return self._generate_test_frame(resolution=target_resolution)
+
         except Exception as e:
             logger.error(f"Capture hatası: {e}")
+            self.metrics['errors'] += 1
             return self.frame_buffer.get_latest()
         finally:
             self._locks['camera'].release()
 
     def capture_stream_frame(self) -> Optional[np.ndarray]:
-        if self._is_camera_paused: return None
-        if not self._initialized['camera'] or self.camera is None:
+        if not self._initialized['camera'] or self.camera is None or self._is_camera_paused:
             return self._generate_test_frame(resolution=CameraConfig.DEFAULT_RESOLUTION)
-        if not self._locks['camera'].acquire(timeout=0.5): return None
+
+        if not self._locks['camera'].acquire(timeout=0.5):
+            return None
+
         try:
             return self.camera.capture_array("main")
-        except Exception:
+        except Exception as e:
+            logger.error(f"Stream capture error: {e}")
             return None
         finally:
             self._locks['camera'].release()
 
     def _reconfigure_camera_heavy(self, resolution, controls):
-        self.camera.stop()
-        camera_streams = {"main": {"size": resolution, "format": "RGB888"}, "raw": {"size": (2592, 1944)}}
-        new_config = self.camera.create_video_configuration(**camera_streams, controls=controls)
-        self.camera.configure(new_config)
-        self.camera.start()
-        time.sleep(0.5)
+        """Heavy reconfiguration when resolution changes"""
+        try:
+            self.camera.stop()
+            camera_streams = {
+                "main": {"size": resolution, "format": "RGB888"},
+                "raw": {"size": (2592, 1944)}
+            }
+            new_config = self.camera.create_video_configuration(**camera_streams, controls=controls)
+            self.camera.configure(new_config)
+            self.camera.start()
+            time.sleep(0.5)
+        except Exception as e:
+            logger.error(f"Camera reconfiguration error: {e}")
+            raise
 
     def _generate_test_frame(self, **kwargs) -> Optional[np.ndarray]:
+        """Generate test frame when camera unavailable"""
         try:
             resolution = kwargs.get('resolution', (640, 480))
             w, h = resolution
             frame = np.zeros((h, w, 3), dtype=np.uint8)
-            cv2.putText(frame, "NO CAMERA / SIMULATION", (50, h // 2), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+            # Add informative text
+            text = "NO CAMERA / SIMULATION"
+            if self._is_camera_paused:
+                text = "CAMERA PAUSED FOR EXTERNAL PROCESS"
+
+            cv2.putText(frame, text, (10, h // 2),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
             return frame
         except:
             return np.zeros((480, 640, 3), dtype=np.uint8)
 
     def cleanup_camera(self):
+        """Clean camera resources"""
         try:
             if self.camera:
                 self.camera.stop()
@@ -332,15 +418,20 @@ class HardwareManager:
         except Exception as e:
             logger.error(f"Kamera temizleme hatası: {e}")
 
-    # --- Motor & Sensor ---
+    # --- Motor Methods (Simplified) ---
     def initialize_motor(self, retry=True):
         if not GPIO_AVAILABLE: return False
-        self.motor_devices = (OutputDevice(MotorConfig.H_MOTOR_IN1), OutputDevice(MotorConfig.H_MOTOR_IN2),
-                              OutputDevice(MotorConfig.H_MOTOR_IN3), OutputDevice(MotorConfig.H_MOTOR_IN4))
+        self.motor_devices = (
+            OutputDevice(MotorConfig.H_MOTOR_IN1),
+            OutputDevice(MotorConfig.H_MOTOR_IN2),
+            OutputDevice(MotorConfig.H_MOTOR_IN3),
+            OutputDevice(MotorConfig.H_MOTOR_IN4)
+        )
         self.motor_queue_running = True
         self.motor_thread = threading.Thread(target=self._motor_command_processor, daemon=True)
         self.motor_thread.start()
         self._initialized['motor'] = True
+        logger.info("✓ Motor initialized")
         return True
 
     def _motor_command_processor(self):
@@ -372,11 +463,17 @@ class HardwareManager:
     def cleanup_motor(self):
         self.motor_queue_running = False
         self._initialized['motor'] = False
+        logger.info("✓ Motor cleaned up")
 
+    # --- Sensor Methods (Simplified) ---
     def initialize_sensor(self, retry=True):
         if not GPIO_AVAILABLE: return False
-        self.sensor = DistanceSensor(echo=SensorConfig.H_ECHO, trigger=SensorConfig.H_TRIG)
+        self.sensor = DistanceSensor(echo=SensorConfig.H_ECHO, trigger=SensorConfig.H_TRIG,
+                                     max_distance=SensorConfig.MAX_DISTANCE,
+                                     queue_len=SensorConfig.QUEUE_LEN,
+                                     threshold_distance=SensorConfig.THRESHOLD_DISTANCE)
         self._initialized['sensor'] = True
+        logger.info("✓ Sensor initialized")
         return True
 
     def start_continuous_sensor_reading(self):
@@ -398,17 +495,31 @@ class HardwareManager:
         return self.current_distance
 
     def cleanup_sensor(self):
-        self.sensor_running = False; self._initialized['sensor'] = False
+        self.sensor_running = False
+        self._initialized['sensor'] = False
+        logger.info("✓ Sensor cleaned up")
 
+    # --- Initialization & Cleanup ---
     def initialize_all(self):
-        return {'camera': self.initialize_camera(), 'motor': self.initialize_motor(),
-                'sensor': self.initialize_sensor()}
+        """Initialize all hardware components"""
+        results = {
+            'camera': self.initialize_camera(),
+            'motor': self.initialize_motor(),
+            'sensor': self.initialize_sensor()
+        }
+        logger.info(f"Hardware initialization: {results}")
+        return results
 
     def cleanup_all(self):
+        """Cleanup all hardware resources"""
+        logger.info("Cleaning up all hardware...")
         self.cleanup_camera()
         self.cleanup_motor()
         self.cleanup_sensor()
+        logger.info("✓ All hardware cleaned up")
 
 
+# Global singleton instance
 hardware_manager = HardwareManager()
+
 __all__ = ['hardware_manager', 'CAMERA_AVAILABLE', 'GPIO_AVAILABLE']

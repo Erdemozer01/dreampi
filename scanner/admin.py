@@ -884,6 +884,7 @@ class AIModelConfigurationAdmin(admin.ModelAdmin):
 # ADMIN PANEL ÖZELLEŞTİRMELERİ
 # ============================================================================
 
+
 admin.site.site_header = "Dream Pi v3.16 Ultimate"
 admin.site.site_title = "Dream Pi Admin"
 admin.site.index_title = "Raspberry Pi 5 Kontrol Paneli - Tam Manuel Kontrol"

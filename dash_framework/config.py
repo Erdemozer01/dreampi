@@ -28,7 +28,7 @@ class AIConfig:
 
     # ===== YOLO (NESNE TESPİTİ) =====
     ENABLE_YOLO = True
-    YOLO_MODEL = 'yolov8n.pt'  # Modeller: yolov8n (hızlı), yolov8s (dengeli), yolov8m (kaliteli)
+    YOLO_MODEL = 'yolov8m.pt'  # Modeller: yolov8n (hızlı), yolov8s (dengeli), yolov8m (kaliteli)
     YOLO_CONFIDENCE = 0.5      # Minimum güven skoru (0.0-1.0)
     YOLO_IOU = 0.4             # Intersection over Union eşiği
     YOLO_MODEL_DIR = Path("models") # Modelin bulunduğu klasör
